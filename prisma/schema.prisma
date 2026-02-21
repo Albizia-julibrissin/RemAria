@@ -1,0 +1,32 @@
+// Prisma schema - docs/02_domain_model.md 準拠
+// MVP 最小スキーマ（段階的に拡張）
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  playerCharacter PlayerCharacter?
+}
+
+model PlayerCharacter {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String   @default("冒険者")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

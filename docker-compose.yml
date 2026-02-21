@@ -1,0 +1,19 @@
+# PostgreSQL - ローカル開発用
+# docs/03_architecture_spec.md に準拠（開発: PostgreSQL）
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: remaria-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: remaria
+      POSTGRES_PASSWORD: remaria_dev
+      POSTGRES_DB: remaria
+    ports:
+      - "5432:5432"
+    volumes:
+      - remaria_pg_data:/var/lib/postgresql/data
+
+volumes:
+  remaria_pg_data:
