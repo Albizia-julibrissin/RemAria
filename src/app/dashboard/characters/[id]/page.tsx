@@ -1,10 +1,11 @@
-// spec/025_character_list.md - キャラ詳細（基礎ステータスのみ）
+// spec/025, 030: キャラ詳細（基礎ステータス・工業スキル・仲間は解雇）
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { getProtagonist } from "@/server/actions/protagonist";
 import { characterRepository } from "@/server/repositories/character-repository";
+import { DismissCompanionButton } from "./dismiss-companion-button";
 
 const CATEGORY_LABEL: Record<string, string> = {
   protagonist: "主人公",
@@ -12,15 +13,14 @@ const CATEGORY_LABEL: Record<string, string> = {
   mech: "メカ",
 };
 
-const STAT_LABELS: Record<string, string> = {
-  STR: "筋力",
-  INT: "知力",
-  DEX: "敏捷",
-  VIT: "体力",
-  SPD: "速度",
-  LUK: "運",
-  CAP: "CAP",
-};
+const BASE_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK", "CAP"] as const;
+
+function formatSkillEffect(effectType: string | null, effectValue: number | null): string {
+  if (!effectType || effectValue == null) return "";
+  if (effectType === "time_reduction") return `作業時間 ${effectValue}% 短縮`;
+  if (effectType === "production_bonus") return `生産量 ${effectValue}% アップ`;
+  return "";
+}
 
 export default async function CharacterDetailPage({
   params,
@@ -34,8 +34,10 @@ export default async function CharacterDetailPage({
   if (!protagonist) redirect("/character/create");
 
   const { id } = await params;
-  const character = await characterRepository.getCharacterByIdForUser(id, session.userId);
+  const character = await characterRepository.getCharacterWithSkillsForUser(id, session.userId);
   if (!character) notFound();
+
+  const industrialSkills = character.characterSkills?.map((cs) => cs.skill).filter(Boolean) ?? [];
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -58,15 +60,40 @@ export default async function CharacterDetailPage({
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-medium text-text-primary">基礎ステータス</h2>
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {(["STR", "INT", "DEX", "VIT", "SPD", "LUK", "CAP"] as const).map((key) => (
+              {BASE_STAT_KEYS.map((key) => (
                 <div key={key} className="flex justify-between gap-2">
-                  <dt className="text-text-muted">{STAT_LABELS[key]}</dt>
+                  <dt className="text-text-muted">{key}</dt>
                   <dd className="font-medium text-text-primary tabular-nums">{character[key]}</dd>
                 </div>
               ))}
             </dl>
           </div>
         </div>
+
+        {industrialSkills.length > 0 && (
+          <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
+            <h2 className="text-lg font-medium text-text-primary">工業スキル</h2>
+            <ul className="mt-3 space-y-2 text-sm">
+              {industrialSkills.map((skill) => (
+                <li key={skill.id} className="text-text-primary">
+                  <span className="font-medium">{skill.name}</span>
+                  {skill.description && <span className="text-text-muted"> — {skill.description}</span>}
+                  {skill.effectType && skill.effectValue != null && (
+                    <span className="text-text-muted">（{formatSkillEffect(skill.effectType, skill.effectValue)}）</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {character.category === "companion" && (
+          <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
+            <h2 className="text-lg font-medium text-text-primary">解雇</h2>
+            <p className="mt-1 text-sm text-text-muted">仲間を解雇すると、このキャラと習得スキルは削除されます。</p>
+            <DismissCompanionButton characterId={character.id} displayName={character.displayName} />
+          </div>
+        )}
 
         <p className="mt-8">
           <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover text-sm">

@@ -43,8 +43,13 @@ model User {
   protagonistCharacter   Character? @relation("Protagonist", fields: [protagonistCharacterId], references: [id], onDelete: Cascade)
   characters             Character[] @relation("CharacterOwner")
 
+  // spec/030: 仲間雇用可能回数。購入で+1、仲間作成で-1
+  companionHireCount Int @default(0)
+
   currencyTransactions CurrencyTransaction[]
   orders               Order[]
+  facilityInstances    FacilityInstance[]
+  inventories          UserInventory[]
 }
 
 /// docs/02_domain_model.md, 08: 主人公・仲間・メカを 1 テーブルで統一。category で判別
@@ -65,16 +70,195 @@ model Character {
 
   STR Int @default(10)
   INT Int @default(10)
-  DEX Int @default(10)
   VIT Int @default(10)
-  SPD Int @default(10)
+  WIS Int @default(10)
+  DEX Int @default(10)
+  AGI Int @default(10)
   LUK Int @default(10)
   CAP Int @default(60)
 
   protagonistUser User? @relation("Protagonist")
+  characterSkills CharacterSkill[]
 
   @@index([userId])
   @@index([userId, category])
+}
+
+/// docs/15: 設備・スキル用タグ。設備は複数タグを持ち、工業スキルは対象タグに一致する設備で効果発動。
+model Tag {
+  id          String   @id @default(cuid())
+  code        String   @unique // 安定参照用（例: water, ore）。増減は将来調整可。
+  name        String   // 表示名（例: 水）
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  facilityTypeTags FacilityTypeTag[]
+  skills           Skill[]
+
+  @@index([code])
+}
+
+/// docs/02, 15, 017, 018: 設備マスタ。kind で資源探索／工業／訓練を区別。cost は設置エリアのコスト計算用（spec/035）。
+model FacilityType {
+  id          String   @id @default(cuid())
+  name        String
+  kind        String   // resource_exploration | industrial | training（入出力の流れが異なる）
+  description String?
+  cost        Int      @default(40) // 設置エリアのコスト消費（018 仮数値）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  facilityTypeTags FacilityTypeTag[]
+  facilityInstances FacilityInstance[]
+  recipes          Recipe[]
+
+  @@unique([name])
+  @@index([name])
+  @@index([kind])
+}
+
+/// spec/035, docs/018: 設置エリアマスタ。初期エリアは code='initial', maxCost=200, maxSlots=5。
+model PlacementArea {
+  id        String   @id @default(cuid())
+  code      String   @unique // 'initial' 等
+  name      String
+  maxCost   Int      // 最大コスト
+  maxSlots  Int      // 最大配置数
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  facilityInstances FacilityInstance[]
+}
+
+/// spec/035, docs/018: 設置済み設備。ユーザーが設置エリアに置いた 1 設備。docs/019: lastReceivedAt で受け取り判定。
+model FacilityInstance {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  placementAreaId   String
+  placementArea     PlacementArea @relation(fields: [placementAreaId], references: [id], onDelete: Cascade)
+  facilityTypeId    String
+  facilityType      FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
+  variantCode       String    @default("base") // 017: base | alpha | beta
+  displayOrder      Int       @default(0)
+  lastReceivedAt    DateTime? // docs/019: NULL なら初回は User.createdAt または createdAt で計算
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([userId, placementAreaId, facilityTypeId, variantCode])
+  @@index([userId])
+  @@index([placementAreaId])
+}
+
+/// docs/019: ユーザーの素材・製品在庫。受け取り時に増減。
+model UserInventory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(0) // 所持数（0 以上）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, itemId])
+  @@index([userId])
+  @@index([itemId])
+}
+
+/// spec/035: 素材・製品マスタ。水・飲料水・小麦・小麦粉・携帯食料など。希少部品は将来 category で区別。
+model Item {
+  id          String   @id @default(cuid())
+  code        String   @unique // water, drinkable_water, wheat, flour, portable_ration
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recipeOutputs  Recipe[]       @relation("RecipeOutput")
+  recipeInputs  RecipeInput[]
+  userInventories UserInventory[]
+}
+
+/// spec/035, docs/018: 設備種別ごとの生産レシピ。周期・出力を定義。
+model Recipe {
+  id              String   @id @default(cuid())
+  facilityTypeId  String
+  facilityType    FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
+  cycleMinutes    Int      // 1 回の生産にかかる分数
+  outputItemId    String
+  outputItem      Item     @relation("RecipeOutput", fields: [outputItemId], references: [id], onDelete: Cascade)
+  outputAmount    Int      // 1 回あたりの出力個数
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  inputs          RecipeInput[]
+
+  @@unique([facilityTypeId])
+  @@index([facilityTypeId])
+}
+
+/// spec/035: レシピの入力素材。資源探索は 0 件、工業は 1 件以上。
+model RecipeInput {
+  id        String   @id @default(cuid())
+  recipeId  String
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  amount    Int      // 1 回あたりの消費個数
+  createdAt DateTime @default(now())
+
+  @@unique([recipeId, itemId])
+  @@index([recipeId])
+}
+
+/// 設備 ↔ タグ の多対多。docs/15
+model FacilityTypeTag {
+  id             String       @id @default(cuid())
+  facilityTypeId String
+  facilityType   FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
+  tagId          String
+  tag            Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([facilityTypeId, tagId])
+  @@index([facilityTypeId])
+  @@index([tagId])
+}
+
+/// spec/030, docs/08, 15: スキルマスタ。工業スキルは category=industrial、効果は targetTag の設備に配備時のみ。
+model Skill {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   // industrial / battle_active / battle_passive 等
+  description String?
+  // 工業スキル用。effectType: time_reduction | production_bonus。effectValue: 百分率（5 = 5%）。targetTagId の設備に配備時のみ発動。
+  effectType   String?  // time_reduction | production_bonus
+  effectValue  Int?     // 例: 5 → 5%
+  targetTagId  String?
+  targetTag    Tag?      @relation(fields: [targetTagId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  characterSkills CharacterSkill[]
+
+  @@unique([name, category])
+  @@index([category])
+  @@index([targetTagId])
+}
+
+/// spec/030, docs/08: キャラの習得スキル。仲間は雇用時に工業スキルを1つランダム付与。
+model CharacterSkill {
+  id         String   @id @default(cuid())
+  characterId String
+  character  Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  skillId    String
+  skill      Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([characterId, skillId])
+  @@index([characterId])
+  @@index([skillId])
 }
 
 model CurrencyTransaction {

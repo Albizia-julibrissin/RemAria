@@ -28,6 +28,7 @@
 | firstLoginAt | DateTime | NULL可 | 初回ログイン日時（※下記） |
 | locale | String | NULL可 | 表示言語 |
 | protagonistCharacterId | String | NULL可, UNIQUE, FK→Character.id | 主人公1体（category=protagonist）。登録時または初回キャラ作成時に設定。 |
+| companionHireCount | Int | NOT NULL, default 0 | 仲間雇用可能回数（購入で+1、仲間作成で-1）。spec/030。 |
 
 **リレーション**
 - `Character`（主人公） … protagonistCharacterId で 1対1
@@ -61,14 +62,110 @@
 | protagonistTalentId | String | NULL可 | 主人公専用（仲間・メカでは未使用） |
 | createdAt | DateTime | NOT NULL, default now() | 作成日時 |
 | updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
-| STR, INT, DEX, VIT, SPD, LUK, CAP | Int | NOT NULL, default 各10（CAP=60） | 基礎ステータス |
+| STR, INT, VIT, WIS, DEX, AGI, LUK, CAP | Int | NOT NULL, default 各10（CAP=60） | 基礎ステータス（10_battle_status.csv 準拠） |
+
+**ステータスの二層解釈**（08・09・10 共通の前提）
+
+- **永続するのは基礎ステータスだけ**（上記 7 種＋CAP）。戦闘用・工業用の「最終値」は保存しない。
+- **戦闘時**：基礎ステータスを **`docs/10_battle_status.csv` の係数表で二次解釈**し、戦闘用ステータス（HP・物理攻撃力・速度（回避）・命中力など）を算出して使う。**AGI は「速度」そのものではない**。AGI は係数計算の**入力**の一つであり、計算結果として**派生値「速度（回避）」**（EVA）が得られる。
+- **工業配備時**：基礎ステータスが**そのまま影響**する（二次解釈しない）。戦闘時のみ係数表で戦闘用ステータスに換算する。
 
 **リレーション**
 - `User` … N対1（userId）。主人公は User.protagonistCharacterId で 1対1参照。
+- `CharacterSkill` … 1対多（習得スキル）。spec/030。
 
 ---
 
-### 1.3 CurrencyTransaction（通貨履歴）
+### 1.3 Skill（スキルマスタ）
+
+仲間雇用時の工業スキル付与などで参照。**spec/030、docs/13、15**。工業スキルは**対象タグ（targetTagId）の設備に配備時のみ**効果発動。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| name | String | NOT NULL | 表示名 |
+| category | String | NOT NULL | industrial / battle_active / battle_passive 等 |
+| description | String | NULL可 | 説明文（画面表示用） |
+| effectType | String | NULL可 | 工業スキル用。`time_reduction`（時間短縮） / `production_bonus`（生産量アップ） |
+| effectValue | Int | NULL可 | 百分率（例: 5 → 5%） |
+| targetTagId | String | NULL可, FK→Tag.id | 工業スキル用。このタグを持つ設備に配備時のみ効果。 |
+| createdAt | DateTime | NOT NULL, default now() | 作成日時 |
+| updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
+
+- **リレーション**：CharacterSkill から N対1。Tag と N対1（targetTag）。
+- **工業スキル**：category = `industrial`。effectType / effectValue / targetTagId で「〇〇タグの設備で時間短縮〇%／生産量〇%アップ」を定義。MVP で 5 種を seed 登録。
+
+---
+
+### 1.4 CharacterSkill（習得スキル）
+
+キャラが持つスキルを管理。**spec/030**。Character 削除時は連動削除（Cascade）。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| characterId | String | NOT NULL, FK→Character.id | キャラ |
+| skillId | String | NOT NULL, FK→Skill.id | スキル |
+| createdAt | DateTime | NOT NULL, default now() | 習得日時（雇用時など） |
+
+- **リレーション**：Character N対1、Skill N対1。
+- **一意**：同一キャラに同一スキルを二重登録しない場合は @@unique([characterId, skillId]) を検討。
+- 仲間は雇用時に工業スキルを 1 つランダムで習得。主人公・メカは別 spec で習得処理を定義。
+
+---
+
+### 1.5 Tag（設備・スキル用タグ）
+
+**docs/15**。設備に複数タグを付け、工業スキルは「対象タグ」に一致する設備に配備されたときだけ効果を発揮する。タグの増減は将来調整可。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| code | String | NOT NULL, UNIQUE | 安定参照用（例: water, ore）。コードで参照。 |
+| name | String | NOT NULL | 表示名（例: 水） |
+| description | String | NULL可 | 説明 |
+| createdAt | DateTime | NOT NULL, default now() | 作成日時 |
+| updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
+
+- **リレーション**：FacilityTypeTag で設備と多対多。Skill の targetTagId で工業スキルの対象タグを参照。
+
+---
+
+### 1.6 FacilityType（設備マスタ）
+
+**docs/02、15、017**。設備（川探索拠点・精錬機などの施設の種類）のマスタ。設置可能な設備の種類を定義する。**kind** で資源探索／工業／訓練を区別（入出力の意味が異なる）。1設備＝1レシピは将来 Recipe で紐づけ。タグは FacilityTypeTag で多対多。型（基本型／派生型）は docs/017 参照。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| name | String | NOT NULL | 設備名（例: 浄水施設、川探索拠点） |
+| kind | String | NOT NULL | `resource_exploration`（資源探索・input なし output 資源） / `industrial`（工業・input あり output 加工品） / `training`（訓練・output なし、ステータス変動のみ） |
+| description | String | NULL可 | 説明 |
+| createdAt | DateTime | NOT NULL, default now() | 作成日時 |
+| updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
+
+- **リレーション**：FacilityTypeTag で Tag と多対多。
+- **流れ例**：川探索拠点（資源）→ 水。浄水施設（工業）に水を input → 飲料水。訓練所（訓練）→ ステータス変動のみ。
+
+---
+
+### 1.7 FacilityTypeTag（設備 ↔ タグ）
+
+設備にタグを付与する多対多の中間テーブル。**docs/15**。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| facilityTypeId | String | NOT NULL, FK→FacilityType.id | 設備（FacilityType） |
+| tagId | String | NOT NULL, FK→Tag.id | タグ |
+| createdAt | DateTime | NOT NULL, default now() | 作成日時 |
+
+- **一意**：@@unique([facilityTypeId, tagId])。同一設備に同一タグは1回のみ。
+- 配備時、設備のタグとキャラの工業スキル targetTag を照合して効果を適用する。
+
+---
+
+### 1.8 CurrencyTransaction（通貨履歴）
 
 | カラム | 型 | 制約 | 説明 |
 |--------|-----|------|------|
@@ -83,7 +180,7 @@
 
 **リレーション**: User N対1
 
-### 1.4 Order（購入・決済）
+### 1.9 Order（購入・決済）
 
 | カラム | 型 | 制約 | 説明 |
 |--------|-----|------|------|
@@ -98,14 +195,22 @@
 
 **リレーション**: User N対1
 
-### 1.5 リレーション（現状）
+### 1.10 リレーション（現状）
 
 ```
 User (1) -- protagonistCharacterId --> (1) Character [category=protagonist]
   (1) ----< (N) Character（characters: 全キャラ）
   (1) ----< (N) CurrencyTransaction
   (1) ----< (N) Order
+
+Character (1) ----< (N) CharacterSkill >---- (N) Skill（マスタ）
+Skill (N) -- targetTagId --> (1) Tag
+
+FacilityType (N) ----< FacilityTypeTag >---- (N) Tag
 ```
+
+- **User.companionHireCount**：仲間雇用可能回数。購入で+1、仲間作成で-1（spec/030）。
+- **Tag・FacilityType・FacilityTypeTag**：設備タグと工業スキル効果の対象。docs/15。設備の型（基本型／派生型）は docs/017。初期データは seed で投入。
 
 ---
 

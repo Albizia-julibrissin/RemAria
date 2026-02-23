@@ -1,0 +1,7 @@
+-- docs/16: 基礎ステータスを CSV 準拠に変更（STR, INT, VIT, WIS, DEX, AGI, LUK + CAP）
+-- SPD を廃止し、WIS / AGI を追加。既存の SPD 値は AGI に移行する。
+
+ALTER TABLE "Character" ADD COLUMN "WIS" INTEGER NOT NULL DEFAULT 10;
+ALTER TABLE "Character" ADD COLUMN "AGI" INTEGER NOT NULL DEFAULT 10;
+UPDATE "Character" SET "AGI" = "SPD";
+ALTER TABLE "Character" DROP COLUMN "SPD";

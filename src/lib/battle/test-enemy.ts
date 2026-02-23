@@ -11,13 +11,14 @@ export const TEST_ENEMY_NAME = "スライム";
 /** スライム用アイコン（public/icons/ に配置） */
 export const TEST_ENEMY_ICON_FILENAME = "6.gif";
 
-/** 仮戦闘の固定敵（スライム）の基礎ステータス（物理型寄り・CAP=350 想定） */
+/** 仮戦闘の固定敵（スライム）の基礎ステータス（物理型B寄り・CAP=350 想定。10_battle_status.csv 準拠） */
 export const TEST_ENEMY_BASE_STATS: BaseStats = {
   STR: 105,
   INT: 10,
-  DEX: 60,
   VIT: 105,
-  SPD: 40,
+  WIS: 20,
+  DEX: 60,
+  AGI: 40,
   LUK: 10,
   CAP: 350,
 };

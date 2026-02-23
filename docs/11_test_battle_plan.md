@@ -28,17 +28,16 @@
 
 ### Step 2: 派生ステータス算出
 
-- **`10_battle_status.csv` に基づく「基礎 → 派生」の計算**を実装する。
+- **基礎ステータスを係数表で二次解釈し、戦闘用ステータス（派生値）を算出する**。`10_battle_status.csv` がその係数表。
+  - 基礎（7 種）は DB にのみ保存。**AGI は速度そのものではなく**、係数計算の入力であり、結果として派生値「速度（回避）」が得られる。
   - CSV の列1: 戦闘用ステータス（HP, MP, 物理攻撃, 魔法攻撃, 物理防御, 魔法防御, 命中力, 速度（回避）, 運）。
   - 式: `DerivedStat = Σ(BaseStat[s] * Coef[DerivedStat][s])`。係数は CSV の行2〜10 に対応。
-  - **マッピング**: 現在の DB は STR/INT/DEX/VIT/**SPD**/LUK（WIS/AGI なし）。CSV は WIS, AGI あり。
-    - **速度（回避）**: CSV の AGI 係数 → キャラの **SPD** で計算する。
-    - **WIS**: 未実装のため、係数計算では **INT を流用**するか、**0** とする（仕様で決定）。
-  - 実装: `src/lib/battle/derived-stats.ts` のようなモジュールで、基礎ステータス（STR, INT, DEX, VIT, SPD, LUK, および WIS 用の値）を渡すと派生値（HP, MaxMP, PATK, MATK, PDEF, MDEF, HIT, EVA, LuckPoint）を返す。CAP は MP 消費等で別途使用。
+  - **DB と CSV 一致**：Character の基礎ステータスは STR, INT, VIT, WIS, DEX, AGI, LUK（7 種）＋ CAP。CSV の列順と同じ（docs/16 で A 案採用済み）。
+  - 実装: `src/lib/battle/derived-stats.ts` で基礎ステータスを渡すと派生値（HP, MaxMP, PATK, MATK, PDEF, MDEF, HIT, EVA, LuckPoint）を返す。CAP は MP 消費等で別途使用。
 
 ### Step 3: 戦闘ループ（1サイクル = 2ターン）
 
-- 1v1 なので「1サイクル = 自分ターン + 敵ターン」。行動順は SPD+LUK の重みで「先攻」を決める。
+- 1v1 なので「1サイクル = 自分ターン + 敵ターン」。行動順は**派生値 EVA（速度（回避））**＋ LUK の重みで「先攻」を決める（EVA は基礎 AGI 等を係数で換算した結果）。
 - 各ターン:
   1. ターゲットは相手1体で固定。
   2. 命中判定 → 直撃/致命判定 → 乱数（通常攻撃は攻撃側 1.0）→ 防御減衰 → ダメージ計算 → 直撃/致命倍率適用。
@@ -62,21 +61,22 @@
 ## 3. 敵の定義（固定1種）
 
 - 名前: 例「スライム」。
-- ステータス: 10_battle_status の「物理型B」を参考に、CAP=700 想定で STR/INT/VIT/WIS/DEX/AGI/LUK を決める。こちらは **AGI/WIS をそのまま数値で持ってよい**（敵は DB に載せないため）。
-- または、**主人公と同構造**（STR, INT, DEX, VIT, SPD, LUK, CAP）で敵用の値を定数オブジェクトで持ち、派生値は同じ `derived-stats` で計算する。その場合、敵も WIS/AGI の代わりに INT/SPD でマッピングする。
+- ステータス: 10_battle_status の「物理型B」を参考に、CAP=350 想定で STR/INT/VIT/WIS/DEX/AGI/LUK を定数オブジェクトで持つ。**主人公と同構造**（STR, INT, VIT, WIS, DEX, AGI, LUK, CAP）で、派生値は同じ `derived-stats` で計算する。
 
 ---
 
 ## 4. マッピング整理（DB と CSV）
+
+DB と CSV は一致（docs/16 A 案採用）。Character のカラムは CSV の列順と同じ。
 
 | CSV（係数側） | キャラ（Character） |
 |---------------|---------------------------|
 | STR           | STR                       |
 | INT           | INT                       |
 | VIT           | VIT                       |
-| WIS           | 未実装 → INT 流用 or 0    |
+| WIS           | WIS                       |
 | DEX           | DEX                       |
-| AGI           | SPD（速度＝回避）         |
+| AGI           | AGI                       |
 | LUK           | LUK                       |
 
 - 派生値「運」は `12 * LUK` で LuckPoint として別計算（10 の式）。CAP は K の計算等で使用。

@@ -2,17 +2,17 @@
  * spec/020_test_battle.md, docs/10_battle_calc_formulas.md, docs/10_battle_status.csv 準拠
  * 基礎ステータス → 派生ステータス（戦闘用）の算出
  *
- * CSV の列順: STR, INT, VIT, WIS, DEX, AGI, LUK
- * キャラは WIS を持たないため INT を流用、AGI（速度・回避）には SPD を流用する
+ * CSV の列順: STR, INT, VIT, WIS, DEX, AGI, LUK（7種）。合計上限が CAP。
  */
 
 /** 戦闘計算に渡す基礎ステータス（キャラ・敵とも同じ形で渡す） */
 export interface BaseStats {
   STR: number;
   INT: number;
-  DEX: number;
   VIT: number;
-  SPD: number;
+  WIS: number;
+  DEX: number;
+  AGI: number;
   LUK: number;
   CAP: number;
 }
@@ -56,10 +56,10 @@ const COEF: number[][] = [
 
 /**
  * 基礎ステータスから派生ステータスを算出する。
- * WIS には INT、AGI には SPD を流用する（spec 5.1）。
+ * CSV 列順: STR, INT, VIT, WIS, DEX, AGI, LUK。
  */
 export function computeDerivedStats(base: BaseStats): DerivedStats {
-  const v = [base.STR, base.INT, base.VIT, base.INT, base.DEX, base.SPD, base.LUK];
+  const v = [base.STR, base.INT, base.VIT, base.WIS, base.DEX, base.AGI, base.LUK];
   return {
     HP: dot(COEF[0], v),
     MP: dot(COEF[1], v),

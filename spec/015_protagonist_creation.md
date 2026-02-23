@@ -97,7 +97,7 @@
   - `displayName`：入力値（トリム済み）
   - `iconFilename`：入力値（許可リストに含まれるもの）
   - **ステータス初期値**：**定数で保持**。全基礎ステータスを **10** とする。
-    - `STR = 10`, `INT = 10`, `DEX = 10`, `VIT = 10`, `SPD = 10`, `LUK = 10`
+    - `STR = 10`, `INT = 10`, `VIT = 10`, `WIS = 10`, `DEX = 10`, `AGI = 10`, `LUK = 10`（10_battle_status.csv 準拠）
     - `CAP`：定数で保持（値は実装で定義。例：60 や 70 など）
   - `description`：NULL でよい
   - `protagonistTalentId`：NULL でよい
@@ -133,7 +133,7 @@
 
 ### 7.1 永続化するデータ
 
-- **Character** 1 行：userId, category="protagonist", displayName, iconFilename, STR/INT/DEX/VIT/SPD/LUK/CAP の初期値（定数）、createdAt, updatedAt
+- **Character** 1 行：userId, category="protagonist", displayName, iconFilename, STR/INT/VIT/WIS/DEX/AGI/LUK/CAP の初期値（定数）、createdAt, updatedAt
 - **User.protagonistCharacterId**：作成した Character.id を設定
 
 ### 7.2 保存しないデータ
@@ -208,6 +208,6 @@
 
 - **現状の DB**：`Character` は未導入。**PlayerCharacter**（User と 1:1）で主人公を表現する。
 - **主人公未作成の判定**：その User に紐づく **PlayerCharacter が存在しない**こととする（`User.protagonistCharacterId` は使わない）。
-- **PlayerCharacter に追加するカラム**：`iconFilename`（String, NULL可またはデフォルト）、基礎ステータス `STR`, `INT`, `DEX`, `VIT`, `SPD`, `LUK`, `CAP`（Int, 初期値は定数で 10 / CAP は別定数）。追加後、createProtagonist で 1 件作成し、既存の User 1:1 リレーションで紐づける。
+- **Character の基礎ステータスカラム**：`STR`, `INT`, `VIT`, `WIS`, `DEX`, `AGI`, `LUK`, `CAP`（Int, 初期値は定数で 10 / CAP は別定数）。createProtagonist で 1 件作成し、User.protagonistCharacterId で紐づける。
 - **将来**：`docs/08_database_schema.md` の Character 案に統合する場合は、別マイグレーション・別 spec で行う。
 - **アイコン一覧**：選べるアイコンは **`public/icons` 内の `.gif` を起動時に読み込み**しており、**ファイルを追加するだけでアイコンが増える**。定数での許可リストは使わない。バリデーションも同一の一覧で行う。

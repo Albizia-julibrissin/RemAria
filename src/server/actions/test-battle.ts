@@ -70,9 +70,10 @@ export async function runTestBattle(): Promise<RunTestBattleResult> {
   const playerBase: BaseStats = {
     STR: protagonist.STR,
     INT: protagonist.INT,
-    DEX: protagonist.DEX,
     VIT: protagonist.VIT,
-    SPD: protagonist.SPD,
+    WIS: protagonist.WIS,
+    DEX: protagonist.DEX,
+    AGI: protagonist.AGI,
     LUK: protagonist.LUK,
     CAP: protagonist.CAP,
   };
