@@ -1,4 +1,4 @@
-// Prisma schema - docs/02_domain_model.md 準拠
+// Prisma schema - docs/02_domain_model.md, docs/08_database_schema.md 準拠
 // MVP 最小スキーマ（段階的に拡張）
 
 generator client {
@@ -18,15 +18,90 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  playerCharacter PlayerCharacter?
+  // 通貨（docs/08_database_schema.md）
+  gameCurrencyBalance         Int @default(0)
+  premiumCurrencyFreeBalance  Int @default(0)
+  premiumCurrencyPaidBalance  Int @default(0)
+
+  // 法・年齢・地域
+  birthdate   DateTime?
+  country    String?
+  region     String?
+
+  // アカウント状態
+  accountStatus String @default("active")
+
+  // 運用・分析
+  lastLoginAt  DateTime?
+  firstLoginAt DateTime?
+
+  // 表示
+  locale String?
+
+  // docs/02, 08: 主人公・仲間・メカは Character に統一。主人公は 1 体のみ
+  protagonistCharacterId String?   @unique
+  protagonistCharacter   Character? @relation("Protagonist", fields: [protagonistCharacterId], references: [id], onDelete: Cascade)
+  characters             Character[] @relation("CharacterOwner")
+
+  currencyTransactions CurrencyTransaction[]
+  orders               Order[]
 }
 
-model PlayerCharacter {
+/// docs/02_domain_model.md, 08: 主人公・仲間・メカを 1 テーブルで統一。category で判別
+model Character {
   id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("CharacterOwner", fields: [userId], references: [id], onDelete: Cascade)
 
-  displayName String   @default("冒険者")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  category String // protagonist / companion / mech
+
+  displayName   String   @default("冒険者")
+  iconFilename String?
+  description   String?
+  protagonistTalentId String? // 主人公専用（仲間・メカでは未使用）
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  STR Int @default(10)
+  INT Int @default(10)
+  DEX Int @default(10)
+  VIT Int @default(10)
+  SPD Int @default(10)
+  LUK Int @default(10)
+  CAP Int @default(60)
+
+  protagonistUser User? @relation("Protagonist")
+
+  @@index([userId])
+  @@index([userId, category])
+}
+
+model CurrencyTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencyType String   // game / premium_free / premium_paid
+  amount       Int      // 正: 増加, 負: 消費
+  reason       String?
+  referenceType String?
+  referenceId   String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+model Order {
+  id                      String    @id @default(cuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalPaymentId       String?   @unique
+  amountPaid              Int       // 支払い金額（実通貨・最小単位）
+  premiumCurrencyGranted  Int       // 付与した課金通貨（有償分）
+  status                  String    // pending / completed / refunded / failed
+  createdAt               DateTime  @default(now())
+  completedAt             DateTime?
+
+  @@index([userId])
 }

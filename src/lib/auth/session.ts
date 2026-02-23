@@ -1,4 +1,5 @@
 import { getIronSession, SessionOptions } from "iron-session";
+import { cookies } from "next/headers";
 
 export interface SessionData {
   userId?: string;
@@ -18,6 +19,8 @@ export const sessionOptions: SessionOptions = {
   },
 };
 
-export function getSession() {
-  return getIronSession<SessionData>(sessionOptions);
+/** spec/010_auth: セッション取得・検証（Server Components / Server Actions 用） */
+export async function getSession() {
+  const cookieStore = await cookies();
+  return getIronSession<SessionData>(cookieStore, sessionOptions);
 }

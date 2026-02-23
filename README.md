@@ -27,6 +27,9 @@ npm run db:generate
 
 # マイグレーション
 npm run db:migrate
+
+# テストユーザーを投入（任意）
+npm run db:seed
 ```
 
 ### 起動
