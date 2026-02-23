@@ -9,17 +9,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // クール・スチームパンク: 青黒ベース
         base: {
-          DEFAULT: "#1e1915",
-          elevated: "#2a2420",
-          border: "#3d3530",
+          DEFAULT: "#0f1419",
+          elevated: "#1a2028",
+          border: "#2d3748",
         },
+        // アクセント: 銅/ティール（機械・蒸気のイメージ）
         brass: {
-          DEFAULT: "#b8860b",
-          hover: "#c9a227",
+          DEFAULT: "#0d9488",
+          hover: "#14b8a6",
         },
-        "text-primary": "#e8e0d5",
-        "text-muted": "#b5a99a",
+        "text-primary": "#e2e8f0",
+        "text-muted": "#94a3b8",
+        error: "#f87171",
+        success: "#34d399",
       },
     },
   },
