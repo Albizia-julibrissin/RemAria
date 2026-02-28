@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { userRepository } from "@/server/repositories/user-repository";
 import { getSession } from "@/lib/auth/session";
-import { ensureInitialAreaFacilities } from "@/server/actions/initial-area";
+import { ensureInitialFacilities } from "@/server/actions/initial-area";
 
 // --- バリデーション（spec 5.4） ---
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -73,9 +73,9 @@ export async function register(formData: FormData): Promise<AuthResult> {
 
   // spec/035: 新規アカウントにも初期エリアの強制配置 5 設備を用意する（冪等）
   try {
-    await ensureInitialAreaFacilities(user.id);
+    await ensureInitialFacilities(user.id);
   } catch {
-    // PlacementArea 未 seed 等で失敗しても登録は成功させる
+    // 工業設備の初期作成に失敗しても登録は成功させる
   }
 
   const session = await getSession();

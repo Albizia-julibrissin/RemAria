@@ -1,6 +1,6 @@
 "use server";
 
-// spec/035_initial_area_facilities.md - 初期エリア・設備配置と生産チェーン
+// spec/035, 036 - 初期工業・強制配置設備と生産チェーン（エリア制廃止）
 // docs/019 - 受け取り可能サイクル数のプレビュー
 
 import { getSession } from "@/lib/auth/session";
@@ -9,15 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 /** docs/019: 生産キャップ 24 時間 */
 const PRODUCTION_CAP_MINUTES = 1440;
 
-/** テストアカウントのメール（遺跡跡エリアを解放する）。 */
-const TEST_USER_EMAILS = ["test1@example.com", "test2@example.com"] as const;
-
-function isTestUser(email: string | null): boolean {
-  if (!email) return false;
-  return (TEST_USER_EMAILS as readonly string[]).includes(email.toLowerCase());
-}
-
-const INITIAL_AREA_FACILITY_NAMES = [
+const INITIAL_FACILITY_NAMES = [
   "川探索拠点",
   "浄水施設",
   "小麦畑",
@@ -25,15 +17,14 @@ const INITIAL_AREA_FACILITY_NAMES = [
   "携帯食料包装",
 ] as const;
 
-export type InitialAreaFacility = {
+export type IndustrialFacility = {
   id: string;
   facilityTypeId: string;
   facilityName: string;
   cost: number;
   displayOrder: number;
-  /** 受け取り可能サイクル数（019）。0 のときも受け取りボタンは表示し、押下で「受け取り可能な生産がありません」と返す。 */
+  /** 受け取り可能サイクル数（019 プレビュー。実際の受け取りは 036 で一括計算） */
   receivableCycles: number;
-  /** 受け取り可能な出力合計数（receivableCycles * recipe.outputAmount） */
   receivableOutputAmount: number;
   recipe: {
     cycleMinutes: number;
@@ -43,76 +34,79 @@ export type InitialAreaFacility = {
   } | null;
 };
 
-export type GetInitialAreaResult = {
-  placementArea: { id: string; name: string; maxCost: number; maxSlots: number };
-  facilities: InitialAreaFacility[];
-  usedCost: number;
+export type GetIndustrialResult = {
+  maxSlots: number;
+  maxCost: number;
   usedSlots: number;
+  usedCost: number;
+  facilities: IndustrialFacility[];
 };
 
-export type PlacementAreaOption = { code: string; name: string };
-
-export type GetFacilitiesPageDataResult = {
-  availableAreas: PlacementAreaOption[];
-  selectedAreaCode: string;
-  currentArea: GetInitialAreaResult;
-};
-
-/** ユーザーの初期エリアに強制配置 5 設備が無ければ作成する。冪等。spec/035 */
-export async function ensureInitialAreaFacilities(userId: string): Promise<void> {
-  const area = await prisma.placementArea.findUnique({ where: { code: "initial" } });
-  if (!area) return;
-  const existing = await prisma.facilityInstance.count({
-    where: { userId, placementAreaId: area.id },
+/** 強制配置 5 設備が無ければ作成する。冪等。spec/035 */
+export async function ensureInitialFacilities(userId: string): Promise<void> {
+  const forcedCount = await prisma.facilityInstance.count({
+    where: { userId, isForced: true },
   });
-  if (existing >= 5) return;
+  if (forcedCount >= 5) return;
 
   const facilityTypes = await prisma.facilityType.findMany({
-    where: { name: { in: [...INITIAL_AREA_FACILITY_NAMES] } },
+    where: { name: { in: [...INITIAL_FACILITY_NAMES] } },
     select: { id: true, name: true },
   });
   const byName = new Map(facilityTypes.map((f) => [f.name, f.id]));
+
+  const existing = await prisma.facilityInstance.findMany({
+    where: { userId, isForced: true },
+    select: { facilityTypeId: true },
+  });
+  const existingTypeIds = new Set(existing.map((e) => e.facilityTypeId));
+
   let displayOrder = 0;
-  for (const name of INITIAL_AREA_FACILITY_NAMES) {
+  for (const name of INITIAL_FACILITY_NAMES) {
     const facilityTypeId = byName.get(name);
     if (!facilityTypeId) continue;
+    if (existingTypeIds.has(facilityTypeId)) {
+      displayOrder += 1;
+      continue;
+    }
     displayOrder += 1;
-    await prisma.facilityInstance.upsert({
-      where: {
-        userId_placementAreaId_facilityTypeId_variantCode: {
-          userId,
-          placementAreaId: area.id,
-          facilityTypeId,
-          variantCode: "base",
-        },
-      },
-      create: {
+    await prisma.facilityInstance.create({
+      data: {
         userId,
-        placementAreaId: area.id,
         facilityTypeId,
         variantCode: "base",
         displayOrder,
+        isForced: true,
       },
-      update: { displayOrder },
     });
+    existingTypeIds.add(facilityTypeId);
   }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      industrialMaxSlots: 5,
+      industrialMaxCost: 200,
+    },
+  });
 }
 
-/** 初期エリア情報を取得。未作成なら ensure してから返す。spec/035 */
-export async function getInitialArea(): Promise<GetInitialAreaResult | null> {
+/** 工業情報を取得。未作成なら ensure してから返す。spec/035 */
+export async function getIndustrial(): Promise<GetIndustrialResult | null> {
   const session = await getSession();
   if (!session?.userId) return null;
 
-  await ensureInitialAreaFacilities(session.userId);
+  await ensureInitialFacilities(session.userId);
 
-  const area = await prisma.placementArea.findUnique({
-    where: { code: "initial" },
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { industrialMaxSlots: true, industrialMaxCost: true, createdAt: true },
   });
-  if (!area) return null;
+  if (!user) return null;
 
   const instances = await prisma.facilityInstance.findMany({
-    where: { userId: session.userId, placementAreaId: area.id },
-    orderBy: { displayOrder: "asc" },
+    where: { userId: session.userId },
+    orderBy: { id: "asc" },
     include: {
       facilityType: {
         include: {
@@ -127,10 +121,6 @@ export async function getInitialArea(): Promise<GetInitialAreaResult | null> {
     },
   });
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { createdAt: true },
-  });
   const inventories = await prisma.userInventory.findMany({
     where: { userId: session.userId },
     select: { itemId: true, quantity: true },
@@ -139,14 +129,13 @@ export async function getInitialArea(): Promise<GetInitialAreaResult | null> {
 
   const now = new Date();
   let usedCost = 0;
-  const facilities: InitialAreaFacility[] = instances.map((inst) => {
+  const facilities: IndustrialFacility[] = instances.map((inst) => {
     usedCost += inst.facilityType.cost;
     const recipe = inst.facilityType.recipes[0] ?? null;
     let receivableCycles = 0;
     let receivableOutputAmount = 0;
     if (recipe) {
-      const isInitial = area.code === "initial";
-      const effectiveLast = inst.lastReceivedAt ?? (isInitial ? user?.createdAt ?? inst.createdAt : inst.createdAt);
+      const effectiveLast = inst.lastProducedAt ?? (inst.isForced ? user.createdAt : inst.createdAt);
       const elapsedMs = Math.max(0, now.getTime() - effectiveLast.getTime());
       const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
       const cappedMinutes = Math.min(elapsedMinutes, PRODUCTION_CAP_MINUTES);
@@ -184,143 +173,10 @@ export async function getInitialArea(): Promise<GetInitialAreaResult | null> {
   });
 
   return {
-    placementArea: {
-      id: area.id,
-      name: area.name,
-      maxCost: area.maxCost,
-      maxSlots: area.maxSlots,
-    },
-    facilities,
-    usedCost,
+    maxSlots: user.industrialMaxSlots,
+    maxCost: user.industrialMaxCost,
     usedSlots: facilities.length,
-  };
-}
-
-/**
- * 工業エリア画面用。解放済みエリア一覧と、選択中エリアの設備一覧を返す。
- * テストアカウントのみ「遺跡跡」を解放。選択は searchParams.area で渡す。
- */
-export async function getFacilitiesPageData(
-  selectedAreaCode?: string | null
-): Promise<GetFacilitiesPageDataResult | null> {
-  const session = await getSession();
-  if (!session?.userId) return null;
-
-  await ensureInitialAreaFacilities(session.userId);
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { email: true, createdAt: true },
-  });
-  if (!user) return null;
-
-  const availableAreas: PlacementAreaOption[] = [
-    { code: "initial", name: "廃墟街再興地" },
-  ];
-  if (isTestUser(user.email)) {
-    availableAreas.push({ code: "ruins", name: "遺跡跡" });
-  }
-
-  const code = selectedAreaCode && availableAreas.some((a) => a.code === selectedAreaCode)
-    ? selectedAreaCode
-    : "initial";
-
-  const area = await prisma.placementArea.findUnique({ where: { code } });
-  if (!area) {
-    const fallback = await prisma.placementArea.findUnique({ where: { code: "initial" } });
-    if (!fallback) return null;
-    const data = await buildAreaResult(session.userId, fallback, user.createdAt);
-    return data ? { availableAreas, selectedAreaCode: "initial", currentArea: data } : null;
-  }
-
-  const data = await buildAreaResult(session.userId, area, user.createdAt);
-  if (!data) return null;
-  return { availableAreas, selectedAreaCode: code, currentArea: data };
-}
-
-async function buildAreaResult(
-  userId: string,
-  area: { id: string; name: string; maxCost: number; maxSlots: number; code: string },
-  userCreatedAt: Date
-): Promise<GetInitialAreaResult | null> {
-  const instances = await prisma.facilityInstance.findMany({
-    where: { userId, placementAreaId: area.id },
-    orderBy: { displayOrder: "asc" },
-    include: {
-      facilityType: {
-        include: {
-          recipes: {
-            include: {
-              outputItem: true,
-              inputs: { include: { item: true } },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  const inventories = await prisma.userInventory.findMany({
-    where: { userId },
-    select: { itemId: true, quantity: true },
-  });
-  const qtyByItemId = new Map(inventories.map((i) => [i.itemId, i.quantity]));
-  const now = new Date();
-
-  let usedCost = 0;
-  const facilities: InitialAreaFacility[] = instances.map((inst) => {
-    usedCost += inst.facilityType.cost;
-    const recipe = inst.facilityType.recipes[0] ?? null;
-    let receivableCycles = 0;
-    let receivableOutputAmount = 0;
-    if (recipe) {
-      const isInitial = area.code === "initial";
-      const effectiveLast = inst.lastReceivedAt ?? (isInitial ? userCreatedAt : inst.createdAt);
-      const elapsedMs = Math.max(0, now.getTime() - effectiveLast.getTime());
-      const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
-      const cappedMinutes = Math.min(elapsedMinutes, PRODUCTION_CAP_MINUTES);
-      let cyclesByTime = Math.floor(cappedMinutes / recipe.cycleMinutes);
-      if (recipe.inputs.length > 0) {
-        for (const input of recipe.inputs) {
-          const have = qtyByItemId.get(input.itemId) ?? 0;
-          cyclesByTime = Math.min(cyclesByTime, Math.floor(have / input.amount));
-        }
-      }
-      receivableCycles = Math.max(0, cyclesByTime);
-      receivableOutputAmount = recipe.outputAmount * receivableCycles;
-    }
-    return {
-      id: inst.id,
-      facilityTypeId: inst.facilityTypeId,
-      facilityName: inst.facilityType.name,
-      cost: inst.facilityType.cost,
-      displayOrder: inst.displayOrder,
-      receivableCycles,
-      receivableOutputAmount,
-      recipe: recipe
-        ? {
-            cycleMinutes: recipe.cycleMinutes,
-            outputItemName: recipe.outputItem.name,
-            outputAmount: recipe.outputAmount,
-            inputs: recipe.inputs.map((ri) => ({
-              itemName: ri.item.name,
-              amount: ri.amount,
-              itemId: ri.itemId,
-            })),
-          }
-        : null,
-    };
-  });
-
-  return {
-    placementArea: {
-      id: area.id,
-      name: area.name,
-      maxCost: area.maxCost,
-      maxSlots: area.maxSlots,
-    },
-    facilities,
     usedCost,
-    usedSlots: facilities.length,
+    facilities,
   };
 }

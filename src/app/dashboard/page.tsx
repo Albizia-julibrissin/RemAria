@@ -82,6 +82,13 @@ export default async function DashboardPage() {
           <span className="mt-1 text-sm text-text-muted">所持アイテムの確認</span>
         </Link>
         <Link
+          href="/dashboard/tactics"
+          className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          <span className="text-lg font-medium">作戦室</span>
+          <span className="mt-1 text-sm text-text-muted">パーティプリセットと作戦スロットの設定</span>
+        </Link>
+        <Link
           href="/battle/test"
           className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
         >

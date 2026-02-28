@@ -195,13 +195,26 @@
 
 **リレーション**: User N対1
 
-### 1.10 リレーション（現状）
+### 1.10 ChatMessage（全体チャット・spec/037）
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| userId | String | NOT NULL, FK→User.id | 送信者 |
+| body | String | NOT NULL | 本文（spec で最大 500 文字） |
+| createdAt | DateTime | NOT NULL, default now() | 送信日時 |
+
+- **リレーション**: User N対1（User.chatMessages）。
+- **用途**: docs/00・022 の全体チャット。直近ログのみ保持（永続は最小限）。インデックス: createdAt 降順取得用。
+
+### 1.11 リレーション（現状）
 
 ```
 User (1) -- protagonistCharacterId --> (1) Character [category=protagonist]
   (1) ----< (N) Character（characters: 全キャラ）
   (1) ----< (N) CurrencyTransaction
   (1) ----< (N) Order
+  (1) ----< (N) ChatMessage
 
 Character (1) ----< (N) CharacterSkill >---- (N) Skill（マスタ）
 Skill (N) -- targetTagId --> (1) Tag
@@ -210,6 +223,7 @@ FacilityType (N) ----< FacilityTypeTag >---- (N) Tag
 ```
 
 - **User.companionHireCount**：仲間雇用可能回数。購入で+1、仲間作成で-1（spec/030）。
+- **ChatMessage**：全体チャット（spec/037, docs/022）。直近ログのみ保持。
 - **Tag・FacilityType・FacilityTypeTag**：設備タグと工業スキル効果の対象。docs/15。設備の型（基本型／派生型）は docs/017。初期データは seed で投入。
 
 ---

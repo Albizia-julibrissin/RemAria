@@ -7,11 +7,11 @@
 
 ## 1. デザインコンセプト
 
-**深い暖色ダーク ＋ 真鍮アクセント**
+**深い青黒ダーク ＋ ティール/銅アクセント**
 
-- スチームパンク × ハイファンタジーの世界観
+- スチームパンク × ハイファンタジーの世界観（クール・青黒ベース）
 - ログ中心・長時間閲覧に適した可読性
-- 落ち着いた温かみのある画面
+- 落ち着いた機械・蒸気をイメージした画面
 
 ------------------------------------------------------------------------
 
@@ -31,58 +31,44 @@
 
 | 用途 | 色名 | hex | 用途説明 |
 |------|------|-----|----------|
-| **背景（ベース）** | base | `#1e1915` | メイン背景 |
-| **背景（やや明）** | base-elevated | `#2a2420` | カード・パネル・入力欄 |
-| **背景（境界）** | base-border | `#3d3530` | 区切り線・ボーダー |
-| **本文** | text-primary | `#e8e0d5` | メインテキスト |
-| **本文（補助）** | text-muted | `#b5a99a` | 補足・ラベル |
-| **アクセント** | accent-brass | `#b8860b` | ボタン・リンク・強調 |
-| **アクセント（ホバー）** | accent-brass-hover | `#c9a227` | ホバー時 |
-| **ログ・数値** | accent-amber | `#daa520` | 戦闘ログ・数値表示（任意） |
-| **エラー** | error | `#c25c5c` | エラーメッセージ |
-| **成功** | success | `#5c8f5c` | 成功メッセージ |
+| **背景（ベース）** | base | `#0f1419` | メイン背景 |
+| **背景（やや明）** | base-elevated | `#1a2028` | カード・パネル・入力欄 |
+| **背景（境界）** | base-border | `#2d3748` | 区切り線・ボーダー |
+| **本文** | text-primary | `#e2e8f0` | メインテキスト |
+| **本文（補助）** | text-muted | `#94a3b8` | 補足・ラベル |
+| **アクセント** | brass | `#0d9488` | ボタン・リンク・強調 |
+| **アクセント（ホバー）** | brass-hover | `#14b8a6` | ホバー時 |
+| **エラー** | error | `#f87171` | エラーメッセージ |
+| **成功** | success | `#34d399` | 成功メッセージ |
 
-### 3.2 Tailwind への組み込み
+### 3.2 Tailwind への組み込み（実装済み）
 
-`tailwind.config.ts` の `theme.extend.colors` に以下を追加すること：
+`tailwind.config.ts` の `theme.extend.colors` で以下を定義している：
 
 ```ts
-// tailwind.config.ts の theme.extend 例
+// tailwind.config.ts（実装）
 theme: {
   extend: {
     colors: {
       base: {
-        DEFAULT: "#1e1915",
-        elevated: "#2a2420",
-        border: "#3d3530",
+        DEFAULT: "#0f1419",
+        elevated: "#1a2028",
+        border: "#2d3748",
       },
       brass: {
-        DEFAULT: "#b8860b",
-        hover: "#c9a227",
+        DEFAULT: "#0d9488",
+        hover: "#14b8a6",
       },
-      amber: {
-        accent: "#daa520",
-      },
+      "text-primary": "#e2e8f0",
+      "text-muted": "#94a3b8",
+      error: "#f87171",
+      success: "#34d399",
     },
   },
 },
 ```
 
-または CSS 変数を使用する場合（`globals.css`）：
-
-```css
-:root {
-  --color-base: #1e1915;
-  --color-base-elevated: #2a2420;
-  --color-base-border: #3d3530;
-  --color-text-primary: #e8e0d5;
-  --color-text-muted: #b5a99a;
-  --color-brass: #b8860b;
-  --color-brass-hover: #c9a227;
-}
-```
-
-Tailwind で参照する場合は `theme()` または `var(--color-base)` を利用。
+クラス名は `bg-base` / `bg-base-elevated` / `border-base-border` / `text-text-primary` / `text-text-muted` / `text-brass` / `hover:text-brass-hover` 等で利用する。
 
 ------------------------------------------------------------------------
 
@@ -92,26 +78,26 @@ Tailwind で参照する場合は `theme()` または `var(--color-base)` を利
 
 ```html
 <!-- ページ背景 -->
-<div class="min-h-screen bg-base text-[#e8e0d5]">
+<div class="min-h-screen bg-base text-text-primary">
 
 <!-- カード・パネル -->
 <div class="bg-base-elevated border border-base-border rounded-lg p-4">
 
 <!-- ボタン（プライマリ） -->
-<button class="bg-brass hover:bg-brass-hover text-base px-4 py-2 rounded">
+<button class="bg-brass hover:bg-brass-hover text-text-primary px-4 py-2 rounded">
 ```
 
 ### 4.2 フォーム・入力
 
 - 入力欄背景：`bg-base-elevated`
 - ボーダー：`border-base-border`
-- プレースホルダー：`text-muted`（`#b5a99a`）
-- フォーカスリング：`ring-brass` または `ring-accent-brass`
+- プレースホルダー：`text-text-muted`（`#94a3b8`）
+- フォーカスリング：`ring-brass`
 
 ### 4.3 テキスト
 
-- 見出し：`text-[#e8e0d5]`（text-primary）
-- 補足文：`text-[#b5a99a]`（text-muted）
+- 見出し：`text-text-primary`（`#e2e8f0`）
+- 補足文：`text-text-muted`（`#94a3b8`）
 - リンク：`text-brass hover:text-brass-hover underline`
 
 ------------------------------------------------------------------------
@@ -138,7 +124,7 @@ shadcn/ui を使用する場合：
 
 ## 7. アクセシビリティ
 
-- 本文と背景のコントラスト比は WCAG AA 以上を目指す（`#e8e0d5` on `#1e1915` は十分）
+- 本文と背景のコントラスト比は WCAG AA 以上を目指す（`#e2e8f0` on `#0f1419` は十分）
 - フォーカス状態は `ring-2 ring-brass ring-offset-base` 等で明示する
 - エラー・成功メッセージは色だけでなくアイコン・文言でも伝える
 

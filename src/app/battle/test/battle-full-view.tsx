@@ -8,35 +8,42 @@ import type { RunTestBattleSuccess } from "@/server/actions/test-battle";
 import { TEST_ENEMY_NAME, TEST_ENEMY_ICON_FILENAME } from "@/lib/battle/test-enemy";
 import { BattleGridView } from "./battle-grid-view";
 
-const PLAYER_LABEL = "主人公";
-
 function enemyLabel(index: number): string {
   return `${TEST_ENEMY_NAME}${index + 1}`;
 }
 
 type LogEntry = RunTestBattleSuccess["log"][number];
 
-function turnLine(entry: LogEntry): string {
-  const attacker =
-    entry.attacker === "player"
-      ? PLAYER_LABEL
-      : enemyLabel(entry.attackerEnemyIndex ?? 0);
-  const target =
-    entry.target === "player"
-      ? PLAYER_LABEL
-      : enemyLabel(entry.targetEnemyIndex ?? 0);
+function attackerName(entry: LogEntry, partyDisplayNames: string[]): string {
+  if (entry.attacker === "enemy") return enemyLabel(entry.attackerEnemyIndex ?? 0);
+  return partyDisplayNames[entry.attackerPartyIndex ?? 0] ?? "味方";
+}
 
-  if (!entry.hit) {
-    return `${attacker}の攻撃 → ${target}にミス。`;
-  }
+function targetName(entry: LogEntry, partyDisplayNames: string[]): string {
+  if (entry.target === "enemy") return enemyLabel(entry.targetEnemyIndex ?? 0);
+  return partyDisplayNames[entry.targetPartyIndex ?? 0] ?? "味方";
+}
+
+function turnLine(entry: LogEntry, partyDisplayNames: string[]): string {
+  const attacker = attackerName(entry, partyDisplayNames);
+  const target = targetName(entry, partyDisplayNames);
+  const actionLabel =
+    entry.fizzle && entry.skillName
+      ? `${entry.skillName}（MP不足で不発）`
+      : entry.actionType === "skill" && entry.skillName
+        ? entry.skillName
+        : "通常攻撃";
+
+  if (entry.fizzle) return `${attacker}の${actionLabel}。`;
+  if (!entry.hit) return `${attacker}の${actionLabel} → ${target}にミス。`;
 
   const tags: string[] = [];
   if (entry.fatal) tags.push("致命");
   else if (entry.direct) tags.push("直撃");
   else tags.push("命中");
-
   const tagStr = tags.length > 0 ? `（${tags.join("）")}` : "";
-  return `${attacker}の攻撃 → ${target}に ${entry.damage} ダメージ${tagStr}。${target}のHP: ${entry.targetHpAfter}。${attacker} MP+${entry.mpRecovery}。`;
+  const mpStr = entry.mpRecovery > 0 ? ` ${attacker} MP+${entry.mpRecovery}。` : "";
+  return `${attacker}の${actionLabel} → ${target}に ${entry.damage} ダメージ${tagStr}。${target}のHP: ${entry.targetHpAfter}。${mpStr}`;
 }
 
 function StatBar({
@@ -91,18 +98,22 @@ function TurnBlock({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <div className="text-xs text-text-muted mb-1">味方</div>
-          <StatBar
-            label="HP"
-            current={entry.playerHpAfter}
-            max={summary.playerMaxHp}
-            barColor="bg-green-600"
-          />
-          <StatBar
-            label="MP"
-            current={entry.playerMpAfter}
-            max={summary.playerMaxMp}
-            barColor="bg-blue-600"
-          />
+          {(summary.partyDisplayNames ?? ["味方"]).map((name, i) => (
+            <div key={i} className="space-y-1">
+              <StatBar
+                label={`${name} HP`}
+                current={entry.partyHpAfter?.[i] ?? entry.playerHpAfter}
+                max={summary.partyMaxHp?.[i] ?? summary.playerMaxHp}
+                barColor="bg-green-600"
+              />
+              <StatBar
+                label={`${name} MP`}
+                current={entry.partyMpAfter?.[i] ?? entry.playerMpAfter}
+                max={summary.partyMaxMp?.[i] ?? summary.playerMaxMp}
+                barColor="bg-blue-600"
+              />
+            </div>
+          ))}
         </div>
         <div className="space-y-2">
           <div className="text-xs text-text-muted mb-1">敵（3体）</div>
@@ -136,7 +147,7 @@ function TurnBlock({
       </div>
 
       <p className="font-mono text-sm text-text-primary pt-2 border-t border-base-border">
-        {turnLine(entry)}
+        {turnLine(entry, summary.partyDisplayNames ?? ["味方"])}
       </p>
     </div>
   );
@@ -164,7 +175,7 @@ export function BattleFullView({ data }: BattleFullViewProps) {
         結果: {resultText(data.summary.winner)}（{data.summary.totalCycles} サイクル）
       </p>
       <p className="text-sm text-text-muted">
-        主人公の最終HP: {data.summary.playerHpFinal} / 敵の最終HP:{" "}
+        味方の最終HP: {(data.summary.partyDisplayNames ?? ["味方"]).map((name, i) => `${name}=${data.summary.partyHpFinals?.[i] ?? data.summary.playerHpFinal}`).join(", ")} / 敵の最終HP:{" "}
         {data.summary.enemyHpFinals.map((hp, i) => `${TEST_ENEMY_NAME}${i + 1}=${hp}`).join(", ")}
       </p>
 

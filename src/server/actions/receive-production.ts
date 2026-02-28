@@ -1,145 +1,168 @@
 "use server";
 
-// docs/019_production_receive.md - 生産判定・受け取り
+// spec/036, docs/019 - 全設備一括受け取り
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
-/** docs/019: 生産キャップは一律 24 時間分 */
 const PRODUCTION_CAP_MINUTES = 1440;
 
 export type ReceiveProductionResult =
-  | { success: true; cycles: number; outputItemName: string; outputAmount: number }
+  | { success: true; received: { itemName: string; amount: number }[] }
   | { success: false; error: string; message: string };
 
 /**
- * 設備インスタンスの生産物を受け取る。docs/019 に準拠。
- * 最終受け取り日時〜現在の経過（最大24h）でサイクル数を算出し、入力消費・出力付与・lastReceivedAt 更新をトランザクションで実行。
- * フォームからは facilityInstanceId を渡す。
+ * 全設備の生産を一括で受け取る。spec/036, docs/019。
+ * スナップショット在庫で設備を id 昇順に処理し、作業用コピーから消費。在庫不足の設備は lastProducedAt を now に更新。
  */
-export async function receiveProduction(
-  formData: FormData
-): Promise<ReceiveProductionResult> {
-  const facilityInstanceId = formData.get("facilityInstanceId");
-  if (typeof facilityInstanceId !== "string" || !facilityInstanceId) {
-    return { success: false, error: "INVALID_INPUT", message: "設備が指定されていません。" };
-  }
-
+export async function receiveProduction(): Promise<ReceiveProductionResult> {
   const session = await getSession();
   if (!session?.userId) {
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
   }
 
-  const inst = await prisma.facilityInstance.findUnique({
-    where: { id: facilityInstanceId },
-    include: {
-      user: { select: { id: true, createdAt: true } },
-      placementArea: { select: { code: true } },
-      facilityType: {
-        include: {
-          recipes: {
-            include: {
-              outputItem: true,
-              inputs: { include: { item: true } },
+  const userId = session.userId;
+  const now = new Date();
+
+  let received: { itemName: string; amount: number }[] = [];
+  try {
+    received = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { createdAt: true },
+    });
+    if (!user) throw new Error("USER_NOT_FOUND");
+
+    const inventoryRows = await tx.userInventory.findMany({
+      where: { userId },
+      select: { itemId: true, quantity: true },
+    });
+    const workingCopy = new Map<string, number>();
+    const initialSnapshot = new Map<string, number>();
+    for (const row of inventoryRows) {
+      workingCopy.set(row.itemId, row.quantity);
+      initialSnapshot.set(row.itemId, row.quantity);
+    }
+
+    const instances = await tx.facilityInstance.findMany({
+      where: { userId },
+      orderBy: { id: "asc" },
+      include: {
+        facilityType: {
+          include: {
+            recipes: {
+              include: {
+                outputItem: true,
+                inputs: { include: { item: true } },
+              },
             },
           },
         },
       },
-    },
-  });
-
-  if (!inst || inst.userId !== session.userId) {
-    return { success: false, error: "NOT_FOUND", message: "設備が見つかりません。" };
-  }
-
-  const recipe = inst.facilityType.recipes[0] ?? null;
-  if (!recipe) {
-    return { success: false, error: "NO_RECIPE", message: "この設備にはレシピがありません。" };
-  }
-
-  const isInitialArea = inst.placementArea.code === "initial";
-  const effectiveLastReceived = inst.lastReceivedAt ?? (isInitialArea ? inst.user.createdAt : inst.createdAt);
-  const now = new Date();
-  let elapsedMs = now.getTime() - effectiveLastReceived.getTime();
-  if (elapsedMs < 0) elapsedMs = 0;
-  const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
-  const cappedMinutes = Math.min(elapsedMinutes, PRODUCTION_CAP_MINUTES);
-  let cyclesByTime = Math.floor(cappedMinutes / recipe.cycleMinutes);
-  if (cyclesByTime < 0) cyclesByTime = 0;
-
-  let cyclesToRun = cyclesByTime;
-
-  if (recipe.inputs.length > 0) {
-    const inventories = await prisma.userInventory.findMany({
-      where: {
-        userId: session.userId,
-        itemId: { in: recipe.inputs.map((i) => i.itemId) },
-      },
-      select: { itemId: true, quantity: true },
     });
-    const qtyByItemId = new Map(inventories.map((inv) => [inv.itemId, inv.quantity]));
-    for (const input of recipe.inputs) {
-      const have = qtyByItemId.get(input.itemId) ?? 0;
-      const maxFromInput = Math.floor(have / input.amount);
-      cyclesToRun = Math.min(cyclesToRun, maxFromInput);
+
+    const consumed = new Map<string, number>();
+    const produced = new Map<string, { amount: number; itemName: string }>();
+
+    for (const inst of instances) {
+      const recipe = inst.facilityType.recipes[0] ?? null;
+      if (!recipe) continue;
+
+      let effectiveStart = inst.lastProducedAt ?? (inst.isForced ? user.createdAt : inst.createdAt);
+      // 因果の矛盾防止: 受け取り開始時点で入力が1サイクル分も無かった設備は、今回の受け取りでは経過でサイクルを回さない（「今入った水で2時間分の浄水」を防ぐ）
+      if (recipe.inputs.length > 0) {
+        const hadEnoughInputAtStart = recipe.inputs.every(
+          (input) => (initialSnapshot.get(input.itemId) ?? 0) >= input.amount
+        );
+        if (!hadEnoughInputAtStart) effectiveStart = now;
+      }
+      const elapsedMs = Math.max(0, now.getTime() - effectiveStart.getTime());
+      const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
+      const cappedMinutes = Math.min(elapsedMinutes, PRODUCTION_CAP_MINUTES);
+      let cyclesByTime = Math.floor(cappedMinutes / recipe.cycleMinutes);
+      if (cyclesByTime < 0) cyclesByTime = 0;
+
+      let cyclesToRun = cyclesByTime;
+      if (recipe.inputs.length > 0) {
+        for (const input of recipe.inputs) {
+          const have = workingCopy.get(input.itemId) ?? 0;
+          cyclesToRun = Math.min(cyclesToRun, Math.floor(have / input.amount));
+        }
+      }
+
+      const timeBasedCycles = cyclesByTime;
+      const nextLastProducedAt =
+        cyclesToRun < timeBasedCycles
+          ? now
+          : new Date(effectiveStart.getTime() + cyclesToRun * recipe.cycleMinutes * 60 * 1000);
+
+      await tx.facilityInstance.update({
+        where: { id: inst.id },
+        data: { lastProducedAt: nextLastProducedAt },
+      });
+
+      if (cyclesToRun > 0) {
+        for (const input of recipe.inputs) {
+          const c = input.amount * cyclesToRun;
+          consumed.set(input.itemId, (consumed.get(input.itemId) ?? 0) + c);
+          const cur = workingCopy.get(input.itemId) ?? 0;
+          workingCopy.set(input.itemId, cur - c);
+        }
+        const outAmt = recipe.outputAmount * cyclesToRun;
+        const existing = produced.get(recipe.outputItemId);
+        if (existing) {
+          produced.set(recipe.outputItemId, { amount: existing.amount + outAmt, itemName: recipe.outputItem.name });
+        } else {
+          produced.set(recipe.outputItemId, { amount: outAmt, itemName: recipe.outputItem.name });
+        }
+        const curOut = workingCopy.get(recipe.outputItemId) ?? 0;
+        workingCopy.set(recipe.outputItemId, curOut + outAmt);
+      }
     }
+
+    // 同一バッチ内で前の設備が生産した分を先に DB に載せるため、生産→消費の順で反映する（019/036）
+    for (const [itemId, { amount }] of produced) {
+      await tx.userInventory.upsert({
+        where: { userId_itemId: { userId, itemId } },
+        create: { userId, itemId, quantity: amount },
+        update: { quantity: { increment: amount } },
+      });
+    }
+    for (const [itemId, amount] of consumed) {
+      const inv = await tx.userInventory.findUnique({
+        where: { userId_itemId: { userId, itemId } },
+      });
+      if (!inv || inv.quantity < amount) throw new Error("在庫不足");
+      await tx.userInventory.update({
+        where: { userId_itemId: { userId, itemId } },
+        data: { quantity: inv.quantity - amount },
+      });
+    }
+
+    return Array.from(produced.values()).map((p) => ({ itemName: p.itemName, amount: p.amount }));
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "受け取りに失敗しました。";
+    if (msg === "USER_NOT_FOUND") {
+      return { success: false, error: "NOT_FOUND", message: "ユーザーが見つかりません。" };
+    }
+    if (msg === "在庫不足") {
+      return { success: false, error: "INVENTORY", message: "在庫が不足しています。" };
+    }
+    return { success: false, error: "UNKNOWN", message: msg };
   }
 
-  if (cyclesToRun === 0) {
+  revalidatePath("/dashboard/facilities");
+
+  if (received.length === 0) {
     return {
       success: false,
       error: "NOTHING_TO_RECEIVE",
       message:
-        recipe.inputs.length > 0
-          ? "経過時間が足りないか、入力素材が不足しています。"
-          : "まだ受け取り可能な生産がありません。（最大24時間分まで）",
+        "受け取り可能な生産がありません。（経過が足りないか、入力素材が不足しています。最大24時間分まで）",
     };
   }
 
-  const nextLastReceived = new Date(
-    effectiveLastReceived.getTime() + cyclesToRun * recipe.cycleMinutes * 60 * 1000
-  );
-  const outputTotal = recipe.outputAmount * cyclesToRun;
-
-  await prisma.$transaction(async (tx) => {
-    for (const input of recipe.inputs) {
-      const consume = input.amount * cyclesToRun;
-      const inv = await tx.userInventory.findUnique({
-        where: { userId_itemId: { userId: session.userId, itemId: input.itemId } },
-      });
-      if (!inv || inv.quantity < consume) {
-        throw new Error("在庫不足");
-      }
-      await tx.userInventory.update({
-        where: { userId_itemId: { userId: session.userId, itemId: input.itemId } },
-        data: { quantity: inv.quantity - consume },
-      });
-    }
-
-    await tx.userInventory.upsert({
-      where: {
-        userId_itemId: { userId: session.userId, itemId: recipe.outputItemId },
-      },
-      create: {
-        userId: session.userId,
-        itemId: recipe.outputItemId,
-        quantity: outputTotal,
-      },
-      update: { quantity: { increment: outputTotal } },
-    });
-
-    await tx.facilityInstance.update({
-      where: { id: facilityInstanceId },
-      data: { lastReceivedAt: nextLastReceived },
-    });
-  });
-
-  revalidatePath("/dashboard/facilities");
-  return {
-    success: true,
-    cycles: cyclesToRun,
-    outputItemName: recipe.outputItem.name,
-    outputAmount: outputTotal,
-  };
+  return { success: true, received };
 }

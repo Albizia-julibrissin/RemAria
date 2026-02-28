@@ -46,10 +46,16 @@ model User {
   // spec/030: 仲間雇用可能回数。購入で+1、仲間作成で-1
   companionHireCount Int @default(0)
 
+  // spec/035, docs/018: 工業は単一プール。設置枠数・コスト上限（エリア制廃止）
+  industrialMaxSlots Int @default(5)
+  industrialMaxCost  Int @default(200)
+
   currencyTransactions CurrencyTransaction[]
   orders               Order[]
   facilityInstances    FacilityInstance[]
   inventories          UserInventory[]
+  chatMessages         ChatMessage[]
+  partyPresets         PartyPreset[]
 }
 
 /// docs/02_domain_model.md, 08: 主人公・仲間・メカを 1 テーブルで統一。category で判別
@@ -79,9 +85,51 @@ model Character {
 
   protagonistUser User? @relation("Protagonist")
   characterSkills CharacterSkill[]
+  tacticSlots     TacticSlot[]
+  partyPresetsSlot1 PartyPreset[] @relation("PresetSlot1")
+  partyPresetsSlot2 PartyPreset[] @relation("PresetSlot2")
+  partyPresetsSlot3 PartyPreset[] @relation("PresetSlot3")
 
   @@index([userId])
   @@index([userId, category])
+}
+
+/// spec/039: 作戦室で編集するパーティプリセット。slot1=主人公（固定）、slot2=仲間、slot3=メカ。
+model PartyPreset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String?  // 表示用（例: プリセット1）。null なら「プリセット」＋連番で表示可
+  slot1CharacterId String  // 主人公枠（強制出撃）。user.protagonistCharacterId と一致させる
+  slot1Character   Character @relation("PresetSlot1", fields: [slot1CharacterId], references: [id], onDelete: Cascade)
+  slot2CharacterId String?  // 仲間枠
+  slot2Character   Character? @relation("PresetSlot2", fields: [slot2CharacterId], references: [id], onDelete: SetNull)
+  slot3CharacterId String?  // メカ枠
+  slot3Character   Character? @relation("PresetSlot3", fields: [slot3CharacterId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// spec/039: 作戦スロット（キャラごと・最大10）。主語−条件−行動。
+model TacticSlot {
+  id              String   @id @default(cuid())
+  characterId     String
+  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  orderIndex      Int      // 1～10。評価順
+  subject         String   // self / any_ally / any_enemy / front_enemy
+  conditionKind   String   // hp_below_percent, subject_has_attr_state, 等
+  conditionParam  Json?    // 条件種別ごとのパラメータ
+  actionType      String   // normal_attack / skill
+  skillId         String?  // actionType=skill のとき FK
+  skill           Skill?   @relation(fields: [skillId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([characterId, orderIndex])
+  @@index([characterId])
+  @@index([skillId])
 }
 
 /// docs/15: 設備・スキル用タグ。設備は複数タグを持ち、工業スキルは対象タグに一致する設備で効果発動。
@@ -99,7 +147,7 @@ model Tag {
   @@index([code])
 }
 
-/// docs/02, 15, 017, 018: 設備マスタ。kind で資源探索／工業／訓練を区別。cost は設置エリアのコスト計算用（spec/035）。
+/// docs/02, 15, 017, 018: 設備マスタ。kind で資源探索／工業／訓練を区別。cost は設置枠のコスト計算用（spec/035）。
 model FacilityType {
   id          String   @id @default(cuid())
   name        String
@@ -118,37 +166,22 @@ model FacilityType {
   @@index([kind])
 }
 
-/// spec/035, docs/018: 設置エリアマスタ。初期エリアは code='initial', maxCost=200, maxSlots=5。
-model PlacementArea {
-  id        String   @id @default(cuid())
-  code      String   @unique // 'initial' 等
-  name      String
-  maxCost   Int      // 最大コスト
-  maxSlots  Int      // 最大配置数
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  facilityInstances FacilityInstance[]
-}
-
-/// spec/035, docs/018: 設置済み設備。ユーザーが設置エリアに置いた 1 設備。docs/019: lastReceivedAt で受け取り判定。
+/// spec/035, docs/018: 設置済み設備。単一プール（エリアなし）。docs/019: lastProducedAt で生産消化時刻。
 model FacilityInstance {
-  id                String    @id @default(cuid())
-  userId            String
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  placementAreaId   String
-  placementArea     PlacementArea @relation(fields: [placementAreaId], references: [id], onDelete: Cascade)
-  facilityTypeId    String
-  facilityType      FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
-  variantCode       String    @default("base") // 017: base | alpha | beta
-  displayOrder      Int       @default(0)
-  lastReceivedAt    DateTime? // docs/019: NULL なら初回は User.createdAt または createdAt で計算
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facilityTypeId  String
+  facilityType    FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
+  variantCode     String    @default("base") // 017: base | alpha | beta
+  displayOrder    Int       @default(0)
+  isForced        Boolean   @default(false)  // 強制配置 5 は true（解体・変更不可）
+  lastProducedAt  DateTime? // 019: 最終生産消化時刻。NULL なら User.createdAt または createdAt で計算
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  @@unique([userId, placementAreaId, facilityTypeId, variantCode])
   @@index([userId])
-  @@index([placementAreaId])
+  @@index([userId, displayOrder])
 }
 
 /// docs/019: ユーザーの素材・製品在庫。受け取り時に増減。
@@ -226,7 +259,7 @@ model FacilityTypeTag {
   @@index([tagId])
 }
 
-/// spec/030, docs/08, 15: スキルマスタ。工業スキルは category=industrial、効果は targetTag の設備に配備時のみ。
+/// spec/030, docs/08, 15: スキルマスタ。工業スキルは category=industrial。戦闘スキルは category=battle_active（spec/038）。
 model Skill {
   id          String   @id @default(cuid())
   name        String
@@ -240,11 +273,42 @@ model Skill {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // spec/038: 戦闘スキル用（category=battle_active のとき使用）。NULL なら非戦闘スキル。
+  battleSkillType      String?   // physical / magic / support
+  mpCostCapCoef        Decimal?  // CAP * this + mpCostFlat
+  mpCostFlat           Int?
+  chargeCycles         Int?      // 溜めサイクル。0=即時
+  powerMultiplier      Decimal?  // ダメージ/回復倍率
+  hitsMin              Int?      // 攻撃回数 min
+  hitsMax              Int?      // 攻撃回数 max
+  resampleTargetPerHit Boolean?  // 毎回ターゲット再抽選
+  targetScope          String?   // enemy_single / enemy_all / ally_single / ally_all / self
+  attribute            String?   // none / crush / slash / pierce / burn / freeze / corrode / polarity
+  weightAddFront       Decimal?  // このスキル使用時の列ウェイト加算
+  weightAddMid         Decimal?
+  weightAddBack        Decimal?
+  logMessage           String?   // 戦闘ログ通常文（{敵名}等プレースホルダー可）
+  logMessageOnCondition String?  // 条件達成時追加文（UIで色分け）
+
   characterSkills CharacterSkill[]
+  skillEffects    SkillEffect[]
+  tacticSlots     TacticSlot[]
 
   @@unique([name, category])
   @@index([category])
   @@index([targetTagId])
+}
+
+/// spec/038: スキル効果（effectType + param）。1スキルに0個以上。
+model SkillEffect {
+  id         String   @id @default(cuid())
+  skillId    String
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  effectType String   // attr_state_trigger_damage, move_target_column, move_self_column 等
+  param      Json?    // 効果ごとのパラメータ
+  createdAt  DateTime @default(now())
+
+  @@index([skillId])
 }
 
 /// spec/030, docs/08: キャラの習得スキル。仲間は雇用時に工業スキルを1つランダム付与。
@@ -287,5 +351,17 @@ model Order {
   createdAt               DateTime  @default(now())
   completedAt             DateTime?
 
+  @@index([userId])
+}
+
+/// spec/037, docs/00, 022: 全体チャット。直近ログのみ保持（永続は最小限）。
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String   // 本文（spec で最大 500 文字）
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
   @@index([userId])
 }
