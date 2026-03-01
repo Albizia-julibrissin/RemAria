@@ -13,7 +13,7 @@ export function Header({ isLoggedIn }: HeaderProps) {
     <header className="bg-base-elevated border-b border-base-border">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link href="/" className="text-lg font-semibold text-text-primary hover:text-brass transition-colors">
-          RemAria
+          RE:mAria
         </Link>
         <nav className="flex items-center gap-4">
           {isLoggedIn ? (

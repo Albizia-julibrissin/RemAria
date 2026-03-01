@@ -13,10 +13,15 @@ import { revalidatePath } from "next/cache";
 export type PartyPresetWithCharacters = {
   id: string;
   name: string | null;
-  slot1: { characterId: string; displayName: string; category: string } | null;
-  slot2: { characterId: string; displayName: string; category: string } | null;
-  slot3: { characterId: string; displayName: string; category: string } | null;
+  slot1: { characterId: string; displayName: string; category: string; battleCol: number } | null;
+  slot2: { characterId: string; displayName: string; category: string; battleCol: number } | null;
+  slot3: { characterId: string; displayName: string; category: string; battleCol: number } | null;
 };
+
+function clampBattleCol(v: number | null | undefined): number {
+  if (v == null) return 1;
+  return Math.max(1, Math.min(3, v));
+}
 
 /** ログインユーザーのパーティプリセット一覧を取得 */
 export async function getPartyPresets() {
@@ -36,9 +41,9 @@ export async function getPartyPresets() {
   const result: PartyPresetWithCharacters[] = presets.map((p) => ({
     id: p.id,
     name: p.name ?? null,
-    slot1: p.slot1Character ? { characterId: p.slot1Character.id, displayName: p.slot1Character.displayName, category: p.slot1Character.category } : null,
-    slot2: p.slot2Character ? { characterId: p.slot2Character.id, displayName: p.slot2Character.displayName, category: p.slot2Character.category } : null,
-    slot3: p.slot3Character ? { characterId: p.slot3Character.id, displayName: p.slot3Character.displayName, category: p.slot3Character.category } : null,
+    slot1: p.slot1Character ? { characterId: p.slot1Character.id, displayName: p.slot1Character.displayName, category: p.slot1Character.category, battleCol: clampBattleCol(p.slot1BattleCol) } : null,
+    slot2: p.slot2Character ? { characterId: p.slot2Character.id, displayName: p.slot2Character.displayName, category: p.slot2Character.category, battleCol: clampBattleCol(p.slot2BattleCol) } : null,
+    slot3: p.slot3Character ? { characterId: p.slot3Character.id, displayName: p.slot3Character.displayName, category: p.slot3Character.category, battleCol: clampBattleCol(p.slot3BattleCol) } : null,
   }));
 
   return { presets: result };
@@ -62,9 +67,9 @@ export async function getPartyPresetWithCharacters(presetId: string) {
   return {
     id: preset.id,
     name: preset.name ?? null,
-    slot1: preset.slot1Character ? { characterId: preset.slot1Character.id, displayName: preset.slot1Character.displayName, category: preset.slot1Character.category } : null,
-    slot2: preset.slot2Character ? { characterId: preset.slot2Character.id, displayName: preset.slot2Character.displayName, category: preset.slot2Character.category } : null,
-    slot3: preset.slot3Character ? { characterId: preset.slot3Character.id, displayName: preset.slot3Character.displayName, category: preset.slot3Character.category } : null,
+    slot1: preset.slot1Character ? { characterId: preset.slot1Character.id, displayName: preset.slot1Character.displayName, category: preset.slot1Character.category, battleCol: clampBattleCol(preset.slot1BattleCol) } : null,
+    slot2: preset.slot2Character ? { characterId: preset.slot2Character.id, displayName: preset.slot2Character.displayName, category: preset.slot2Character.category, battleCol: clampBattleCol(preset.slot2BattleCol) } : null,
+    slot3: preset.slot3Character ? { characterId: preset.slot3Character.id, displayName: preset.slot3Character.displayName, category: preset.slot3Character.category, battleCol: clampBattleCol(preset.slot3BattleCol) } : null,
   };
 }
 
@@ -104,10 +109,17 @@ export async function createPartyPresetFormAction(): Promise<void> {
   }
 }
 
-/** プリセットの編成・名前を更新。slot1 は変更不可。 */
+/** プリセットの編成・名前・列位置を更新。slot1 のキャラは変更不可。 */
 export async function updatePartyPreset(
   presetId: string,
-  data: { name?: string | null; slot2CharacterId?: string | null; slot3CharacterId?: string | null }
+  data: {
+    name?: string | null;
+    slot2CharacterId?: string | null;
+    slot3CharacterId?: string | null;
+    slot1BattleCol?: number;
+    slot2BattleCol?: number | null;
+    slot3BattleCol?: number | null;
+  }
 ) {
   const session = await getSession();
   if (!session.userId) return { success: false as const, error: "UNAUTHORIZED" as const };
@@ -118,19 +130,28 @@ export async function updatePartyPreset(
   });
   if (!preset) return { success: false as const, error: "NOT_FOUND" as const };
 
-  const updateData: { name?: string | null; slot2CharacterId?: string | null; slot3CharacterId?: string | null } = {};
-  if (data.name !== undefined) updateData.name = data.name ?? null;
-  if (data.slot2CharacterId !== undefined) updateData.slot2CharacterId = data.slot2CharacterId || null;
-  if (data.slot3CharacterId !== undefined) updateData.slot3CharacterId = data.slot3CharacterId || null;
-
-  if (updateData.slot2CharacterId || updateData.slot3CharacterId) {
+  const slot2Id = data.slot2CharacterId?.trim() || null;
+  const slot3Id = data.slot3CharacterId?.trim() || null;
+  if (slot2Id || slot3Id) {
     const chars = await prisma.character.findMany({
       where: { userId: session.userId },
       select: { id: true },
     });
     const ids = new Set(chars.map((c) => c.id));
-    if (updateData.slot2CharacterId && !ids.has(updateData.slot2CharacterId)) return { success: false as const, error: "INVALID_CHARACTER" as const };
-    if (updateData.slot3CharacterId && !ids.has(updateData.slot3CharacterId)) return { success: false as const, error: "INVALID_CHARACTER" as const };
+    if (slot2Id && !ids.has(slot2Id)) return { success: false as const, error: "INVALID_CHARACTER" as const };
+    if (slot3Id && !ids.has(slot3Id)) return { success: false as const, error: "INVALID_CHARACTER" as const };
+  }
+
+  const updateData: Parameters<typeof prisma.partyPreset.update>[0]["data"] = {};
+  if (data.name !== undefined) updateData.name = data.name ?? null;
+  if (data.slot1BattleCol !== undefined) updateData.slot1BattleCol = clampBattleCol(data.slot1BattleCol);
+  if (data.slot2BattleCol !== undefined) updateData.slot2BattleCol = data.slot2BattleCol == null ? null : clampBattleCol(data.slot2BattleCol);
+  if (data.slot3BattleCol !== undefined) updateData.slot3BattleCol = data.slot3BattleCol == null ? null : clampBattleCol(data.slot3BattleCol);
+  if (data.slot2CharacterId !== undefined) {
+    updateData.slot2Character = slot2Id ? { connect: { id: slot2Id } } : { disconnect: true };
+  }
+  if (data.slot3CharacterId !== undefined) {
+    updateData.slot3Character = slot3Id ? { connect: { id: slot3Id } } : { disconnect: true };
   }
 
   await prisma.partyPreset.update({
@@ -229,7 +250,14 @@ export async function upsertTacticsForCharacter(characterId: string, slots: Tact
 /** 作戦室用：プリセット編成＋3人分の作戦を一括保存 */
 export async function savePresetWithTactics(
   presetId: string,
-  presetData: { name?: string | null; slot2CharacterId?: string | null; slot3CharacterId?: string | null },
+  presetData: {
+    name?: string | null;
+    slot2CharacterId?: string | null;
+    slot3CharacterId?: string | null;
+    slot1BattleCol?: number;
+    slot2BattleCol?: number | null;
+    slot3BattleCol?: number | null;
+  },
   tacticsByCharacter: { characterId: string; slots: TacticSlotRow[] }[]
 ) {
   const session = await getSession();

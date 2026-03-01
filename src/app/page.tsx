@@ -10,7 +10,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen p-8">
-      <h1 className="text-2xl font-bold text-text-primary">RemAria</h1>
+      <h1 className="text-2xl font-bold text-text-primary">RE:mAria</h1>
       <nav className="mt-6 flex gap-4">
         <Link
           href="/login"

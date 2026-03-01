@@ -106,6 +106,10 @@ model PartyPreset {
   slot2Character   Character? @relation("PresetSlot2", fields: [slot2CharacterId], references: [id], onDelete: SetNull)
   slot3CharacterId String?  // メカ枠
   slot3Character   Character? @relation("PresetSlot3", fields: [slot3CharacterId], references: [id], onDelete: SetNull)
+  /// 戦闘開始時の列（1=前列, 2=中列, 3=後列）。未設定時は 1
+  slot1BattleCol   Int      @default(1)
+  slot2BattleCol   Int?     // null なら 1 扱い
+  slot3BattleCol   Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -278,6 +282,7 @@ model Skill {
   mpCostCapCoef        Decimal?  // CAP * this + mpCostFlat
   mpCostFlat           Int?
   chargeCycles         Int?      // 溜めサイクル。0=即時
+  cooldownCycles       Int?      // クールタイム。使用後Nサイクル再使用不可。0=CTなし（docs/023）
   powerMultiplier      Decimal?  // ダメージ/回復倍率
   hitsMin              Int?      // 攻撃回数 min
   hitsMax              Int?      // 攻撃回数 max

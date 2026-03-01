@@ -5,7 +5,7 @@ import { Header } from "@/components/header";
 import { ChatFloating } from "@/components/chat/ChatFloating";
 
 export const metadata: Metadata = {
-  title: "RemAria",
+  title: "RE:mAria",
   description: "スチームパンク × ハイファンタジー",
 };
 

@@ -14,7 +14,6 @@ import type {
 } from "@/lib/battle/run-battle-with-party";
 import { TEST_ENEMY_BASE_STATS, TEST_ENEMY_POSITIONS_1V3 } from "@/lib/battle/test-enemy";
 import type { BattlePosition } from "@/lib/battle/battle-position";
-import { DEFAULT_PROTAGONIST_POSITION } from "@/lib/battle/battle-position";
 import { prisma } from "@/lib/db/prisma";
 
 export type RunTestBattleSuccess = {
@@ -24,6 +23,8 @@ export type RunTestBattleSuccess = {
   protagonistIconFilename: string | null;
   partyDisplayNames: string[];
   partyIconFilenames: (string | null)[];
+  /** 戦闘開始時の味方の列位置（作戦室で設定した列） */
+  initialPartyPositions: BattlePosition[];
   enemyPositions: BattlePosition[];
   log: BattleLogEntryWithParty[];
   summary: BattleSummaryWithParty;
@@ -80,6 +81,7 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
         orderBy: { orderIndex: "asc" },
         select: {
           orderIndex: true,
+          subject: true,
           conditionKind: true,
           conditionParam: true,
           actionType: true,
@@ -98,6 +100,21 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
               powerMultiplier: true,
               mpCostCapCoef: true,
               mpCostFlat: true,
+              hitsMin: true,
+              hitsMax: true,
+              resampleTargetPerHit: true,
+              targetScope: true,
+              attribute: true,
+              chargeCycles: true,
+              cooldownCycles: true,
+              weightAddFront: true,
+              weightAddMid: true,
+              weightAddBack: true,
+              logMessage: true,
+              logMessageOnCondition: true,
+              skillEffects: {
+                select: { effectType: true, param: true },
+              },
             },
           },
         },
@@ -108,6 +125,16 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
   const partyInput: PartyMemberInput[] = [];
   const partyIconFilenames: (string | null)[] = [];
   const order = [preset.slot1CharacterId, preset.slot2CharacterId, preset.slot3CharacterId].filter(Boolean) as string[];
+  const colForSlot = [
+    Math.max(1, Math.min(3, preset.slot1BattleCol ?? 1)),
+    Math.max(1, Math.min(3, preset.slot2BattleCol ?? 1)),
+    Math.max(1, Math.min(3, preset.slot3BattleCol ?? 1)),
+  ] as const;
+  const initialPartyPositions: BattlePosition[] = order.map((_, i) => ({
+    row: (i + 1) as 1 | 2 | 3,
+    col: colForSlot[i],
+  }));
+
   for (const charId of order) {
     const c = characters.find((x) => x.id === charId);
     if (!c) continue;
@@ -123,6 +150,7 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     };
     const tacticSlots: TacticSlotInput[] = c.tacticSlots.map((s) => ({
       orderIndex: s.orderIndex,
+      subject: s.subject ?? undefined,
       conditionKind: s.conditionKind,
       conditionParam: s.conditionParam as unknown,
       actionType: s.actionType,
@@ -137,6 +165,23 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
         powerMultiplier: sk.powerMultiplier != null ? Number(sk.powerMultiplier) : null,
         mpCostCapCoef: Number(sk.mpCostCapCoef ?? 0),
         mpCostFlat: sk.mpCostFlat ?? 0,
+        hitsMin: sk.hitsMin ?? undefined,
+        hitsMax: sk.hitsMax ?? undefined,
+        resampleTargetPerHit: sk.resampleTargetPerHit ?? undefined,
+        targetScope: sk.targetScope ?? undefined,
+        attribute: sk.attribute ?? undefined,
+        chargeCycles: sk.chargeCycles ?? undefined,
+        cooldownCycles: sk.cooldownCycles ?? undefined,
+        weightAddFront: sk.weightAddFront != null ? Number(sk.weightAddFront) : undefined,
+        weightAddMid: sk.weightAddMid != null ? Number(sk.weightAddMid) : undefined,
+        weightAddBack: sk.weightAddBack != null ? Number(sk.weightAddBack) : undefined,
+        effects:
+          sk.skillEffects?.map((e) => ({
+            effectType: e.effectType,
+            param: (e.param as Record<string, unknown>) ?? {},
+          })) ?? [],
+        logMessage: sk.logMessage ?? undefined,
+        logMessageOnCondition: sk.logMessageOnCondition ?? undefined,
       };
     }
     partyInput.push({
@@ -148,15 +193,16 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     partyIconFilenames.push(c.iconFilename);
   }
 
-  const battle = runBattleWithParty(partyInput, TEST_ENEMY_BASE_STATS, TEST_ENEMY_POSITIONS_1V3);
+  const battle = runBattleWithParty(partyInput, TEST_ENEMY_BASE_STATS, TEST_ENEMY_POSITIONS_1V3, initialPartyPositions);
 
   return {
     success: true,
     result: battle.result,
-    protagonistPosition: DEFAULT_PROTAGONIST_POSITION,
+    protagonistPosition: { row: 1, col: colForSlot[0] },
     protagonistIconFilename: partyIconFilenames[0] ?? null,
     partyDisplayNames: battle.summary.partyDisplayNames,
     partyIconFilenames,
+    initialPartyPositions,
     enemyPositions: battle.enemyPositions,
     log: battle.log,
     summary: battle.summary,

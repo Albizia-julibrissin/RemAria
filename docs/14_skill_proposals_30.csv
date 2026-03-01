@@ -1,6 +1,6 @@
 group,skill_name,battleSkillType,mp_cap_coef,mp_flat,charge_cycles,power_multiplier,hits_min,hits_max,resample_target_per_hit,target_scope,attribute,weight_add_front,weight_add_mid,weight_add_back,effects,log_message,log_message_on_condition,notes
 physical,強行突撃,physical,0.05,15,0,2.0,1,1,false,enemy_single,pierce,0,0,2.0,"on_use:add_target_weight(back,+2.0); on_hit_if_target_col_is(3):splash_damage_to_all_enemies(pct=0.5,base=dealt_damage)",,,"後列0.5→2.5。後列に当たったら敵全体へ与ダメ半分"
-physical,ハイスピア,physical,0.05,20,0,1.7,1,1,false,enemy_single,pierce,0,0,0,"on_hit_if_target_has_attr_state(crush):damage_mult(1.5); consume_attr_state(crush)",,,"圧壊起爆用。狙いは抽選なので確定しない"
+physical,ハイスピア,physical,0.05,20,0,1.7,1,1,false,enemy_single,pierce,0,0,0,"on_hit_if_target_has_attr_state(crush):damage_mult(1.5); consume_attr_state(crush)",,,"圧縮起爆用。狙いは抽選なので確定しない"
 physical,前進突撃,physical,0.04,12,0,1.8,1,1,false,enemy_single,pierce,0,0,0,"on_hit:move_self_column(direction=forward,steps=1)",,,"自分の列を1段階前進（後→中→前）"
 physical,後列狙い,physical,0.05,10,0,1.7,1,1,false,enemy_single,slash,0,0,1.5,"on_use:add_target_weight(back,+1.5)",,,"後列に当たりやすい単体攻撃"
 physical,連斬,physical,0.06,18,0,1.2,2,2,true,enemy_single,slash,0,0,0,"multi_hit(resample_target_per_hit=true)",,,"2ヒット。毎回ターゲット抽選"
@@ -10,7 +10,7 @@ physical,極意・貫,physical,0.08,25,1,2.5,1,1,false,enemy_single,pierce,1.0,0
 physical,乱れ討ち,physical,0.06,15,0,1.0,3,4,true,enemy_single,slash,0,0,0,"multi_hit(resample_target_per_hit=true)",,,"3～4ヒット。毎回ターゲット抽選"
 physical,鉄壁の構え,support,0.02,5,0,,1,1,false,self,none,0,0,0,"on_use:move_self_column(to_col=3); on_use:self_buff(PDEF,+0.30,duration_cycles=3,include_current=true)",,,"後列に下がって防御を上げる"
 magic,メテオ,magic,0.10,30,2,2.2,3,5,true,enemy_single,burn,0,0,0,"charge_cycles(2); multi_hit(resample_target_per_hit=true); on_hit:apply_attr_state(burn,duration_cycles=2,include_current=true); on_hit_if_target_has_attr_state(burn):chance(0.5)->apply_debuff(burning,duration_cycles=2,include_current=true,meta=record_damage_pct:0.2); consume_attr_state(burn)",,,"燃焼:自分のターン開始で記録ダメ20%を受ける"
-magic,ブラックホール,magic,0.08,20,0,1.6,1,1,false,enemy_single,crush,0,0,0,"on_hit:apply_attr_state(crush,duration_cycles=2,include_current=true)",,,"圧壊起点"
+magic,ブラックホール,magic,0.08,20,0,1.6,1,1,false,enemy_single,crush,0,0,0,"on_hit:apply_attr_state(crush,duration_cycles=2,include_current=true)",,,"圧縮起点"
 magic,氷結の矢,magic,0.04,12,0,1.5,1,1,false,enemy_single,freeze,0,0,0,"on_hit:move_target_column(direction=back,steps=1); on_hit:apply_attr_state(freeze,duration_cycles=2,include_current=true)",,,"凍傷付与＋後退"
 magic,瘴気,magic,0.05,15,0,1.4,1,1,false,enemy_single,corrode,0,0,0,"on_hit:apply_attr_state(corrode,duration_cycles=2,include_current=true); on_hit_if_target_has_attr_state(corrode):splash_damage_to_all_enemies(pct=0.2,base=dealt_damage)",,,"侵食状態なら全体に追加ダメ20%"
 magic,稲光,magic,0.06,18,1,2.0,1,1,false,enemy_single,polarity,0,0,0,"charge_cycles(1)",,,"極性はレア運用"

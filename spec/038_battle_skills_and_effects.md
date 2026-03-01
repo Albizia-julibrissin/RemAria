@@ -34,6 +34,7 @@
 - **attribute（属性）**：none / crush / slash / pierce / burn / freeze / corrode / polarity。
 - **effectType**：スキル効果の種類。スキルは 0 個以上の効果を持つ。
 - **溜め（chargeCycles）**：サイクルで数える。0 なら即時発動。1 以上なら「発動予約」を作る。
+- **クールタイム（CT / cooldownCycles）**：使用後に N サイクル再使用不可。CT 中は作戦スロットで「次の作戦」を評価する（詳細は `docs/023_skill_cooldown_ct_design.md`）。
 - **不発**：MP 不足などでスキルが発動しないこと。ダメージ・効果・属性状態付与なし。MP 消費なし。ターンは消費する。
 
 ------------------------------------------------------------------------
@@ -67,6 +68,7 @@
       "mpCostCapCoef": 0.1,
       "mpCostFlat": 30,
       "chargeCycles": 2,
+      "cooldownCycles": 0,
       "powerMultiplier": 2.2,
       "hitsMin": 3,
       "hitsMax": 5,
@@ -98,6 +100,13 @@
   - 予約があるキャラは、作戦スロット評価の前に「予約カウントを減らす」。
   - 0 になったターンでそのスキルを実行する。
 - 予約中に死亡した場合は予約は破棄する。
+
+### 5.2.5 クールタイム（cooldownCycles）
+
+- cooldownCycles=0：CT なし。使用制限なし。
+- cooldownCycles≥1：スキルを**実行した**時点で、そのキャラに「残り N サイクル」のクールを付与。各キャラのターン開始時に残りを 1 減らし、0 になったターンから再使用可能。
+- **作戦評価**：条件を満たしたスロットの行動がスキルで、そのスキルが CT 中なら、そのスロットは採用せず**次のスロットを評価**する（フォールバック）。MP 不足の不発時は次のスロットへは行かない（現行どおり）。
+- 詳細は `docs/023_skill_cooldown_ct_design.md` を参照。
 
 ### 5.3 多ヒット
 
@@ -147,6 +156,7 @@
   - mpCostCapCoef（Decimal）
   - mpCostFlat（Int）
   - chargeCycles（Int）
+  - cooldownCycles（Int）：使用後の再使用不可サイクル数。0=CT なし。`docs/023_skill_cooldown_ct_design.md` 参照。
   - powerMultiplier（Decimal?）
   - hitsMin/hitsMax（Int）
   - resampleTargetPerHit（Boolean）
@@ -166,10 +176,11 @@
 
 | effectType | 意味 | param 例（JSON） | 使うスキル例 |
 |------------|------|------------------|--------------|
-| **attr_state_trigger_damage** | 対象が指定の属性状態ならダメージ倍率を掛け、その属性状態を消費する | `{ "triggerAttr": "crush", "damageMultiplier": 1.5, "consumeAttr": true }` | ハイスピア（圧壊なら1.5倍＋圧壊消費） |
+| **attr_state_trigger_damage** | 対象が指定の属性状態ならダメージ倍率を掛け、その属性状態を消費する | `{ "triggerAttr": "crush", "damageMultiplier": 1.5, "consumeAttr": true }` | ハイスピア（圧縮なら1.5倍＋圧縮消費） |
 | **move_target_column** | ヒットした対象の列を変更する | `{ "direction": "back", "steps": 1 }` または `{ "toColumn": 3 }`（後列へ直接） | 圧縮の一撃、氷結の矢、退散の呪文 |
 | **move_self_column** | 使用後に自分の列を変更する | `{ "direction": "forward", "steps": 1 }` または `{ "toColumn": 1 }`（前列へ） | 前進突撃、鉄壁の構え、転移、反転の盾 |
 | **column_splash** | ターゲットが指定列（例：後列）だったとき、与えたダメージの一定割合を敵全体に追加する | `{ "whenTargetCol": 3, "pctOfDealtDamage": 0.5 }` | 強行突撃（後列ヒット時与ダメ50％を敵全体に） |
+| **damage_target_columns** | 指定列にいる敵にダメージ。**targetScope と併用**。enemy_all + 列指定＝指定範囲全体攻撃（攻撃回数が2なら全員に2ヒット）。enemy_single + 列指定＝指定列内のみウェイト抽選で攻撃回数分ターゲット | `{ "targetColumns": [1] }` 前列のみ。`[1,2,3]` 全体など（1=前列, 2=中列, 3=後列） | 列指定攻撃・全体攻撃スキル。targetScope は enemy_single / enemy_all を指定 |
 | **self_attr_state_cost** | 使用時に自分に指定の属性状態を付与する（代償） | `{ "attr": "freeze", "durationCycles": 2, "includeCurrent": true }` | 研ぎ澄まされた感覚（凍傷）、捨て身（侵食） |
 | **ally_buff** | 味方（自分／単体／全体）にステータスバフを N サイクル付与する | `{ "target": "self" \| "ally_single" \| "ally_all", "stat": "PATK", "pct": 0.5, "durationCycles": 3, "includeCurrent": true }` | 研ぎ澄まされた感覚、守りの祈り、鼓舞 |
 | **attr_state_trigger_splash** | 対象が指定の属性状態なら、与ダメの一定割合を敵全体に追加する | `{ "triggerAttr": "corrode", "pctOfDealtDamage": 0.2 }` | 瘴気 |

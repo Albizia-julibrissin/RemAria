@@ -126,13 +126,14 @@ const INDUSTRIAL_SKILLS = [
   { name: "鍛冶の才", description: "金属に関わる工業設備に配備時、作業時間が5%短縮。", targetTagCode: "metal", effectType: "time_reduction" as const, effectValue: 5 },
 ] as const;
 
-/** spec/038, docs/14_skill_proposals_30.csv: 戦闘スキル 30 種（物理10・魔法10・回復デバフバフ10）。 */
+/** spec/038, docs/14_skill_proposals_30.csv: 戦闘スキル 30 種（物理10・魔法10・回復デバフバフ10）。cooldownCycles は暫定値（docs/023）。 */
 const BATTLE_SKILLS: Array<{
   name: string;
   battleSkillType: string;
   mpCostCapCoef: number;
   mpCostFlat: number;
   chargeCycles: number;
+  cooldownCycles: number;
   powerMultiplier: number | null;
   hitsMin: number;
   hitsMax: number;
@@ -143,37 +144,75 @@ const BATTLE_SKILLS: Array<{
   weightAddMid: number;
   weightAddBack: number;
   description?: string;
+  logMessage?: string;
+  logMessageOnCondition?: string;
 }> = [
-  { name: "強行突撃", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 15, chargeCycles: 0, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 2.0 },
-  { name: "ハイスピア", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 20, chargeCycles: 0, powerMultiplier: 1.7, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "前進突撃", battleSkillType: "physical", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "後列狙い", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 0, powerMultiplier: 1.7, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 1.5 },
-  { name: "連斬", battleSkillType: "physical", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 0, powerMultiplier: 1.2, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "圧縮の一撃", battleSkillType: "physical", mpCostCapCoef: 0.07, mpCostFlat: 22, chargeCycles: 0, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "捨て身", battleSkillType: "physical", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, powerMultiplier: 2.2, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "極意・貫", battleSkillType: "physical", mpCostCapCoef: 0.08, mpCostFlat: 25, chargeCycles: 1, powerMultiplier: 2.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 1.0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "乱れ討ち", battleSkillType: "physical", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, powerMultiplier: 1.0, hitsMin: 3, hitsMax: 4, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "鉄壁の構え", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "メテオ", battleSkillType: "magic", mpCostCapCoef: 0.1, mpCostFlat: 30, chargeCycles: 2, powerMultiplier: 2.2, hitsMin: 3, hitsMax: 5, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "ブラックホール", battleSkillType: "magic", mpCostCapCoef: 0.08, mpCostFlat: 20, chargeCycles: 0, powerMultiplier: 1.6, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "氷結の矢", battleSkillType: "magic", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, powerMultiplier: 1.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "freeze", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "瘴気", battleSkillType: "magic", mpCostCapCoef: 0.05, mpCostFlat: 15, chargeCycles: 0, powerMultiplier: 1.4, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "稲光", battleSkillType: "magic", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 1, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "polarity", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "火の粉", battleSkillType: "magic", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, powerMultiplier: 1.0, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "退散の呪文", battleSkillType: "magic", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, powerMultiplier: 0.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "浸食霧", battleSkillType: "magic", mpCostCapCoef: 0.07, mpCostFlat: 22, chargeCycles: 0, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 1.0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "極大光", battleSkillType: "magic", mpCostCapCoef: 0.12, mpCostFlat: 40, chargeCycles: 2, powerMultiplier: 2.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "転移", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "癒しの光", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, powerMultiplier: 0.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "研ぎ澄まされた感覚", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "守りの祈り", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "毒霧", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 14, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "加速", battleSkillType: "support", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "浄化", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "萎縮の呪い", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "鼓舞", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 12, chargeCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "応急手当", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, powerMultiplier: 0.3, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "反転の盾", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "強行突撃", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 2.0 },
+  { name: "ハイスピア", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.7, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "前進突撃", battleSkillType: "physical", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "後列狙い", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.7, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 1.5 },
+  { name: "連斬", battleSkillType: "physical", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.2, hitsMin: 3, hitsMax: 3, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "圧縮の一撃", battleSkillType: "physical", mpCostCapCoef: 0.07, mpCostFlat: 22, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "捨て身", battleSkillType: "physical", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 2.2, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "極意・貫", battleSkillType: "physical", mpCostCapCoef: 0.08, mpCostFlat: 25, chargeCycles: 1, cooldownCycles: 3, powerMultiplier: 2.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 1.0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "乱れ討ち", battleSkillType: "physical", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.0, hitsMin: 3, hitsMax: 4, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "鉄壁の構え", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  {
+    name: "メテオ",
+    battleSkillType: "magic",
+    mpCostCapCoef: 0.1,
+    mpCostFlat: 30,
+    chargeCycles: 2,
+    cooldownCycles: 3,
+    powerMultiplier: 2.2,
+    hitsMin: 3,
+    hitsMax: 5,
+    resampleTargetPerHit: true,
+    targetScope: "enemy_single",
+    attribute: "burn",
+    weightAddFront: 0,
+    weightAddMid: 0,
+    weightAddBack: 0,
+    logMessage: "灼熱の隕石が敵陣に降り注いだ！",
+    logMessageOnCondition: "焼損が燃焼に転じ、炎が広がった！",
+  },
+  { name: "ブラックホール", battleSkillType: "magic", mpCostCapCoef: 0.08, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 3, powerMultiplier: 1.6, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "氷結の矢", battleSkillType: "magic", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "freeze", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "瘴気", battleSkillType: "magic", mpCostCapCoef: 0.05, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.4, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  {
+    name: "稲光",
+    battleSkillType: "magic",
+    mpCostCapCoef: 0.06,
+    mpCostFlat: 18,
+    chargeCycles: 1,
+    cooldownCycles: 2,
+    powerMultiplier: 2.0,
+    hitsMin: 1,
+    hitsMax: 1,
+    resampleTargetPerHit: false,
+    targetScope: "enemy_single",
+    attribute: "polarity",
+    weightAddFront: 0,
+    weightAddMid: 0,
+    weightAddBack: 0,
+    logMessage: "空に稲妻が走り、雷撃が対象を貫いた！",
+    logMessageOnCondition: "極性の力が炸裂し、追撃が命中した！",
+  },
+  { name: "火の粉", battleSkillType: "magic", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.0, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "退散の呪文", battleSkillType: "magic", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 0.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "浸食霧", battleSkillType: "magic", mpCostCapCoef: 0.07, mpCostFlat: 22, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 1.0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "極大光", battleSkillType: "magic", mpCostCapCoef: 0.12, mpCostFlat: 40, chargeCycles: 2, cooldownCycles: 3, powerMultiplier: 2.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "転移", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "癒しの光", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 0.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "研ぎ澄まされた感覚", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "守りの祈り", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "毒霧", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 14, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "加速", battleSkillType: "support", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "浄化", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "萎縮の呪い", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "鼓舞", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 12, chargeCycles: 1, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "応急手当", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 0.3, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "反転の盾", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
 ];
 
 /** spec/038: スキル名 → 登録する SkillEffect の配列（effectType + param）。戦闘解決時に参照。 */
@@ -196,6 +235,8 @@ const BATTLE_SKILL_EFFECTS: Record<string, Array<{ effectType: string; param: ob
       param: { triggerAttr: "burn", chance: 0.5, debuffCode: "burning", durationCycles: 2, includeCurrent: true, recordDamagePct: 0.2 },
     },
   ],
+  "ブラックホール": [{ effectType: "damage_target_columns", param: { targetColumns: [3] } }],
+  "連斬": [{ effectType: "damage_target_columns", param: { targetColumns: [2] } }],
   "氷結の矢": [{ effectType: "move_target_column", param: { direction: "back", steps: 1 } }],
   "瘴気": [{ effectType: "attr_state_trigger_splash", param: { triggerAttr: "corrode", pctOfDealtDamage: 0.2 } }],
   "退散の呪文": [{ effectType: "move_target_column", param: { toColumn: 3 } }],
@@ -334,6 +375,7 @@ async function seedBattleSkills() {
         mpCostCapCoef: s.mpCostCapCoef,
         mpCostFlat: s.mpCostFlat,
         chargeCycles: s.chargeCycles,
+        cooldownCycles: s.cooldownCycles,
         powerMultiplier: s.powerMultiplier,
         hitsMin: s.hitsMin,
         hitsMax: s.hitsMax,
@@ -343,12 +385,15 @@ async function seedBattleSkills() {
         weightAddFront: s.weightAddFront,
         weightAddMid: s.weightAddMid,
         weightAddBack: s.weightAddBack,
+        logMessage: s.logMessage ?? null,
+        logMessageOnCondition: s.logMessageOnCondition ?? null,
       },
       update: {
         battleSkillType: s.battleSkillType,
         mpCostCapCoef: s.mpCostCapCoef,
         mpCostFlat: s.mpCostFlat,
         chargeCycles: s.chargeCycles,
+        cooldownCycles: s.cooldownCycles,
         powerMultiplier: s.powerMultiplier,
         hitsMin: s.hitsMin,
         hitsMax: s.hitsMax,
@@ -358,6 +403,8 @@ async function seedBattleSkills() {
         weightAddFront: s.weightAddFront,
         weightAddMid: s.weightAddMid,
         weightAddBack: s.weightAddBack,
+        logMessage: s.logMessage ?? null,
+        logMessageOnCondition: s.logMessageOnCondition ?? null,
       },
     });
 

@@ -7,30 +7,50 @@ import { savePresetWithTactics, type TacticSlotRow, type BattleSkillOption } fro
 import {
   SUBJECT_OPTIONS,
   CONDITION_OPTIONS,
+  CYCLE_CONDITION_OPTIONS,
+  TURN_CONDITION_OPTIONS,
   PERCENT_OPTIONS,
   ATTR_OPTIONS,
+  CYCLE_N_OPTIONS,
+  TURN_INDEX_OPTIONS,
   ACTION_TYPES,
   BATTLE_SKILL_TYPE_LABELS,
 } from "./tactics-constants";
 
 const DEFAULT_ROW: TacticSlotRow = {
   orderIndex: 0,
-  subject: "any_enemy",
+  subject: "self",
   conditionKind: "always",
   conditionParam: null,
   actionType: "normal_attack",
   skillId: null,
 };
 
+const CYCLE_CONDITION_VALUES = new Set(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
+
 function buildSlotsFromRows(rows: TacticSlotRow[]): TacticSlotRow[] {
-  return rows.map((r, i) => ({
-    ...r,
-    orderIndex: i + 1,
-    conditionParam: r.conditionKind === "always" ? null : r.conditionParam,
-  }));
+  return rows.map((r, i) => {
+    let kind = r.conditionKind;
+    let param = r.conditionParam;
+    if (r.subject === "cycle" && !CYCLE_CONDITION_VALUES.has(kind)) {
+      kind = "cycle_is_even";
+      param = null;
+    } else if (r.subject === "turn" && kind !== "turn_order_in_range") {
+      kind = "turn_order_in_range";
+      param = { turnIndexMin: 1, turnIndexMax: 6 };
+    } else if (r.conditionKind === "always") {
+      param = null;
+    }
+    return {
+      ...r,
+      orderIndex: i + 1,
+      conditionKind: kind,
+      conditionParam: param,
+    };
+  });
 }
 
-type SlotCharacter = { characterId: string; displayName: string; category: string };
+type SlotCharacter = { characterId: string; displayName: string; category: string; battleCol?: number };
 
 export type TacticsPreset = {
   id: string;
@@ -39,6 +59,12 @@ export type TacticsPreset = {
   slot2: SlotCharacter | null;
   slot3: SlotCharacter | null;
 };
+
+const BATTLE_COL_OPTIONS = [
+  { value: 1, label: "前列" },
+  { value: 2, label: "中列" },
+  { value: 3, label: "後列" },
+] as const;
 
 interface TacticsEditorClientProps {
   preset: TacticsPreset;
@@ -59,6 +85,9 @@ export function TacticsEditorClient({
   const [name, setName] = useState(preset.name ?? "");
   const [slot2Id, setSlot2Id] = useState<string>(preset.slot2?.characterId ?? "");
   const [slot3Id, setSlot3Id] = useState<string>(preset.slot3?.characterId ?? "");
+  const [slot1Col, setSlot1Col] = useState<number>(preset.slot1?.battleCol ?? 1);
+  const [slot2Col, setSlot2Col] = useState<number>(preset.slot2?.battleCol ?? 1);
+  const [slot3Col, setSlot3Col] = useState<number>(preset.slot3?.battleCol ?? 1);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -94,6 +123,9 @@ export function TacticsEditorClient({
         name: name.trim() || null,
         slot2CharacterId: slot2Id.trim() || null,
         slot3CharacterId: slot3Id.trim() || null,
+        slot1BattleCol: Math.max(1, Math.min(3, slot1Col)),
+        slot2BattleCol: slot2Id ? Math.max(1, Math.min(3, slot2Col)) : null,
+        slot3BattleCol: slot3Id ? Math.max(1, Math.min(3, slot3Col)) : null,
       };
       const characterIds = [slot1.characterId, slot2Id || null, slot3Id || null].filter(Boolean) as string[];
       const tacticsByCharacter = characterIds.map((characterId) => ({
@@ -118,10 +150,36 @@ export function TacticsEditorClient({
       const current = prev[characterId] ?? getDefaultRows();
       const rows = [...current];
       const row = { ...rows[rowIndex] };
-      if (field === "conditionKind") {
-        row.conditionParam = value === "always" ? null : value === "subject_has_attr_state" ? { attr: "none" } : { percent: 50 };
+      if (field === "subject") {
+        const sub = value as string;
+        if (sub === "cycle") {
+          row.subject = "cycle";
+          row.conditionKind = row.conditionKind && CYCLE_CONDITION_OPTIONS.some((o) => o.value === row.conditionKind) ? row.conditionKind : "cycle_is_even";
+          row.conditionParam = row.conditionKind === "cycle_is_multiple_of" ? { n: 2 } : row.conditionKind === "cycle_at_least" ? { n: 1 } : null;
+        } else if (sub === "turn") {
+          row.subject = "turn";
+          row.conditionKind = "turn_order_in_range";
+          row.conditionParam = { turnIndexMin: 1, turnIndexMax: 2 };
+        } else {
+          row.subject = sub;
+          if (!CONDITION_OPTIONS.some((o) => o.value === row.conditionKind)) {
+            row.conditionKind = "always";
+            row.conditionParam = null;
+          }
+        }
+      } else if (field === "conditionKind") {
+        const kind = value as string;
+        row.conditionKind = kind;
+        if (kind === "always") row.conditionParam = null;
+        else if (kind === "subject_has_attr_state") row.conditionParam = { attr: "none" };
+        else if (kind === "cycle_is_even" || kind === "cycle_is_odd") row.conditionParam = null;
+        else if (kind === "cycle_is_multiple_of") row.conditionParam = { n: 2 };
+        else if (kind === "cycle_at_least") row.conditionParam = { n: 1 };
+        else if (kind === "turn_order_in_range") row.conditionParam = { turnIndexMin: 1, turnIndexMax: 6 };
+        else row.conditionParam = { percent: 50 };
+      } else {
+        (row as Record<string, unknown>)[field] = value;
       }
-      (row as Record<string, unknown>)[field] = value;
       rows[rowIndex] = row;
       return { ...prev, [characterId]: rows };
     });
@@ -157,6 +215,18 @@ export function TacticsEditorClient({
             <div>
               <label className="block text-sm text-text-muted mb-1">1. 主人公</label>
               <p className="py-2 text-text-primary font-medium">{slot1.displayName}</p>
+              <label className="block text-xs text-text-muted mt-1">列</label>
+              <select
+                value={slot1Col}
+                onChange={(e) => setSlot1Col(Number(e.target.value))}
+                className="w-full bg-base border border-base-border rounded px-2 py-1.5 text-text-primary text-sm"
+              >
+                {BATTLE_COL_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm text-text-muted mb-1">2. 仲間</label>
@@ -172,6 +242,22 @@ export function TacticsEditorClient({
                   </option>
                 ))}
               </select>
+              {slot2Id ? (
+                <>
+                  <label className="block text-xs text-text-muted mt-1">列</label>
+                  <select
+                    value={slot2Col}
+                    onChange={(e) => setSlot2Col(Number(e.target.value))}
+                    className="w-full bg-base border border-base-border rounded px-2 py-1.5 text-text-primary text-sm"
+                  >
+                    {BATTLE_COL_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </div>
             <div>
               <label className="block text-sm text-text-muted mb-1">3. メカ</label>
@@ -187,6 +273,22 @@ export function TacticsEditorClient({
                   </option>
                 ))}
               </select>
+              {slot3Id ? (
+                <>
+                  <label className="block text-xs text-text-muted mt-1">列</label>
+                  <select
+                    value={slot3Col}
+                    onChange={(e) => setSlot3Col(Number(e.target.value))}
+                    className="w-full bg-base border border-base-border rounded px-2 py-1.5 text-text-primary text-sm"
+                  >
+                    {BATTLE_COL_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -247,20 +349,99 @@ export function TacticsEditorClient({
                           </td>
                           <td className="py-1.5 pr-2">
                             <select
-                              value={row.conditionKind}
+                              value={
+                                row.subject === "cycle"
+                                  ? CYCLE_CONDITION_VALUES.has(row.conditionKind)
+                                    ? row.conditionKind
+                                    : "cycle_is_even"
+                                  : row.subject === "turn"
+                                    ? "turn_order_in_range"
+                                    : row.conditionKind
+                              }
                               onChange={(e) => updateSlotRow(char.characterId, i, "conditionKind", e.target.value)}
                               className="w-full min-w-[140px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
                             >
-                              {CONDITION_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label}
-                                </option>
-                              ))}
+                              {row.subject === "cycle" &&
+                                CYCLE_CONDITION_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              {row.subject === "turn" &&
+                                TURN_CONDITION_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              {row.subject !== "cycle" &&
+                                row.subject !== "turn" &&
+                                CONDITION_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
                             </select>
                           </td>
                           <td className="py-1.5 pr-2">
-                            {row.conditionKind === "always" ? (
+                            {row.conditionKind === "always" ||
+                            row.conditionKind === "cycle_is_even" ||
+                            row.conditionKind === "cycle_is_odd" ? (
                               <span className="text-text-muted">—</span>
+                            ) : row.conditionKind === "cycle_is_multiple_of" || row.conditionKind === "cycle_at_least" ? (
+                              <select
+                                value={(row.conditionParam as { n?: number } | null)?.n ?? 2}
+                                onChange={(e) =>
+                                  updateSlotRow(char.characterId, i, "conditionParam", {
+                                    n: Number(e.target.value),
+                                  })
+                                }
+                                className="min-w-[60px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                              >
+                                {CYCLE_N_OPTIONS.map((n) => (
+                                  <option key={n} value={n}>
+                                    {n}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : row.conditionKind === "turn_order_in_range" ? (
+                              <span className="flex items-center gap-1 flex-wrap">
+                                <select
+                                  value={(row.conditionParam as { turnIndexMin?: number } | null)?.turnIndexMin ?? 1}
+                                  onChange={(e) => {
+                                    const p = (row.conditionParam as { turnIndexMin?: number; turnIndexMax?: number }) ?? {};
+                                    updateSlotRow(char.characterId, i, "conditionParam", {
+                                      ...p,
+                                      turnIndexMin: Number(e.target.value),
+                                    });
+                                  }}
+                                  className="min-w-[48px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                                >
+                                  {TURN_INDEX_OPTIONS.map((n) => (
+                                    <option key={n} value={n}>
+                                      {n}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-text-muted">～</span>
+                                <select
+                                  value={(row.conditionParam as { turnIndexMax?: number } | null)?.turnIndexMax ?? 6}
+                                  onChange={(e) => {
+                                    const p = (row.conditionParam as { turnIndexMin?: number; turnIndexMax?: number }) ?? {};
+                                    updateSlotRow(char.characterId, i, "conditionParam", {
+                                      ...p,
+                                      turnIndexMax: Number(e.target.value),
+                                    });
+                                  }}
+                                  className="min-w-[48px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                                >
+                                  {TURN_INDEX_OPTIONS.map((n) => (
+                                    <option key={n} value={n}>
+                                      {n}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-text-muted text-xs">番目</span>
+                              </span>
                             ) : row.conditionKind === "subject_has_attr_state" ? (
                               <select
                                 value={(row.conditionParam as { attr?: string } | null)?.attr ?? "none"}
