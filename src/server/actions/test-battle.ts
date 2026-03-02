@@ -3,6 +3,7 @@
 // spec/020_test_battle.md - 仮戦闘実行 API（作戦・スキル・物理/魔法防御対応）
 
 import { getSession } from "@/lib/auth/session";
+import { userRepository } from "@/server/repositories/user-repository";
 import type { BaseStats } from "@/lib/battle/derived-stats";
 import { runBattleWithParty } from "@/lib/battle/run-battle-with-party";
 import type {
@@ -12,7 +13,12 @@ import type {
   BattleLogEntryWithParty,
   BattleSummaryWithParty,
 } from "@/lib/battle/run-battle-with-party";
-import { TEST_ENEMY_BASE_STATS, TEST_ENEMY_POSITIONS_1V3 } from "@/lib/battle/test-enemy";
+import {
+  TEST_ENEMY_BASE_STATS,
+  TEST_ENEMY_POSITIONS_1V3,
+  TEST_ENEMY_TACTIC_SLOTS,
+  TEST_ENEMY_SKILLS,
+} from "@/lib/battle/test-enemy";
 import type { BattlePosition } from "@/lib/battle/battle-position";
 import { prisma } from "@/lib/db/prisma";
 
@@ -57,6 +63,8 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     return { success: false, error: "PRESET_NOT_FOUND", message: "指定したプリセットが見つかりません" };
   }
 
+  const user = await userRepository.findById(session.userId);
+
   const characterIds = [
     preset.slot1CharacterId,
     preset.slot2CharacterId,
@@ -67,6 +75,7 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     where: { id: { in: characterIds }, userId: session.userId },
     select: {
       id: true,
+      category: true,
       displayName: true,
       iconFilename: true,
       STR: true,
@@ -185,7 +194,7 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
       };
     }
     partyInput.push({
-      displayName: c.displayName,
+      displayName: c.category === "protagonist" && user?.name ? user.name : c.displayName,
       base,
       tacticSlots,
       skills,
@@ -193,7 +202,15 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     partyIconFilenames.push(c.iconFilename);
   }
 
-  const battle = runBattleWithParty(partyInput, TEST_ENEMY_BASE_STATS, TEST_ENEMY_POSITIONS_1V3, initialPartyPositions);
+  const battle = runBattleWithParty(
+    partyInput,
+    TEST_ENEMY_BASE_STATS,
+    TEST_ENEMY_POSITIONS_1V3,
+    initialPartyPositions,
+    undefined,
+    TEST_ENEMY_TACTIC_SLOTS,
+    TEST_ENEMY_SKILLS
+  );
 
   return {
     success: true,

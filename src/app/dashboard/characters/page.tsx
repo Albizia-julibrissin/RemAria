@@ -62,7 +62,9 @@ export default async function CharactersListPage() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-text-primary">{c.displayName}</p>
+                    <p className="truncate font-medium text-text-primary">
+                      {c.category === "protagonist" && protagonist ? protagonist.displayName : c.displayName}
+                    </p>
                     <p className="text-sm text-text-muted">{CATEGORY_LABEL[c.category] ?? c.category}</p>
                   </div>
                 </div>

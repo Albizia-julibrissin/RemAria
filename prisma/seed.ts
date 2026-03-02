@@ -15,8 +15,8 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 const TEST_USERS = [
-  { email: "test1@example.com", password: "password123", name: "テストユーザー1" },
-  { email: "test2@example.com", password: "password123", name: "テストユーザー2" },
+  { email: "test1@example.com", accountId: "test_user_1", password: "password123", name: "テストユーザー1" },
+  { email: "test2@example.com", accountId: "test_user_2", password: "password123", name: "テストユーザー2" },
 ] as const;
 
 /** docs/10_battle_status.csv 物理型A の基礎ステータス（15行目。7種＋CAP） */
@@ -28,6 +28,18 @@ const PHYSICAL_TYPE_A_STATS = {
   DEX: 140,
   AGI: 210,
   LUK: 10,
+  CAP: 700,
+} as const;
+
+/** テスト用：初期仲間キャラ用。CAP700・魔法型（INT/WIS 高め） */
+const COMPANION_MAGIC_TYPE_STATS = {
+  STR: 20,
+  INT: 230,
+  VIT: 60,
+  WIS: 220,
+  DEX: 70,
+  AGI: 60,
+  LUK: 40,
   CAP: 700,
 } as const;
 
@@ -126,7 +138,7 @@ const INDUSTRIAL_SKILLS = [
   { name: "鍛冶の才", description: "金属に関わる工業設備に配備時、作業時間が5%短縮。", targetTagCode: "metal", effectType: "time_reduction" as const, effectValue: 5 },
 ] as const;
 
-/** spec/038, docs/14_skill_proposals_30.csv: 戦闘スキル 30 種（物理10・魔法10・回復デバフバフ10）。cooldownCycles は暫定値（docs/023）。 */
+/** docs/14_initial_skills.csv: 初期スキル 25 種（物理10・魔法10・補助5）。既存プロポーザル30種は廃止。 */
 const BATTLE_SKILLS: Array<{
   name: string;
   battleSkillType: string;
@@ -147,133 +159,79 @@ const BATTLE_SKILLS: Array<{
   logMessage?: string;
   logMessageOnCondition?: string;
 }> = [
-  { name: "強行突撃", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 2.0 },
-  { name: "ハイスピア", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.7, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "前進突撃", battleSkillType: "physical", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "後列狙い", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.7, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 1.5 },
-  { name: "連斬", battleSkillType: "physical", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.2, hitsMin: 3, hitsMax: 3, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "圧縮の一撃", battleSkillType: "physical", mpCostCapCoef: 0.07, mpCostFlat: 22, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "捨て身", battleSkillType: "physical", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 2.2, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "極意・貫", battleSkillType: "physical", mpCostCapCoef: 0.08, mpCostFlat: 25, chargeCycles: 1, cooldownCycles: 3, powerMultiplier: 2.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 1.0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "乱れ討ち", battleSkillType: "physical", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.0, hitsMin: 3, hitsMax: 4, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "鉄壁の構え", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  {
-    name: "メテオ",
-    battleSkillType: "magic",
-    mpCostCapCoef: 0.1,
-    mpCostFlat: 30,
-    chargeCycles: 2,
-    cooldownCycles: 3,
-    powerMultiplier: 2.2,
-    hitsMin: 3,
-    hitsMax: 5,
-    resampleTargetPerHit: true,
-    targetScope: "enemy_single",
-    attribute: "burn",
-    weightAddFront: 0,
-    weightAddMid: 0,
-    weightAddBack: 0,
-    logMessage: "灼熱の隕石が敵陣に降り注いだ！",
-    logMessageOnCondition: "焼損が燃焼に転じ、炎が広がった！",
-  },
-  { name: "ブラックホール", battleSkillType: "magic", mpCostCapCoef: 0.08, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 3, powerMultiplier: 1.6, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "氷結の矢", battleSkillType: "magic", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "freeze", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "瘴気", battleSkillType: "magic", mpCostCapCoef: 0.05, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.4, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  {
-    name: "稲光",
-    battleSkillType: "magic",
-    mpCostCapCoef: 0.06,
-    mpCostFlat: 18,
-    chargeCycles: 1,
-    cooldownCycles: 2,
-    powerMultiplier: 2.0,
-    hitsMin: 1,
-    hitsMax: 1,
-    resampleTargetPerHit: false,
-    targetScope: "enemy_single",
-    attribute: "polarity",
-    weightAddFront: 0,
-    weightAddMid: 0,
-    weightAddBack: 0,
-    logMessage: "空に稲妻が走り、雷撃が対象を貫いた！",
-    logMessageOnCondition: "極性の力が炸裂し、追撃が命中した！",
-  },
-  { name: "火の粉", battleSkillType: "magic", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.0, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "退散の呪文", battleSkillType: "magic", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 0.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "浸食霧", battleSkillType: "magic", mpCostCapCoef: 0.07, mpCostFlat: 22, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 1.0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "極大光", battleSkillType: "magic", mpCostCapCoef: 0.12, mpCostFlat: 40, chargeCycles: 2, cooldownCycles: 3, powerMultiplier: 2.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "転移", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "癒しの光", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 0.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "研ぎ澄まされた感覚", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "守りの祈り", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "毒霧", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 14, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "加速", battleSkillType: "support", mpCostCapCoef: 0.03, mpCostFlat: 8, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "浄化", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "萎縮の呪い", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 18, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "鼓舞", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 12, chargeCycles: 1, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "応急手当", battleSkillType: "support", mpCostCapCoef: 0.02, mpCostFlat: 5, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 0.3, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
-  { name: "反転の盾", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
+  { name: "虎挟ミ", battleSkillType: "physical", mpCostCapCoef: 0.03, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 0, powerMultiplier: 1.2, hitsMin: 2, hitsMax: 2, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "一瞬のうちに挟撃が放たれる…！" },
+  { name: "強行突破", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 0, powerMultiplier: 2.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 0, weightAddBack: 2.0, logMessage: "進む道全ての敵を蹴散らして吶喊する…！", logMessageOnCondition: "後列の敵に当たった際、ダメージの半分を敵全体に追加で与える。" },
+  { name: "閃槍", battleSkillType: "physical", mpCostCapCoef: 0.03, mpCostFlat: 7, chargeCycles: 0, cooldownCycles: 0, powerMultiplier: 1.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "鋭い一撃が空ごと敵を突き抜ける…！", logMessageOnCondition: "放たれた一撃はその脆弱を許さない!" },
+  { name: "襲双連斬", battleSkillType: "physical", mpCostCapCoef: 0.1, mpCostFlat: 30, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 0.6, hitsMin: 3, hitsMax: 5, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "敵陣を駆け巡る乱撃…！" },
+  { name: "宵闇ノ奈落", battleSkillType: "physical", mpCostCapCoef: 0.05, mpCostFlat: 10, chargeCycles: 1, cooldownCycles: 1, powerMultiplier: 4.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 1.0, weightAddBack: 1.5, logMessage: "闇に紛れ、ひと際大きな影が奈落のように佇む…", logMessageOnCondition: "奈落の底に落ちていく…！" },
+  { name: "血ノ嘆キ", battleSkillType: "physical", mpCostCapCoef: 0.07, mpCostFlat: 15, chargeCycles: 1, cooldownCycles: 1, powerMultiplier: 1.5, hitsMin: 3, hitsMax: 3, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "通りすがりに真新しい血を啜る…。", logMessageOnCondition: "血の流れは勢いを増す…！" },
+  { name: "掌底撃", battleSkillType: "physical", mpCostCapCoef: 0.04, mpCostFlat: 12, chargeCycles: 0, cooldownCycles: 0, powerMultiplier: 2.2, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 1.5, weightAddMid: 0, weightAddBack: 0, logMessage: "気を込めた武術の一撃…！" },
+  { name: "旋回斬", battleSkillType: "physical", mpCostCapCoef: 0.1, mpCostFlat: 25, chargeCycles: 1, cooldownCycles: 2, powerMultiplier: 1.4, hitsMin: 2, hitsMax: 4, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "嵐のごとく巻き込む斬撃…！" },
+  { name: "連装射弓", battleSkillType: "physical", mpCostCapCoef: 0.15, mpCostFlat: 30, chargeCycles: 2, cooldownCycles: 1, powerMultiplier: 1.5, hitsMin: 4, hitsMax: 7, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "乱れ撃つ矢の豪雨…。", logMessageOnCondition: "そのどれもが必殺級の一射…！" },
+  { name: "前進突撃", battleSkillType: "physical", mpCostCapCoef: 0.07, mpCostFlat: 14, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 2.2, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "先陣を切る覚悟の突撃…！" },
+  { name: "ファイアボルト", battleSkillType: "magic", mpCostCapCoef: 0.1, mpCostFlat: 30, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 2.4, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "燃え盛る火球が雷を纏い飛翔する…！" },
+  { name: "アイススパイク", battleSkillType: "magic", mpCostCapCoef: 0.12, mpCostFlat: 25, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.4, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "freeze", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "進軍をせき止める氷の罠…！" },
+  { name: "ライトニングストーム", battleSkillType: "magic", mpCostCapCoef: 0.2, mpCostFlat: 40, chargeCycles: 1, cooldownCycles: 1, powerMultiplier: 1.5, hitsMin: 3, hitsMax: 3, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "焦がしつくす雷撃の嵐…。", logMessageOnCondition: "その雷撃は獲物を鈍らせる…！" },
+  { name: "ウィンドブラスト", battleSkillType: "magic", mpCostCapCoef: 0.15, mpCostFlat: 30, chargeCycles: 1, cooldownCycles: 1, powerMultiplier: 2.4, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "slash", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "圧縮大気の爆発、風の刃となりて切り刻む…！" },
+  { name: "クエイクバースト", battleSkillType: "magic", mpCostCapCoef: 0.2, mpCostFlat: 40, chargeCycles: 2, cooldownCycles: 1, powerMultiplier: 4.8, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_single", attribute: "crush", weightAddFront: 0, weightAddMid: 1.5, weightAddBack: 0, logMessage: "瓦礫を飲み込んだ土塊が破裂する…！" },
+  { name: "カースドブレス", battleSkillType: "magic", mpCostCapCoef: 0.1, mpCostFlat: 30, chargeCycles: 0, cooldownCycles: 2, powerMultiplier: 1.0, hitsMin: 1, hitsMax: 3, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "闇の霧が戦場を飲み込み、生命を蝕む…！" },
+  { name: "メテオスォーム", battleSkillType: "magic", mpCostCapCoef: 0.3, mpCostFlat: 100, chargeCycles: 2, cooldownCycles: 2, powerMultiplier: 1.8, hitsMin: 3, hitsMax: 5, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "burn", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "灼熱の隕石が戦場に降り注ぐ…。", logMessageOnCondition: "戦場のすべてが劫火に呑まれる…！" },
+  { name: "ホーリーランス", battleSkillType: "magic", mpCostCapCoef: 0.1, mpCostFlat: 50, chargeCycles: 0, cooldownCycles: 3, powerMultiplier: 1.1, hitsMin: 3, hitsMax: 3, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "pierce", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "光の槍が瞬時に大地を穿つ…！" },
+  { name: "エンドオブモーゼ", battleSkillType: "magic", mpCostCapCoef: 0.3, mpCostFlat: 100, chargeCycles: 2, cooldownCycles: 2, powerMultiplier: 3.3, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "corrode", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "大海を割る波が逃げ場を奪う…！" },
+  { name: "ポイズンホール", battleSkillType: "magic", mpCostCapCoef: 0.2, mpCostFlat: 60, chargeCycles: 1, cooldownCycles: 3, powerMultiplier: 0.5, hitsMin: 1, hitsMax: 5, resampleTargetPerHit: true, targetScope: "enemy_single", attribute: "corrode", weightAddFront: 0, weightAddMid: 0.5, weightAddBack: 1.0, logMessage: "底無しの毒沼が戦場を支配する…。", logMessageOnCondition: "気づけば足元に…！" },
+  { name: "癒しの光", battleSkillType: "support", mpCostCapCoef: 0.06, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "あたたかな光のベールが味方を覆う…。" },
+  { name: "感覚深化", battleSkillType: "support", mpCostCapCoef: 0.05, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "self", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "戦場に気を張り巡らせる…。" },
+  { name: "浄化の祈り", battleSkillType: "support", mpCostCapCoef: 0.03, mpCostFlat: 10, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 1.5, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_single", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "祈りの力がその者を浄化する…。" },
+  { name: "砦の構え", battleSkillType: "support", mpCostCapCoef: 0.03, mpCostFlat: 15, chargeCycles: 0, cooldownCycles: 0, powerMultiplier: null, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "ally_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0, logMessage: "兵を守る砦の構え…！" },
+  { name: "萎縮の呪い", battleSkillType: "support", mpCostCapCoef: 0.04, mpCostFlat: 20, chargeCycles: 0, cooldownCycles: 1, powerMultiplier: 0, hitsMin: 1, hitsMax: 1, resampleTargetPerHit: false, targetScope: "enemy_all", attribute: "none", weightAddFront: 0, weightAddMid: 0, weightAddBack: 0 },
 ];
 
-/** spec/038: スキル名 → 登録する SkillEffect の配列（effectType + param）。戦闘解決時に参照。 */
+/** docs/14_initial_skills.csv: スキル名 → SkillEffect（effectType + param）。戦闘解決時に参照。 */
 const BATTLE_SKILL_EFFECTS: Record<string, Array<{ effectType: string; param: object }>> = {
-  "強行突撃": [{ effectType: "column_splash", param: { whenTargetCol: 3, pctOfDealtDamage: 0.5 } }],
-  "ハイスピア": [{ effectType: "attr_state_trigger_damage", param: { triggerAttr: "crush", damageMultiplier: 1.5, consumeAttr: true } }],
+  "強行突破": [{ effectType: "column_splash", param: { whenTargetCol: 3, pctOfDealtDamage: 0.5 } }],
+  "閃槍": [{ effectType: "attr_state_trigger_damage", param: { triggerAttr: "crush", damageMultiplier: 1.7, consumeAttr: true } }],
+  "宵闇ノ奈落": [{ effectType: "attr_state_force_direct", param: { triggerAttr: "burn", fatalAsNormal: true } }],
+  "血ノ嘆キ": [{ effectType: "attr_state_trigger_debuff", param: { triggerAttr: "slash", debuffCode: "bleeding", durationCycles: 1, includeCurrent: true } }],
+  "掌底撃": [{ effectType: "move_target_column", param: { direction: "back", steps: 1, chance: 0.2 } }],
+  "旋回斬": [{ effectType: "damage_target_columns", param: { targetColumns: [1, 2] } }],
+  "連装射弓": [{ effectType: "attr_state_trigger_damage", param: { triggerAttr: "freeze", damageMultiplier: 1.1, consumeAttr: true } }],
   "前進突撃": [{ effectType: "move_self_column", param: { direction: "forward", steps: 1 } }],
-  "圧縮の一撃": [{ effectType: "move_target_column", param: { direction: "back", steps: 1 } }],
-  "捨て身": [
-    { effectType: "move_self_column", param: { direction: "forward", steps: 1 } },
-    { effectType: "self_attr_state_cost", param: { attr: "corrode", durationCycles: 2, includeCurrent: true } },
-  ],
-  "鉄壁の構え": [
-    { effectType: "move_self_column", param: { toColumn: 3 } },
-    { effectType: "ally_buff", param: { target: "self", stat: "PDEF", pct: 0.3, durationCycles: 3, includeCurrent: true } },
-  ],
-  "メテオ": [
+  "アイススパイク": [{ effectType: "damage_target_columns", param: { targetColumns: [1] } }],
+  "ライトニングストーム": [{ effectType: "attr_state_trigger_debuff", param: { triggerAttr: "burn", debuffCode: "paralysis", durationCycles: 1, includeCurrent: true } }],
+  "ウィンドブラスト": [{ effectType: "damage_target_columns", param: { targetColumns: [2, 3] } }],
+  "クエイクバースト": [{ effectType: "column_splash", param: { whenTargetCol: 2, pctOfDealtDamage: 0.5 } }],
+  "メテオスォーム": [
     {
       effectType: "attr_state_chance_debuff",
       param: { triggerAttr: "burn", chance: 0.5, debuffCode: "burning", durationCycles: 2, includeCurrent: true, recordDamagePct: 0.2 },
     },
   ],
-  "ブラックホール": [{ effectType: "damage_target_columns", param: { targetColumns: [3] } }],
-  "連斬": [{ effectType: "damage_target_columns", param: { targetColumns: [2] } }],
-  "氷結の矢": [{ effectType: "move_target_column", param: { direction: "back", steps: 1 } }],
-  "瘴気": [{ effectType: "attr_state_trigger_splash", param: { triggerAttr: "corrode", pctOfDealtDamage: 0.2 } }],
-  "退散の呪文": [{ effectType: "move_target_column", param: { toColumn: 3 } }],
-  "浸食霧": [{ effectType: "attr_state_trigger_damage", param: { triggerAttr: "corrode", damageMultiplier: 1.3, consumeAttr: true } }],
-  "転移": [{ effectType: "move_self_column", param: { toColumn: 3 } }],
-  "癒しの光": [
-    { effectType: "heal_all", param: { scale: "MATK*0.5" } },
-    { effectType: "dispel_debuffs", param: { list: [] } },
+  "エンドオブモーゼ": [
+    { effectType: "damage_target_columns", param: { targetColumns: [1, 3] } },
+    { effectType: "move_target_column", param: { toColumn: 2, chance: 0.5 } },
   ],
-  "研ぎ澄まされた感覚": [
-    { effectType: "ally_buff", param: { target: "self", stat: "PATK", pct: 0.5, durationCycles: 3, includeCurrent: true } },
-    { effectType: "ally_buff", param: { target: "self", stat: "HIT", pct: 0.25, durationCycles: 3, includeCurrent: true } },
-    { effectType: "self_attr_state_cost", param: { attr: "freeze", durationCycles: 2, includeCurrent: true } },
+  "ポイズンホール": [
+    { effectType: "target_select_equal_weight", param: {} },
+    { effectType: "attr_state_trigger_debuff", param: { triggerAttr: "corrode", debuffCode: "poison", durationCycles: 7, includeCurrent: true } },
   ],
-  "守りの祈り": [
-    { effectType: "ally_buff", param: { target: "ally_all", stat: "PDEF", pct: 0.2, durationCycles: 2, includeCurrent: true } },
-    { effectType: "ally_buff", param: { target: "ally_all", stat: "MDEF", pct: 0.2, durationCycles: 2, includeCurrent: true } },
+  "癒しの光": [{ effectType: "heal_all", param: { scale: "MATK*1.0", randMin: 0.8, randMax: 1.0 } }],
+  "感覚深化": [
+    { effectType: "ally_buff", param: { target: "self", stat: "HIT", pct: 0.2, durationCycles: 7, includeCurrent: true } },
+    { effectType: "ally_buff", param: { target: "self", stat: "PATK", pct: 0.15, durationCycles: 7, includeCurrent: true } },
   ],
-  "毒霧": [
-    {
-      effectType: "apply_debuff",
-      param: { debuffCode: "poison", durationCycles: 2, includeCurrent: true, tick: "turn_start", damageKind: "current_hp_pct", pct: 0.05 },
-    },
+  "浄化の祈り": [
+    { effectType: "heal_single", param: { scale: "MATK*1.5", targetSelection: "lowest_hp_percent" } },
+    { effectType: "dispel_attr_states", param: { chance: 0.5 } },
   ],
-  "加速": [{ effectType: "ally_buff", param: { target: "self", stat: "EVA", pct: 0.3, durationCycles: 2, includeCurrent: true } }],
-  "浄化": [{ effectType: "dispel_debuff", param: { count: 1 } }],
+  "砦の構え": [
+    { effectType: "ally_buff", param: { target: "ally_all", stat: "PDEF", pct: 0.5, durationCycles: 2, includeCurrent: true } },
+    { effectType: "ally_buff", param: { target: "ally_all", stat: "MDEF", pct: 0.25, durationCycles: 2, includeCurrent: true } },
+  ],
   "萎縮の呪い": [
     {
       effectType: "apply_debuff",
-      param: { debuffCode: "wither", durationCycles: 2, includeCurrent: true, statMult: { PATK: 0.75, MATK: 0.75 } },
+      param: { debuffCode: "wither", statMult: { PATK: 0.4 }, durationCycles: 1, includeCurrent: true, targetScope: "enemy_all" },
     },
-  ],
-  "鼓舞": [{ effectType: "ally_buff", param: { target: "ally_all", stat: "PATK", pct: 0.25, durationCycles: 2, includeCurrent: true } }],
-  "応急手当": [{ effectType: "heal_single", param: { scale: "MATK*0.3" } }],
-  "反転の盾": [
-    { effectType: "move_self_column", param: { toColumn: 1 } },
-    { effectType: "ally_buff", param: { target: "self", stat: "MDEF", pct: 0.4, durationCycles: 2, includeCurrent: true } },
   ],
 };
 
@@ -359,36 +317,20 @@ async function seedIndustrialSkills() {
   console.log(`Industrial skills: ${INDUSTRIAL_SKILLS.length} 件 upsert`);
 }
 
-/** spec/038: 戦闘スキル 30 種を upsert し、必要な SkillEffect を登録。 */
+/** docs/14_initial_skills.csv: 既存の battle_active を削除し、初期スキル 25 種のみ登録。 */
 async function seedBattleSkills() {
+  const deleted = await prisma.skill.deleteMany({
+    where: { category: "battle_active" },
+  });
+  console.log(`Battle skills: 旧 ${deleted.count} 件を削除`);
+
   let effectCount = 0;
   for (const s of BATTLE_SKILLS) {
-    const skill = await prisma.skill.upsert({
-      where: {
-        name_category: { name: s.name, category: "battle_active" },
-      },
-      create: {
+    const skill = await prisma.skill.create({
+      data: {
         name: s.name,
         category: "battle_active",
         description: s.description ?? null,
-        battleSkillType: s.battleSkillType,
-        mpCostCapCoef: s.mpCostCapCoef,
-        mpCostFlat: s.mpCostFlat,
-        chargeCycles: s.chargeCycles,
-        cooldownCycles: s.cooldownCycles,
-        powerMultiplier: s.powerMultiplier,
-        hitsMin: s.hitsMin,
-        hitsMax: s.hitsMax,
-        resampleTargetPerHit: s.resampleTargetPerHit,
-        targetScope: s.targetScope,
-        attribute: s.attribute,
-        weightAddFront: s.weightAddFront,
-        weightAddMid: s.weightAddMid,
-        weightAddBack: s.weightAddBack,
-        logMessage: s.logMessage ?? null,
-        logMessageOnCondition: s.logMessageOnCondition ?? null,
-      },
-      update: {
         battleSkillType: s.battleSkillType,
         mpCostCapCoef: s.mpCostCapCoef,
         mpCostFlat: s.mpCostFlat,
@@ -410,7 +352,6 @@ async function seedBattleSkills() {
 
     const effects = BATTLE_SKILL_EFFECTS[s.name];
     if (effects?.length) {
-      await prisma.skillEffect.deleteMany({ where: { skillId: skill.id } });
       for (const e of effects) {
         await prisma.skillEffect.create({
           data: { skillId: skill.id, effectType: e.effectType, param: e.param as object },
@@ -419,7 +360,7 @@ async function seedBattleSkills() {
       }
     }
   }
-  console.log(`Battle skills: ${BATTLE_SKILLS.length} 件 upsert, SkillEffect: ${effectCount} 件`);
+  console.log(`Battle skills: 新規 ${BATTLE_SKILLS.length} 件作成, SkillEffect: ${effectCount} 件`);
 }
 
 /** spec/038: テスト主人公が戦闘スキルを全習得しているようにする。 */
@@ -533,8 +474,8 @@ async function main() {
     const passwordHash = await bcrypt.hash(u.password, 10);
     const user = await prisma.user.upsert({
       where: { email: u.email },
-      create: { email: u.email, passwordHash, name: u.name },
-      update: { passwordHash, name: u.name },
+      create: { email: u.email, accountId: u.accountId, passwordHash, name: u.name },
+      update: { accountId: u.accountId, passwordHash, name: u.name },
     });
     console.log(`Created/updated: ${u.email}`);
 
@@ -546,7 +487,7 @@ async function main() {
         await prisma.character.update({
           where: { id: existing.id },
           data: {
-            displayName: "テスト主人公",
+            displayName: user.name, // 主人公の表示名は User.name に準拠（docs/08）
             iconFilename: "1.gif",
             ...PHYSICAL_TYPE_A_STATS,
           },
@@ -556,7 +497,7 @@ async function main() {
           data: {
             userId: user.id,
             category: "protagonist",
-            displayName: "テスト主人公",
+            displayName: user.name, // 主人公の表示名は User.name に準拠（docs/08）
             iconFilename: "1.gif",
             ...PHYSICAL_TYPE_A_STATS,
           },
@@ -567,6 +508,34 @@ async function main() {
         });
       }
       console.log("Created/updated: test1 の主人公（物理型A）");
+
+      // テスト用：test1 に初期仲間キャラ（魔法型・CAP700）を1体登録
+      const existingCompanion = await prisma.character.findFirst({
+        where: { userId: user.id, category: "companion" },
+      });
+      if (existingCompanion) {
+        await prisma.character.update({
+          where: { id: existingCompanion.id },
+          data: {
+            displayName: "初期仲間",
+            iconFilename: "2.gif",
+            ...COMPANION_MAGIC_TYPE_STATS,
+          },
+        });
+        console.log("Created/updated: test1 の初期仲間（魔法型・CAP700）");
+      } else {
+        await prisma.character.create({
+          data: {
+            userId: user.id,
+            category: "companion",
+            displayName: "初期仲間",
+            iconFilename: "2.gif",
+            ...COMPANION_MAGIC_TYPE_STATS,
+          },
+        });
+        console.log("Created: test1 の初期仲間（魔法型・CAP700）");
+      }
+
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -597,10 +566,19 @@ async function main() {
 
   const test1 = await prisma.user.findUnique({
     where: { email: "test1@example.com" },
-    select: { protagonistCharacterId: true },
+    select: { id: true, protagonistCharacterId: true },
   });
-  if (test1?.protagonistCharacterId) {
-    await ensureProtagonistHasAllBattleSkills(test1.protagonistCharacterId);
+  if (test1) {
+    if (test1.protagonistCharacterId) {
+      await ensureProtagonistHasAllBattleSkills(test1.protagonistCharacterId);
+    }
+    const companions = await prisma.character.findMany({
+      where: { userId: test1.id, category: "companion" },
+      select: { id: true },
+    });
+    for (const c of companions) {
+      await ensureProtagonistHasAllBattleSkills(c.id);
+    }
   }
 }
 

@@ -9,9 +9,9 @@ DB設計（Prisma）およびSpec作成時の前提とする。
 
 ### アカウント/キャラ/メカ（戦闘単位の統一）
 
-- User：ユーザーアカウント
+- **User**：ユーザーアカウント。登録時は**メールアドレス**（必須・一意）、**ID**（accountId・英数字・必須・**重複不可**）、**名前**（必須・**重複可**）で登録する。**名前は主人公の表示名としても使用**し、User にのみ保持する（二重管理しない）。
 - **Character**：**主人公・仲間・メカを1テーブルで統一**。判別用に **category**（protagonist / companion / mech）を持つ。戦闘ではステータス・スキルを同じように扱う。
-  - **category = protagonist**：アカウントキャラ（本人）。1ユーザーあたり必ず1体。User.protagonistCharacterId で参照。
+  - **category = protagonist**：アカウントキャラ（本人）。1ユーザーあたり必ず1体。User.protagonistCharacterId で参照。**表示名は User.name を参照**し、Character.displayName は使わない。
   - **category = companion**：仲間。0〜N体。厳選要素の中心。
   - **category = mech**：追従メカ。0〜N体。パーツで性能/スキルが変化する想定（MechPart は別テーブルでパーツ構成を保持する場合あり）。
 - 主人公専用の効果は Character にカラムを追加し、仲間・メカの行では NULL／未使用とする。

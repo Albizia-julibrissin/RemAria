@@ -42,7 +42,9 @@ export default async function CharacterDetailPage({
   return (
     <main className="min-h-screen bg-base p-8">
       <div className="max-w-lg">
-        <h1 className="text-2xl font-bold text-text-primary">{character.displayName}</h1>
+        <h1 className="text-2xl font-bold text-text-primary">
+          {character.category === "protagonist" && protagonist ? protagonist.displayName : character.displayName}
+        </h1>
         <p className="mt-1 text-sm text-text-muted">{CATEGORY_LABEL[character.category] ?? character.category}</p>
 
         <div className="mt-6 flex items-start gap-6 rounded-lg border border-base-border bg-base-elevated p-6">

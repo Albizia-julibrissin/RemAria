@@ -11,11 +11,13 @@ async function submitAction(
 }
 
 interface CreateProtagonistFormProps {
+  /** 登録時の名前（主人公の表示名として使用。spec/015） */
+  userName: string;
   /** public/icons から取得したアイコン一覧（.gif）。追加はファイルを置くだけ */
   iconFilenames: string[];
 }
 
-export function CreateProtagonistForm({ iconFilenames }: CreateProtagonistFormProps) {
+export function CreateProtagonistForm({ userName, iconFilenames }: CreateProtagonistFormProps) {
   const [state, formAction] = useActionState(submitAction, null);
 
   return (
@@ -26,19 +28,11 @@ export function CreateProtagonistForm({ iconFilenames }: CreateProtagonistFormPr
         </p>
       )}
       <div className="flex flex-col gap-2">
-        <label htmlFor="displayName" className="text-sm text-text-muted">
-          表示名（必須）
-        </label>
-        <input
-          id="displayName"
-          name="displayName"
-          type="text"
-          required
-          maxLength={50}
-          autoComplete="name"
-          className="w-full bg-base-elevated border border-base-border rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
-          placeholder="冒険者"
-        />
+        <span className="text-sm text-text-muted">名前</span>
+        <p className="py-2 text-text-primary font-medium" aria-label="主人公の名前">
+          {userName}
+        </p>
+        <p className="text-xs text-text-muted">登録時の名前が主人公の表示名として使われます。</p>
       </div>
       <div className="flex flex-col gap-2">
         <span className="text-sm text-text-muted">アイコン（必須）</span>

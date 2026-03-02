@@ -81,8 +81,27 @@ const DISPLAY_LINES: { allyRow: 1 | 2 | 3; partyIndex: number; enemyRow: 1 | 2 |
   { allyRow: 3, partyIndex: 2, enemyRow: 3, enemyIndex: 2 },
 ];
 
+/** 同じ (cycle, turn) のログを1つにまとめたグループ */
+function groupLogByTurn(log: LogEntry[]): { cycle: number; turn: number; entries: LogEntry[] }[] {
+  const key = (e: LogEntry) => `${e.cycle}-${e.turn}`;
+  const map = new Map<string, LogEntry[]>();
+  for (const e of log) {
+    const k = key(e);
+    const list = map.get(k) ?? [];
+    list.push(e);
+    map.set(k, list);
+  }
+  return Array.from(map.entries())
+    .map(([, entries]) => ({
+      cycle: entries[0]!.cycle,
+      turn: entries[0]!.turn,
+      entries,
+    }))
+    .sort((a, b) => a.cycle - b.cycle || a.turn - b.turn);
+}
+
 function TurnBlock({
-  entry,
+  entries,
   protagonistPosition,
   protagonistIconFilename,
   partyIconFilenames,
@@ -90,7 +109,8 @@ function TurnBlock({
   enemyPositions,
   summary,
 }: {
-  entry: LogEntry;
+  /** このターン内の全ログ（状態表示は最後のエントリを使用） */
+  entries: LogEntry[];
   protagonistPosition: RunTestBattleSuccess["protagonistPosition"];
   protagonistIconFilename: RunTestBattleSuccess["protagonistIconFilename"];
   partyIconFilenames: (string | null)[];
@@ -100,6 +120,7 @@ function TurnBlock({
   enemyPositions: { row: number; col: number }[];
   summary: RunTestBattleSuccess["summary"];
 }) {
+  const entry = entries[entries.length - 1]!;
   const enemyAlive = entry.enemyHpAfter.map((hp) => hp > 0);
   const partyNames = summary.partyDisplayNames ?? ["味方"];
   const partyIcons = partyNames.map((_, i) => partyIconFilenames[i] ?? protagonistIconFilename);
@@ -162,11 +183,14 @@ function TurnBlock({
         ))}
       </div>
 
-      <div className="pt-2 border-t border-base-border text-sm">
-        <EntryLines
-          entry={entry}
-          partyDisplayNames={summary.partyDisplayNames ?? ["味方"]}
-        />
+      <div className="pt-2 border-t border-base-border text-sm space-y-2">
+        {entries.map((e, i) => (
+          <EntryLines
+            key={i}
+            entry={e}
+            partyDisplayNames={summary.partyDisplayNames ?? ["味方"]}
+          />
+        ))}
       </div>
     </div>
   );
@@ -199,19 +223,20 @@ export function BattleFullView({ data }: BattleFullViewProps) {
       </p>
 
       <div className="space-y-6">
-        {data.log.map((entry, i) => {
+        {groupLogByTurn(data.log).map(({ cycle, turn, entries }) => {
+          const lastEntry = entries[entries.length - 1]!;
           const partyNames = data.summary.partyDisplayNames ?? ["味方"];
           const resolvedParty =
-            entry.partyPositions && entry.partyPositions.length === partyNames.length
-              ? entry.partyPositions
+            lastEntry.partyPositions && lastEntry.partyPositions.length === partyNames.length
+              ? lastEntry.partyPositions
               : data.initialPartyPositions && data.initialPartyPositions.length === partyNames.length
                 ? data.initialPartyPositions
                 : defaultPartyPositions(partyNames.length);
-          const resolvedEnemy = entry.enemyPositions ?? data.enemyPositions;
+          const resolvedEnemy = lastEntry.enemyPositions ?? data.enemyPositions;
           return (
             <TurnBlock
-              key={`${entry.cycle}-${entry.turn}-${i}`}
-              entry={entry}
+              key={`${cycle}-${turn}`}
+              entries={entries}
               protagonistPosition={data.protagonistPosition}
               protagonistIconFilename={data.protagonistIconFilename}
               partyIconFilenames={data.partyIconFilenames ?? []}

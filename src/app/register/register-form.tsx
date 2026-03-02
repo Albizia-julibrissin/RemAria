@@ -32,6 +32,21 @@ export function RegisterForm() {
         />
       </div>
       <div className="flex flex-col gap-2">
+        <label htmlFor="accountId" className="text-sm text-text-muted">
+          ID（英数字・必須）
+        </label>
+        <input
+          id="accountId"
+          name="accountId"
+          type="text"
+          required
+          autoComplete="username"
+          className="w-full bg-base-elevated border border-base-border rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+          placeholder="my_id_123"
+        />
+        <p className="text-xs text-text-muted">3〜32文字。英数字とアンダースコアのみ。重複不可。</p>
+      </div>
+      <div className="flex flex-col gap-2">
         <label htmlFor="password" className="text-sm text-text-muted">
           パスワード
         </label>
@@ -47,16 +62,18 @@ export function RegisterForm() {
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="name" className="text-sm text-text-muted">
-          表示名（任意）
+          名前（必須）
         </label>
         <input
           id="name"
           name="name"
           type="text"
+          required
           autoComplete="name"
           className="w-full bg-base-elevated border border-base-border rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
           placeholder="冒険者"
         />
+        <p className="text-xs text-text-muted">主人公の表示名としても使用されます。</p>
       </div>
       <button
         type="submit"

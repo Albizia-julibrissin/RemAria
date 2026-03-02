@@ -23,7 +23,9 @@ const ATTR_STATE_DISPLAY_NAMES: Record<string, string> = {
 
 /** デバフコード → ログ表示用の名前（〇〇状態を解除した / 〇〇の継続ダメージ） */
 const DEBUFF_DISPLAY_NAMES: Record<string, string> = {
+  bleeding: "出血",
   burning: "燃焼",
+  paralysis: "麻痺",
   poison: "毒",
   curse: "呪い",
   wither: "萎縮",
@@ -197,10 +199,20 @@ export function EntryLines({
             を発動した！
           </div>
 
-          {/* スキルメッセージ（条件達成時はヒット行で「〇〇決壊！」を表示するためここでは通常メッセージのみ） */}
-          {entry.logMessage != null && entry.logMessage !== "" && (
-            <div className="text-text-muted text-sm">{entry.logMessage}</div>
-          )}
+          {/* スキルメッセージ：通常ログの直下に条件達成時専用ログ（1発・多ヒット共通で1回だけ表示） */}
+          <div className="space-y-0.5">
+            {entry.logMessage != null && String(entry.logMessage).trim() !== "" && (
+              <div className="text-text-muted text-sm">{entry.logMessage}</div>
+            )}
+            {entry.conditionMet && (() => {
+              const msg = String(entry.logMessageOnCondition ?? "").trim();
+              return msg !== "" ? (
+                <div className="text-brass font-semibold text-sm">
+                  {msg}
+                </div>
+              ) : null;
+            })()}
+          </div>
 
           {/* 多ヒット：ヒットごとに表示（条件達成時は左に「〇〇決壊！」→ ダメージ → 状態付与で1行） */}
           {hasHitDetails &&
@@ -337,6 +349,13 @@ export function EntryLines({
                   <div className="text-text-muted">{target}に0ダメージ。</div>
                 )}
             </>
+          )}
+
+          {/* Phase 6: 出血の反動で受けた自己ダメージ */}
+          {entry.bleedingSelfDamage != null && entry.bleedingSelfDamage > 0 && (
+            <div className="text-amber-600 dark:text-amber-400 text-sm mt-0.5">
+              {attacker}は出血の反動で{entry.bleedingSelfDamage}ダメージを受けた。
+            </div>
           )}
 
           {/* MP回復（通常攻撃時） */}

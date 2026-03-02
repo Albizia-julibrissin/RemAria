@@ -25,16 +25,16 @@
 ## 1. 目的
 
 - 登録後、ログインしたユーザーが主人公を**1体だけ**作成できること。
-- 主人公未作成の場合は**作成画面に強制遷移**し、名前とアイコンを選択して作成すること。
+- 主人公未作成の場合は**作成画面に強制遷移**し、**アイコンのみ**選択して作成すること（名前は登録時の User.name を使用し、二重管理しない）。
 - 作成後は通常の保護画面（ダッシュボード等）に進めること。
 
 ------------------------------------------------------------------------
 
 ## 2. 用語
 
-- **主人公**：アカウントキャラ。Character の 1 行で `category = "protagonist"`。1 ユーザーあたり必ず 1 体（作成済みなら追加作成しない）。
+- **主人公**：アカウントキャラ。Character の 1 行で `category = "protagonist"`。1 ユーザーあたり必ず 1 体（作成済みなら追加作成しない）。**表示名は User.name を参照**し、Character.displayName は使わない（docs/08, 02 の方針）。
 - **User.protagonistCharacterId**：そのユーザーの主人公の Character.id を指す。NULL のとき「主人公未作成」。
-- **作成画面**：名前（表示名）とアイコンを入力・選択し、createProtagonist を呼ぶ画面。
+- **作成画面**：アイコンのみ選択し、createProtagonist を呼ぶ画面。名前は登録済みの User.name を使用するため入力しない。
 
 ------------------------------------------------------------------------
 
@@ -44,13 +44,12 @@
 
 ```json
 {
-  "displayName": "冒険者",
   "iconFilename": "1.gif"
 }
 ```
 
-- `displayName`：必須。表示名。長さは実装で上限を設ける（例：50 文字）。空不可。
 - `iconFilename`：必須。選択したアイコンのファイル名（例：`1.gif`）。**選択肢は定数で保持**（例：`public/icons` 内の許可リスト）。不正な値はバリデーションエラー。
+- **表示名**：入力しない。**User.name**（登録時に設定済み）を主人公の表示名として使用する（二重管理しない）。
 
 ------------------------------------------------------------------------
 
@@ -77,7 +76,7 @@
 }
 ```
 
-- 例：`ALREADY_CREATED`（既に主人公がいる）、`VALIDATION_ERROR`（displayName や iconFilename の不正）。
+- 例：`ALREADY_CREATED`（既に主人公がいる）、`VALIDATION_ERROR`（iconFilename の不正）。
 
 ------------------------------------------------------------------------
 
@@ -94,7 +93,7 @@
 - 作成する Character の内容：
   - `userId`：セッションの userId
   - `category`：`"protagonist"`
-  - `displayName`：入力値（トリム済み）
+  - `displayName`：**User.name をコピー**して格納する（表示時は常に User.name を参照する方針のため、DB 上は同一値でよい。または default のままでも可で、表示層で User.name を参照する）
   - `iconFilename`：入力値（許可リストに含まれるもの）
   - **ステータス初期値**：**定数で保持**。全基礎ステータスを **10** とする。
     - `STR = 10`, `INT = 10`, `VIT = 10`, `WIS = 10`, `DEX = 10`, `AGI = 10`, `LUK = 10`（10_battle_status.csv 準拠）
@@ -122,8 +121,8 @@
 
 1. セッション検証（未ログインならエラー）
 2. 既に protagonistCharacterId が設定されていれば `ALREADY_CREATED` で終了
-3. 入力検証（displayName 長・空でない、iconFilename が許可リストに含まれる）
-4. Character を 1 件作成（category=protagonist, displayName, iconFilename, 初期ステータスは定数）
+3. 入力検証（iconFilename が許可リストに含まれる）
+4. Character を 1 件作成（category=protagonist, displayName=User.name（参照用にコピー可）, iconFilename, 初期ステータスは定数）
 5. User の protagonistCharacterId を更新
 6. 成功レスポンスを返す
 
@@ -133,7 +132,7 @@
 
 ### 7.1 永続化するデータ
 
-- **Character** 1 行：userId, category="protagonist", displayName, iconFilename, STR/INT/VIT/WIS/DEX/AGI/LUK/CAP の初期値（定数）、createdAt, updatedAt
+- **Character** 1 行：userId, category="protagonist", displayName（User.name をコピーするか default のまま。表示は常に User.name を参照）, iconFilename, STR/INT/VIT/WIS/DEX/AGI/LUK/CAP の初期値（定数）、createdAt, updatedAt
 - **User.protagonistCharacterId**：作成した Character.id を設定
 
 ### 7.2 保存しないデータ
@@ -146,9 +145,9 @@
 
 ### ケース1：正常系（初回作成）
 
-- 前提：ユーザーはログイン済み、主人公未作成
-- 入力：displayName="主人公", iconFilename="2.gif"
-- 期待：Character が 1 件作成され、User.protagonistCharacterId が設定される。success: true, characterId が返る。
+- 前提：ユーザーはログイン済み、主人公未作成。User.name は登録時に "主人公" など設定済み。
+- 入力：iconFilename="2.gif"
+- 期待：Character が 1 件作成され、User.protagonistCharacterId が設定される。主人公の表示名は User.name を参照。success: true, characterId が返る。
 
 ### ケース2：既に主人公がいる
 
@@ -158,7 +157,7 @@
 
 ### ケース3：バリデーションエラー
 
-- 入力：displayName が空、または iconFilename が許可リストにない
+- 入力：iconFilename が許可リストにない
 - 期待：success: false, error: "VALIDATION_ERROR", message に理由。
 
 ------------------------------------------------------------------------
@@ -169,7 +168,6 @@
 |------|------|
 | 未ログインで createProtagonist 呼び出し | 認証エラーまたはログイン画面へリダイレクト |
 | 既に主人公がいる | ALREADY_CREATED または新規作成しない |
-| displayName が空または長さ超過 | VALIDATION_ERROR |
 | iconFilename が許可リストにない | VALIDATION_ERROR |
 
 ------------------------------------------------------------------------
@@ -183,7 +181,7 @@
 | **URL** | `/character/create` または `/create-protagonist` 等（実装で決定） |
 | **前提** | ログイン済み。主人公未作成の場合に表示（未作成でないとアクセスできない、または未作成時のみリダイレクト先になる） |
 | **見出し** | 「主人公を作成」等 |
-| **要素** | 表示名入力（必須）、アイコン選択（必須）、作成ボタン |
+| **要素** | アイコン選択（必須）、作成ボタン。表示名は登録済み User.name のため入力欄は出さない（表示のみ可）。 |
 | **アイコン選択** | 定数で持つ一覧から 1 つ選択（ラジオまたは一覧クリック）。画像は `/icons/{iconFilename}` で表示 |
 | **呼び出す API** | createProtagonist |
 | **成功時** | ダッシュボード（または `/`）へリダイレクト |

@@ -4,16 +4,19 @@ import { prisma } from "@/lib/db/prisma";
 import { INITIAL_PROTAGONIST_STATS } from "@/lib/constants/protagonist";
 import { COMPANION_MAX_COUNT } from "@/lib/constants/companion";
 
-/** ユーザーの主人公（Character category=protagonist）を取得。いなければ null */
+/** ユーザーの主人公（Character category=protagonist）を取得。いなければ null。表示名は User.name（docs/08） */
 export async function getProtagonistByUserId(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { protagonistCharacter: true },
+    select: {
+      name: true,
+      protagonistCharacter: true,
+    },
   });
   if (!user?.protagonistCharacter) return null;
   return {
     id: user.protagonistCharacter.id,
-    displayName: user.protagonistCharacter.displayName,
+    displayName: user.name, // 主人公の表示名は User.name のみ（二重管理しない）
     iconFilename: user.protagonistCharacter.iconFilename,
     STR: user.protagonistCharacter.STR,
     INT: user.protagonistCharacter.INT,
@@ -58,18 +61,19 @@ export async function getCharacterByIdForUser(characterId: string, userId: strin
   return c;
 }
 
-/** 主人公を1体作成（Character category=protagonist を作成し User.protagonistCharacterId を設定） */
-export async function createProtagonist(data: {
-  userId: string;
-  displayName: string;
-  iconFilename: string;
-}) {
+/** 主人公を1体作成（Character category=protagonist を作成し User.protagonistCharacterId を設定）。表示名は User.name を使用（spec/015） */
+export async function createProtagonist(data: { userId: string; iconFilename: string }) {
   return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: data.userId },
+      select: { name: true },
+    });
+    if (!user) throw new Error("User not found");
     const character = await tx.character.create({
       data: {
         userId: data.userId,
         category: "protagonist",
-        displayName: data.displayName.trim(),
+        displayName: user.name, // 主人公は User.name をコピー（表示時は常に User を参照）
         iconFilename: data.iconFilename,
         ...INITIAL_PROTAGONIST_STATS,
       },

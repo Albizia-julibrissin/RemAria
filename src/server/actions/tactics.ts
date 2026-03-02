@@ -31,6 +31,7 @@ export async function getPartyPresets() {
   const presets = await prisma.partyPreset.findMany({
     where: { userId: session.userId },
     include: {
+      user: { select: { name: true } },
       slot1Character: { select: { id: true, displayName: true, category: true } },
       slot2Character: { select: { id: true, displayName: true, category: true } },
       slot3Character: { select: { id: true, displayName: true, category: true } },
@@ -41,7 +42,7 @@ export async function getPartyPresets() {
   const result: PartyPresetWithCharacters[] = presets.map((p) => ({
     id: p.id,
     name: p.name ?? null,
-    slot1: p.slot1Character ? { characterId: p.slot1Character.id, displayName: p.slot1Character.displayName, category: p.slot1Character.category, battleCol: clampBattleCol(p.slot1BattleCol) } : null,
+    slot1: p.slot1Character ? { characterId: p.slot1Character.id, displayName: p.slot1Character.category === "protagonist" ? p.user.name : p.slot1Character.displayName, category: p.slot1Character.category, battleCol: clampBattleCol(p.slot1BattleCol) } : null,
     slot2: p.slot2Character ? { characterId: p.slot2Character.id, displayName: p.slot2Character.displayName, category: p.slot2Character.category, battleCol: clampBattleCol(p.slot2BattleCol) } : null,
     slot3: p.slot3Character ? { characterId: p.slot3Character.id, displayName: p.slot3Character.displayName, category: p.slot3Character.category, battleCol: clampBattleCol(p.slot3BattleCol) } : null,
   }));
@@ -57,6 +58,7 @@ export async function getPartyPresetWithCharacters(presetId: string) {
   const preset = await prisma.partyPreset.findFirst({
     where: { id: presetId, userId: session.userId },
     include: {
+      user: { select: { name: true } },
       slot1Character: { select: { id: true, displayName: true, category: true } },
       slot2Character: { select: { id: true, displayName: true, category: true } },
       slot3Character: { select: { id: true, displayName: true, category: true } },
@@ -67,7 +69,7 @@ export async function getPartyPresetWithCharacters(presetId: string) {
   return {
     id: preset.id,
     name: preset.name ?? null,
-    slot1: preset.slot1Character ? { characterId: preset.slot1Character.id, displayName: preset.slot1Character.displayName, category: preset.slot1Character.category, battleCol: clampBattleCol(preset.slot1BattleCol) } : null,
+    slot1: preset.slot1Character ? { characterId: preset.slot1Character.id, displayName: preset.slot1Character.category === "protagonist" ? preset.user.name : preset.slot1Character.displayName, category: preset.slot1Character.category, battleCol: clampBattleCol(preset.slot1BattleCol) } : null,
     slot2: preset.slot2Character ? { characterId: preset.slot2Character.id, displayName: preset.slot2Character.displayName, category: preset.slot2Character.category, battleCol: clampBattleCol(preset.slot2BattleCol) } : null,
     slot3: preset.slot3Character ? { characterId: preset.slot3Character.id, displayName: preset.slot3Character.displayName, category: preset.slot3Character.category, battleCol: clampBattleCol(preset.slot3BattleCol) } : null,
   };

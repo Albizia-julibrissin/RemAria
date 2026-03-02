@@ -12,6 +12,9 @@ import { ensureInitialFacilities } from "@/server/actions/initial-area";
 // --- バリデーション（spec 5.4） ---
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_MAX_LEN = 255;
+const ACCOUNT_ID_REGEX = /^[a-zA-Z0-9_]+$/;
+const ACCOUNT_ID_MIN_LEN = 3;
+const ACCOUNT_ID_MAX_LEN = 32;
 const PASSWORD_MIN_LEN = 8;
 const PASSWORD_MAX_LEN = 72;
 const NAME_MAX_LEN = 50;
@@ -34,41 +37,59 @@ function validatePassword(password: unknown): string | null {
   return null;
 }
 
+function validateAccountId(accountId: unknown): string | null {
+  if (typeof accountId !== "string" || !accountId.trim()) return "IDを入力してください";
+  const trimmed = accountId.trim();
+  if (trimmed.length < ACCOUNT_ID_MIN_LEN) return `IDは${ACCOUNT_ID_MIN_LEN}文字以上で入力してください`;
+  if (trimmed.length > ACCOUNT_ID_MAX_LEN) return `IDは${ACCOUNT_ID_MAX_LEN}文字以内で入力してください`;
+  if (!ACCOUNT_ID_REGEX.test(trimmed)) return "IDは英数字とアンダースコアのみ使用できます";
+  return null;
+}
+
 function validateName(name: unknown): string | null {
-  if (name === undefined || name === null) return null;
-  if (typeof name !== "string") return "表示名の形式が正しくありません";
-  if (name.length > NAME_MAX_LEN) return "表示名は50文字以内で入力してください";
+  if (typeof name !== "string" || !name.trim()) return "名前を入力してください";
+  if (name.trim().length > NAME_MAX_LEN) return "名前は50文字以内で入力してください";
   return null;
 }
 
 /** spec: register - 新規登録（成功時は自動ログイン） */
 export async function register(formData: FormData): Promise<AuthResult> {
   const email = formData.get("email");
+  const accountIdRaw = formData.get("accountId");
   const password = formData.get("password");
   const nameRaw = formData.get("name");
-  const name = typeof nameRaw === "string" && nameRaw.trim() === "" ? null : nameRaw ?? null;
 
   const emailErr = validateEmail(email);
   if (emailErr) return { success: false, error: "VALIDATION_ERROR", message: emailErr };
 
+  const accountIdErr = validateAccountId(accountIdRaw);
+  if (accountIdErr) return { success: false, error: "VALIDATION_ERROR", message: accountIdErr };
+
   const passwordErr = validatePassword(password);
   if (passwordErr) return { success: false, error: "VALIDATION_ERROR", message: passwordErr };
 
-  const nameErr = validateName(name === null ? undefined : nameRaw);
+  const nameErr = validateName(nameRaw);
   if (nameErr) return { success: false, error: "VALIDATION_ERROR", message: nameErr };
 
-  const existing = await userRepository.findByEmail(String(email).trim());
-  if (existing) {
+  const existingEmail = await userRepository.findByEmail(String(email).trim().toLowerCase());
+  if (existingEmail) {
     return { success: false, error: "EMAIL_ALREADY_EXISTS", message: "このメールアドレスは既に登録されています" };
   }
 
+  const accountId = String(accountIdRaw).trim();
+  const existingAccountId = await userRepository.findByAccountId(accountId);
+  if (existingAccountId) {
+    return { success: false, error: "ACCOUNT_ID_ALREADY_EXISTS", message: "このIDは既に使用されています" };
+  }
+
   const passwordHash = await bcrypt.hash(String(password), 10);
-  const displayName = typeof name === "string" ? name.trim() || null : null;
+  const name = String(nameRaw).trim();
 
   const user = await userRepository.create({
     email: String(email).trim().toLowerCase(),
+    accountId,
     passwordHash,
-    name: displayName,
+    name,
   });
 
   // spec/035: 新規アカウントにも初期エリアの強制配置 5 設備を用意する（冪等）

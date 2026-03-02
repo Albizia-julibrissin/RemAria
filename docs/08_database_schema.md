@@ -11,10 +11,11 @@
 
 | カラム | 型 | 制約 | 説明 |
 |--------|-----|------|------|
-| id | String (cuid) | PK | 主キー |
-| email | String | NOT NULL, UNIQUE | ログイン用。一意 |
+| id | String (cuid) | PK | 主キー（内部用） |
+| email | String | NOT NULL, UNIQUE | メールアドレス。ログイン用。一意 |
+| accountId | String | NOT NULL, UNIQUE | ID（英数字）。ユーザーが登録時に指定。**重複不可**。 |
 | passwordHash | String | NOT NULL | ハッシュ化済みパスワード |
-| name | String | NULL可 | 表示名（任意） |
+| name | String | NOT NULL | 表示名。**重複可**。**主人公の表示名もこの値のみを使用**（二重管理しない）。 |
 | createdAt | DateTime | NOT NULL, default now() | 作成日時 |
 | updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
 | gameCurrencyBalance | Int | NOT NULL, default 0 | ゲーム通貨残高 |
@@ -29,6 +30,11 @@
 | locale | String | NULL可 | 表示言語 |
 | protagonistCharacterId | String | NULL可, UNIQUE, FK→Character.id | 主人公1体（category=protagonist）。登録時または初回キャラ作成時に設定。 |
 | companionHireCount | Int | NOT NULL, default 0 | 仲間雇用可能回数（購入で+1、仲間作成で-1）。spec/030。 |
+
+**アカウント登録時の入力項目**
+- **メールアドレス**（必須・一意）：ログイン識別子。
+- **ID**（accountId）（必須・一意）：英数字。**重複不可**（他ユーザーと被ると登録エラー）。
+- **名前**（name）（必須）：表示名。**重複可**。この値が**主人公キャラの表示名**としても使われる（名前は User にのみ保持し、二重管理しない）。
 
 **リレーション**
 - `Character`（主人公） … protagonistCharacterId で 1対1
@@ -56,7 +62,7 @@
 | id | String (cuid) | PK | 主キー |
 | userId | String | NOT NULL, FK→User.id | 所有者 |
 | category | String | NOT NULL | protagonist / companion / mech |
-| displayName | String | NOT NULL, default "冒険者" | 表示名 |
+| displayName | String | NOT NULL, default "冒険者" | 表示名。**主人公では参照しない**（主人公の表示名は User.name を使用）。仲間・メカではこのカラムを使用。 |
 | iconFilename | String | NULL可 | アイコン画像ファイル名 |
 | description | String | NULL可 | 説明文 |
 | protagonistTalentId | String | NULL可 | 主人公専用（仲間・メカでは未使用） |
@@ -69,6 +75,10 @@
 - **永続するのは基礎ステータスだけ**（上記 7 種＋CAP）。戦闘用・工業用の「最終値」は保存しない。
 - **戦闘時**：基礎ステータスを **`docs/10_battle_status.csv` の係数表で二次解釈**し、戦闘用ステータス（HP・物理攻撃力・速度（回避）・命中力など）を算出して使う。**AGI は「速度」そのものではない**。AGI は係数計算の**入力**の一つであり、計算結果として**派生値「速度（回避）」**（EVA）が得られる。
 - **工業配備時**：基礎ステータスが**そのまま影響**する（二次解釈しない）。戦闘時のみ係数表で戦闘用ステータスに換算する。
+
+**主人公の表示名について（二重管理の回避）**
+- 主人公キャラの「名前」は **User.name にのみ保持**する。Character.displayName は主人公では使わない（表示時は常に User.name を参照する）。
+- 仲間・メカの表示名は Character.displayName を使用する。これにより名前の管理を一箇所に統一し、二重管理を避ける。
 
 **リレーション**
 - `User` … N対1（userId）。主人公は User.protagonistCharacterId で 1対1参照。

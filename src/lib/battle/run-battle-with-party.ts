@@ -25,6 +25,7 @@ import {
 } from "./battle-constants";
 import {
   evaluateTactics as evaluateTacticsFromSpec,
+  type TacticAction,
   type TacticEvaluationContext,
   type TacticSlotForEval,
 } from "./tactic-evaluation";
@@ -103,6 +104,12 @@ interface PartyFighter extends FighterState {
   skills: Record<string, SkillDataForBattle>;
 }
 
+/** 敵が作戦・スキルを持つ場合（テスト用スライムの前進突撃など） */
+interface EnemyFighter extends FighterState {
+  tacticSlots?: TacticSlotInput[];
+  skills?: Record<string, SkillDataForBattle>;
+}
+
 export interface BattleLogEntryWithParty {
   cycle: number;
   turn: number;
@@ -178,6 +185,8 @@ export interface BattleLogEntryWithParty {
   chargeRemaining?: number;
   /** Phase 9: 魔法なら「詠唱しはじめた」、物理なら「溜め始めた」と表記する用 */
   chargeSkillType?: "physical" | "magic";
+  /** Phase 6: 出血持ちが物理スキルで与ダメ後に受けた自己負けダメージ（ログで「出血の反動でXダメージ」表示用） */
+  bleedingSelfDamage?: number;
 }
 
 export interface BattleSummaryWithParty {
@@ -300,6 +309,14 @@ function getDebuffStatMult(debuffs: DebuffEntry[], stat: string): number {
   return mult;
 }
 
+/** Phase 5: デバフコード別のデフォルト statMult（麻痺＝EVA半減など）。付与時に未指定ならここを参照 */
+const DEBUFF_STAT_MULT_BY_CODE: Record<string, Record<string, number>> = {
+  paralysis: { EVA: 0.5 },
+};
+
+/** Phase 7: 毒デバフの DoT 割合（ターン開始時・現在HPのこの割合でダメージ）。HP0にしない処理は DoT 適用箇所で実施 */
+const POISON_DOT_PCT = 0.05;
+
 function tickDebuffs(partyDebuffs: DebuffEntry[][], enemyDebuffs: DebuffEntry[][]): void {
   for (const unit of partyDebuffs) {
     for (const d of unit) d.remainingCycles -= 1;
@@ -360,9 +377,20 @@ function randomFloat(min: number, max: number): number {
   return Math.random() * (max - min) + min;
 }
 
+const BATTLE_ALPHA = 0.2;
+
 function turnWeight(derived: { EVA: number }, base: BaseStats): number {
-  const BATTLE_ALPHA = 0.2;
   return Math.sqrt(derived.EVA) * (1 + BATTLE_ALPHA * (base.LUK / 7));
+}
+
+/** 行動順用：EVA にデバフ乗数を適用したうえで重みを算出（麻痺で速度半減を反映） */
+function turnWeightWithDebuffs(
+  derived: { EVA: number },
+  base: BaseStats,
+  debuffs: DebuffEntry[]
+): number {
+  const eva = derived.EVA * (debuffs?.length ? getDebuffStatMult(debuffs, "EVA") : 1);
+  return Math.sqrt(eva) * (1 + BATTLE_ALPHA * (base.LUK / 7));
 }
 
 function rollHit(attackerHit: number, defenderEva: number): boolean {
@@ -385,7 +413,7 @@ function pFatalGivenDirect(pDirectVal: number): number {
   return clamp(0.25 + (pDirectVal - 0.25) / 3, 0, 0.5);
 }
 
-/** 物理なら PDEF、魔法なら MDEF で減衰。Phase 7: バフ。Phase 8: デバフ。Phase 10: 属性耐性で最終ダメージを乗算。 */
+/** 物理なら PDEF、魔法なら MDEF で減衰。Phase 7: バフ。Phase 8: デバフ。Phase 10: 属性耐性で最終ダメージを乗算。Phase 4: forceDirect 時は直撃を強制し致命は通常確率。 */
 function resolveDamage(
   attacker: FighterState,
   defender: FighterState,
@@ -399,12 +427,15 @@ function resolveDamage(
   /** Phase 10: スキル属性。none/未指定時は耐性適用なし。 */
   attribute?: string,
   /** Phase 10: 防御側の属性耐性。装備・遺物実装後に渡す。 */
-  defenderResistances?: AttributeResistances
+  defenderResistances?: AttributeResistances,
+  /** Phase 4: true なら命中時に直撃を強制。致命は通常確率で判定。 */
+  forceDirect?: boolean
 ): { hit: boolean; direct: boolean; fatal: boolean; damage: number } {
   const aDerived = attacker.derived as Record<string, number>;
   const dDerived = defender.derived as Record<string, number>;
   const hitStat = (attackerBuffs?.length ? getBuffedStat(aDerived, attackerBuffs, "HIT") : attacker.derived.HIT) as number;
-  const evaStat = (defenderBuffs?.length ? getBuffedStat(dDerived, defenderBuffs, "EVA") : defender.derived.EVA) as number;
+  let evaStat = (defenderBuffs?.length ? getBuffedStat(dDerived, defenderBuffs, "EVA") : defender.derived.EVA) as number;
+  evaStat *= defenderDebuffs?.length ? getDebuffStatMult(defenderDebuffs, "EVA") : 1;
   const hit = rollHit(hitStat, evaStat);
   let direct = false;
   let fatal = false;
@@ -418,7 +449,7 @@ function resolveDamage(
 
   if (hit) {
     const pDir = pDirect(attacker, defender);
-    direct = Math.random() < pDir;
+    direct = forceDirect ? true : Math.random() < pDir;
     if (direct) {
       fatal = Math.random() < pFatalGivenDirect(pDir);
       if (fatal) defEffective *= 0.5;
@@ -542,18 +573,20 @@ function applyMoveColumn(position: BattlePosition, param: Record<string, unknown
   }
 }
 
-/** 生存している敵から列ウェイトでターゲットを1体抽選。スキル用の列ウェイト加算を渡せる。allowedIndices 指定時はその列の敵のみが対象。 */
+/** 生存している敵から列ウェイトでターゲットを1体抽選。useEqualWeight 時は列ウェイト無視で均等抽選。 */
 function pickEnemyTarget(
   enemies: FighterState[],
   positions: BattlePosition[],
   alive: boolean[],
   weightAdd?: SkillColumnWeightAdd,
-  allowedIndices?: number[] | null
+  allowedIndices?: number[] | null,
+  useEqualWeight?: boolean
 ): number {
   const pool = allowedIndices?.length
     ? allowedIndices.filter((i) => i >= 0 && i < ENEMY_COUNT && alive[i])
     : Array.from({ length: ENEMY_COUNT }, (_, i) => i).filter((i) => alive[i]);
   if (pool.length === 0) return 0;
+  if (useEqualWeight) return pool[Math.floor(Math.random() * pool.length)]!;
   let totalWeight = 0;
   const weights: number[] = [];
   for (const i of pool) {
@@ -584,20 +617,31 @@ function pickPartyTarget(partyAlive: boolean[]): number {
 
 type TurnSlot = { kind: "p"; index: number } | { kind: "e"; index: number };
 
-/** 行動順：パーティ1～3人＋敵3体を速度重みで抽選。誰が何番目かが分かる配列を返す。 */
+/** 行動順：パーティ1～3人＋敵3体を速度重みで抽選。デバフ（麻痺＝EVA半減）を反映。 */
 function buildTurnOrder(
   party: PartyFighter[],
   enemies: FighterState[],
   partyAlive: boolean[],
-  enemyAlive: boolean[]
+  enemyAlive: boolean[],
+  partyDebuffs: DebuffEntry[][],
+  enemyDebuffs: DebuffEntry[][]
 ): TurnSlot[] {
   const pool: TurnSlot[] = [];
   for (let i = 0; i < party.length; i++) if (partyAlive[i]) pool.push({ kind: "p", index: i });
   for (let i = 0; i < ENEMY_COUNT; i++) if (enemyAlive[i]) pool.push({ kind: "e", index: i });
 
   const getWeight = (s: TurnSlot): number => {
-    if (s.kind === "p") return turnWeight(party[s.index].derived, party[s.index].base);
-    return turnWeight(enemies[s.index].derived, enemies[s.index].base);
+    if (s.kind === "p")
+      return turnWeightWithDebuffs(
+        party[s.index].derived,
+        party[s.index].base,
+        partyDebuffs[s.index] ?? []
+      );
+    return turnWeightWithDebuffs(
+      enemies[s.index].derived,
+      enemies[s.index].base,
+      enemyDebuffs[s.index] ?? []
+    );
   };
 
   const order: TurnSlot[] = [];
@@ -645,7 +689,11 @@ export function runBattleWithParty(
   /** 戦闘開始時の味方の列位置。省略時は defaultPartyPositions。長さが party と一致する場合のみ使用 */
   initialPartyPositions?: BattlePosition[],
   /** Phase 10: 敵ごとの属性耐性。長さ3。未指定時は全員耐性なし(空オブジェクト)。装備・遺物実装後に敵側も拡張可能。 */
-  enemyAttributeResistances?: AttributeResistances[]
+  enemyAttributeResistances?: AttributeResistances[],
+  /** 敵の作戦スロット（省略時は常に通常攻撃）。渡す場合は敵全員が同じスロットを持つ。 */
+  enemyTacticSlots?: TacticSlotInput[],
+  /** 敵のスキルマスタ（skillId → SkillDataForBattle）。省略時はスキルなし。 */
+  enemySkills?: Record<string, SkillDataForBattle>
 ): BattleResultWithParty {
   if (partyInput.length === 0) {
     throw new Error("runBattleWithParty: party must have at least 1 member");
@@ -669,14 +717,19 @@ export function runBattleWithParty(
     (p) => p.attributeResistances ?? {}
   );
 
-  const enemies: FighterState[] = enemyPositions.map(() => {
+  const enemies: EnemyFighter[] = enemyPositions.map(() => {
     const derived = computeDerivedStats(enemyBase);
-    return {
+    const base: EnemyFighter = {
       base: enemyBase,
       derived,
       currentHp: derived.HP,
       currentMp: derived.MP,
     };
+    if (enemyTacticSlots?.length && enemySkills && Object.keys(enemySkills).length > 0) {
+      base.tacticSlots = enemyTacticSlots;
+      base.skills = enemySkills;
+    }
+    return base;
   });
 
   /** Phase 10: 敵ごとの属性耐性。未指定時は全員空（耐性なし）。 */
@@ -721,6 +774,12 @@ export function runBattleWithParty(
     { length: party.length },
     () => null
   );
+  /** 敵が作戦・スキルを持つ場合のクールダウン。enemyCooldowns[i][skillId] = 残りサイクル数 */
+  const enemyCooldowns: Record<string, number>[] = Array.from({ length: ENEMY_COUNT }, () => ({}));
+  const enemySkillUsedThisTurn: ({ skillId: string; cooldownCycles: number } | null)[] = Array.from(
+    { length: ENEMY_COUNT },
+    () => null
+  );
 
   /** docs/023 方式B: 味方ターン終了時。既存クールを1減算し、このターンで使ったスキルにCTをセット */
   function applyCooldownEndOfTurn(partyIndex: number): void {
@@ -733,6 +792,19 @@ export function runBattleWithParty(
     const used = skillUsedThisTurnByPartyIndex[partyIndex];
     if (used && used.cooldownCycles > 0) cooldowns[used.skillId] = used.cooldownCycles;
     skillUsedThisTurnByPartyIndex[partyIndex] = null;
+  }
+
+  /** 敵が作戦・スキルを持つ場合のターン終了時。CT を 1 減算し、このターンで使ったスキルに CT をセット */
+  function applyEnemyCooldownEndOfTurn(enemyIndex: number): void {
+    const cooldowns = enemyCooldowns[enemyIndex];
+    for (const skillId of Object.keys(cooldowns)) {
+      const next = Math.max(0, cooldowns[skillId]! - 1);
+      if (next <= 0) delete cooldowns[skillId];
+      else cooldowns[skillId] = next;
+    }
+    const used = enemySkillUsedThisTurn[enemyIndex];
+    if (used && used.cooldownCycles > 0) cooldowns[used.skillId] = used.cooldownCycles;
+    enemySkillUsedThisTurn[enemyIndex] = null;
   }
 
   for (let cycle = 1; cycle <= BATTLE_MAX_CYCLES; cycle++) {
@@ -748,7 +820,7 @@ export function runBattleWithParty(
       break;
     }
 
-    const order = buildTurnOrder(party, enemies, partyAlive, enemyAlive);
+    const order = buildTurnOrder(party, enemies, partyAlive, enemyAlive, partyDebuffs, enemyDebuffs);
     let turnIndex = 0;
 
     for (const slot of order) {
@@ -767,7 +839,9 @@ export function runBattleWithParty(
                 ? Math.floor((d.recordDamage ?? 0) * d.dotPct)
                 : Math.max(0, Math.floor(unit.currentHp * d.dotPct));
             if (dmg <= 0) continue;
-            unit.currentHp = Math.max(0, unit.currentHp - dmg);
+            // Phase 7: 毒デバフはこの効果ではHPを0にしない（最低1）
+            const minHp = d.code === "poison" ? 1 : 0;
+            unit.currentHp = Math.max(minHp, unit.currentHp - dmg);
             const snapAfter = snapshotPartyHpMp(party);
             const posSnap = snapshotPositions(partyPositions, currentEnemyPositions);
             log.push({
@@ -812,7 +886,9 @@ export function runBattleWithParty(
                 ? Math.floor((d.recordDamage ?? 0) * d.dotPct)
                 : Math.max(0, Math.floor(unit.currentHp * d.dotPct));
             if (dmg <= 0) continue;
-            unit.currentHp = Math.max(0, unit.currentHp - dmg);
+            // Phase 7: 毒デバフはこの効果ではHPを0にしない（最低1）
+            const minHp = d.code === "poison" ? 1 : 0;
+            unit.currentHp = Math.max(minHp, unit.currentHp - dmg);
             const snapAfter = snapshotPartyHpMp(party);
             const posSnap = snapshotPositions(partyPositions, currentEnemyPositions);
             log.push({
@@ -1051,19 +1127,30 @@ export function runBattleWithParty(
             continue;
           }
 
-          // Phase 6/7: ally_single / ally_all / self — 回復・解除・バフ（敵への攻撃は行わない）
+          // Phase 6/7/8: ally_single / ally_all / self — 回復・解除・バフ（敵への攻撃は行わない）
           const targetScope = skill.targetScope ?? "enemy_single";
           if (targetScope === "ally_single" || targetScope === "ally_all" || targetScope === "self") {
+            const effects = skill.effects ?? [];
+            // Phase 8: ally_single で heal_single(targetSelection=lowest_hp_percent) または dispel_attr_states がある場合はHP割合最低の1体
+            const useLowestHpPct =
+              targetScope === "ally_single" &&
+              effects.some(
+                (e) =>
+                  (e.effectType === "heal_single" &&
+                    (e.param as { targetSelection?: string })?.targetSelection === "lowest_hp_percent") ||
+                  e.effectType === "dispel_attr_states"
+              );
             const targets: number[] =
               targetScope === "self"
                 ? [actorIndex]
                 : targetScope === "ally_single"
                 ? (() => {
-                    const i = pickAllyTargetSingle(party, partyAlive);
+                    const i = useLowestHpPct
+                      ? pickAllyTargetSingle(party, partyAlive)
+                      : party.findIndex((_, idx) => partyAlive[idx]);
                     return i >= 0 ? [i] : [];
                   })()
                 : party.map((_, i) => i).filter((i) => partyAlive[i]);
-            const effects = skill.effects ?? [];
             let totalHealAmount = 0;
             let isHealAll = false;
             const hadHealEffect = effects.some(
@@ -1084,8 +1171,17 @@ export function runBattleWithParty(
                 }
               }
               if (e.effectType === "heal_all" && e.param && typeof e.param === "object") {
-                const p = e.param as { scale?: string };
-                const amount = resolveHealScale(p.scale ?? "", actor);
+                const p = e.param as { scale?: string; randMin?: number; randMax?: number };
+                let amount = resolveHealScale(p.scale ?? "", actor);
+                // Phase 2: 回復乱数（randMin～randMax を1回だけ掛け、味方全員に同じ量を適用）
+                if (amount > 0 && p.randMin != null && p.randMax != null) {
+                  const rMin = Number(p.randMin);
+                  const rMax = Number(p.randMax);
+                  if (rMin <= rMax) {
+                    const t = rMin + Math.random() * (rMax - rMin);
+                    amount = amount * t;
+                  }
+                }
                 if (amount > 0) {
                   isHealAll = true;
                   const floorAmount = Math.floor(amount);
@@ -1098,6 +1194,17 @@ export function runBattleWithParty(
                   }
                 }
               }
+            }
+            // Phase 8: dispel_attr_states — 対象の属性状態を全て解除（状態異常は触れない）。chance で確率判定
+            for (const e of effects) {
+              if (e.effectType !== "dispel_attr_states" || !e.param || typeof e.param !== "object") continue;
+              const p = e.param as { chance?: number };
+              const chance = p.chance != null ? Number(p.chance) : 1;
+              if (Math.random() >= chance) continue;
+              for (const targetIdx of targets) {
+                partyAttrStates[targetIdx] = [];
+              }
+              break;
             }
             // Phase 7: ally_buff — 味方にステータスバフを付与
             for (const e of effects) {
@@ -1232,6 +1339,8 @@ export function runBattleWithParty(
           // Phase 8: 毒霧・萎縮など apply_debuff のみのスキルはダメージ 0
           const powerMult = skill.powerMultiplier ?? 1.0;
           const effects = skill.effects ?? [];
+          // Phase 7: 列ウェイト無視（均等抽選）。effect で指定されていれば敵単体抽選を均等に
+          const useEqualTargetWeight = effects.some((e) => e.effectType === "target_select_equal_weight");
 
           // 列指定攻撃（damage_target_columns）: 指定列にいる敵全員にダメージ。targetColumns=[1,2,3] で全体攻撃
           let columnTargetIndices: number[] | null = null;
@@ -1305,10 +1414,18 @@ export function runBattleWithParty(
                         currentEnemyPositions,
                         enemyAlive,
                         weightAdd,
-                        columnTargetIndices
+                        columnTargetIndices,
+                        useEqualTargetWeight
                       )
                     : resampleTargetPerHit || h === 0
-                      ? pickEnemyTarget(enemies, currentEnemyPositions, enemyAlive, weightAdd)
+                      ? pickEnemyTarget(
+                          enemies,
+                          currentEnemyPositions,
+                          enemyAlive,
+                          weightAdd,
+                          undefined,
+                          useEqualTargetWeight
+                        )
                       : firstTargetIdx,
                 ];
             if (targetsThisHit.length > 0 && !isColumnAll) firstTargetIdx = targetsThisHit[0];
@@ -1317,6 +1434,20 @@ export function runBattleWithParty(
               if (!enemyAlive[targetIdx]) continue;
               let thisHitTriggeredAttr: string | undefined;
               let thisHitDebuffApplied: string | undefined;
+              // Phase 4: attr_state_force_direct — 対象が指定属性状態なら直撃を強制（致命は通常確率）
+              let forceDirect = false;
+              for (const e of effects) {
+                if (e.effectType !== "attr_state_force_direct" || !e.param || typeof e.param !== "object") continue;
+                const p = e.param as { triggerAttr?: string };
+                const triggerAttr = p.triggerAttr as string | undefined;
+                if (triggerAttr && hasAttrState(enemyAttrStates[targetIdx], triggerAttr)) {
+                  forceDirect = true;
+                  conditionMet = true;
+                  if (triggeredAttr === undefined) triggeredAttr = triggerAttr;
+                  thisHitTriggeredAttr = triggerAttr; // ログで「〇〇決壊！」および条件達成メッセージ用
+                  break;
+                }
+              }
             const result = resolveDamage(
               actor,
               enemies[targetIdx],
@@ -1328,7 +1459,8 @@ export function runBattleWithParty(
               partyDebuffs[actorIndex],
               enemyDebuffs[targetIdx],
               skill.attribute ?? undefined,
-              enemyResistances[targetIdx]
+              enemyResistances[targetIdx],
+              forceDirect
             );
             let finalDmg = result.damage;
             const splashPerEnemy = [0, 0, 0] as number[];
@@ -1400,6 +1532,29 @@ export function runBattleWithParty(
               thisHitDebuffApplied = code;
             }
 
+            // Phase 5: attr_state_trigger_debuff — 対象が指定属性状態なら必ずデバフ付与し属性状態を消費（麻痺・毒など）
+            for (const e of effects) {
+              if (e.effectType !== "attr_state_trigger_debuff" || !e.param || typeof e.param !== "object") continue;
+              const p = e.param as { triggerAttr?: string; debuffCode?: string; durationCycles?: number; statMult?: Record<string, number> };
+              const triggerAttr = p.triggerAttr as string | undefined;
+              if (!triggerAttr || !hasAttrState(enemyAttrStates[targetIdx], triggerAttr)) continue;
+              const code = (p.debuffCode as string) || "unknown";
+              const duration = Math.max(0, Number(p.durationCycles) ?? 0);
+              const statMult = p.statMult ?? DEBUFF_STAT_MULT_BY_CODE[code];
+              const meta: Parameters<typeof addDebuff>[3] = {};
+              if (statMult) meta.statMult = statMult;
+              if (code === "poison") {
+                meta.dotKind = "current_hp_pct";
+                meta.dotPct = POISON_DOT_PCT;
+              }
+              addDebuff(enemyDebuffs[targetIdx], code, duration, Object.keys(meta).length > 0 ? meta : undefined);
+              consumeAttrState(enemyAttrStates[targetIdx], triggerAttr);
+              conditionMet = true;
+              if (triggeredAttr === undefined) triggeredAttr = triggerAttr;
+              thisHitTriggeredAttr = triggerAttr;
+              thisHitDebuffApplied = code;
+            }
+
             // Phase 5: column_splash — ターゲットが指定列のとき、与ダメの一定割合を敵全体に（各敵で乱数・防御減算）
             for (const e of effects) {
               if (e.effectType !== "column_splash" || !e.param || typeof e.param !== "object") continue;
@@ -1425,7 +1580,7 @@ export function runBattleWithParty(
               conditionMet = true;
             }
 
-            // Phase 8: apply_debuff — 毒霧・萎縮の呪いなど。敵にデバフを付与
+            // Phase 8: apply_debuff — 毒霧・萎縮の呪いなど。敵にデバフを付与（Phase 3: targetScope: enemy_all なら敵全員に1回だけ）
             for (const e of effects) {
               if (e.effectType !== "apply_debuff" || !e.param || typeof e.param !== "object") continue;
               const p = e.param as {
@@ -1434,6 +1589,7 @@ export function runBattleWithParty(
                 damageKind?: string;
                 pct?: number;
                 statMult?: Record<string, number>;
+                targetScope?: string;
               };
               const code = (p.debuffCode as string) || "unknown";
               const duration = Math.max(0, Number(p.durationCycles) ?? 0);
@@ -1443,7 +1599,16 @@ export function runBattleWithParty(
                 meta.dotPct = Number(p.pct);
               }
               if (p.statMult && typeof p.statMult === "object") meta.statMult = p.statMult;
-              addDebuff(enemyDebuffs[targetIdx], code, duration, meta);
+              if (p.targetScope === "enemy_all") {
+                // 敵全員に1回だけ適用（同じヒット内で複数ターゲットに重複適用しない）
+                if (targetIdx === targetsThisHit[0]) {
+                  for (let i = 0; i < ENEMY_COUNT; i++) {
+                    if (enemyAlive[i]) addDebuff(enemyDebuffs[i], code, duration, meta);
+                  }
+                }
+              } else {
+                addDebuff(enemyDebuffs[targetIdx], code, duration, meta);
+              }
             }
 
             hitResults.push({ hit: result.hit, direct: result.direct, fatal: result.fatal });
@@ -1463,10 +1628,16 @@ export function runBattleWithParty(
               triggeredAttr: thisHitTriggeredAttr,
               debuffApplied: thisHitDebuffApplied,
             });
-            // Phase 2: ヒットごとに move_target_column を適用
-            for (const e of effects) {
-              if (e.effectType === "move_target_column" && e.param && typeof e.param === "object") {
-                applyMoveColumn(currentEnemyPositions[targetIdx], e.param as Record<string, unknown>);
+            // Phase 2: ヒット時のみ move_target_column を適用（命中していない敵には列移動しない。Phase 1: chance 指定時は確率で適用）
+            if (result.hit) {
+              for (const e of effects) {
+                if (e.effectType === "move_target_column" && e.param && typeof e.param === "object") {
+                  const p = e.param as Record<string, unknown>;
+                  const chance = p.chance != null ? Number(p.chance) : 1;
+                  if (chance >= 1 || Math.random() < chance) {
+                    applyMoveColumn(currentEnemyPositions[targetIdx], p);
+                  }
+                }
               }
             }
             } // for (const targetIdx of targetsThisHit)
@@ -1494,6 +1665,18 @@ export function runBattleWithParty(
           if (ctMain > 0) skillUsedThisTurnByPartyIndex[actorIndex] = { skillId: action.skillId!, cooldownCycles: ctMain };
           for (let i = 0; i < ENEMY_COUNT; i++) {
             if (enemies[i].currentHp <= 0) enemyAlive[i] = false;
+          }
+
+          // Phase 6: 出血デバフ — 物理スキルで与ダメ後、行動者が出血持ちなら合計与ダメの20%を自己に与え、出血を解除
+          let bleedingSelfDamage = 0;
+          if (
+            attackType === "physical" &&
+            totalDamage > 0 &&
+            (partyDebuffs[actorIndex] ?? []).some((d) => d.code === "bleeding" && d.remainingCycles > 0)
+          ) {
+            bleedingSelfDamage = Math.floor(totalDamage * 0.2);
+            actor.currentHp = Math.max(0, actor.currentHp - bleedingSelfDamage);
+            partyDebuffs[actorIndex] = (partyDebuffs[actorIndex] ?? []).filter((d) => d.code !== "bleeding");
           }
 
           const snapAfter = snapshotPartyHpMp(party);
@@ -1528,8 +1711,13 @@ export function runBattleWithParty(
             conditionMet,
             triggeredAttr,
             hitDetails: hitDetails.length > 0 ? hitDetails : undefined,
+            ...(bleedingSelfDamage > 0 ? { bleedingSelfDamage } : {}),
             ...snapshotPositions(partyPositions, currentEnemyPositions),
           });
+          if (actor.currentHp <= 0) {
+            partyAlive[actorIndex] = false;
+            chargeReservation[actorIndex] = null;
+          }
           applyCooldownEndOfTurn(actorIndex);
         } else {
           const targetIdx = pickEnemyTarget(enemies, currentEnemyPositions, enemyAlive);
@@ -1586,22 +1774,147 @@ export function runBattleWithParty(
         const enemyIdx = slot.index;
         if (enemyIdx >= ENEMY_COUNT || !enemyAlive[enemyIdx] || enemies[enemyIdx].currentHp <= 0) continue;
 
+        const enemy = enemies[enemyIdx];
+        let action: TacticAction = { actionType: "normal_attack", skillId: null };
+        if (enemy.tacticSlots?.length && enemy.skills && Object.keys(enemy.skills).length > 0) {
+          const tacticCtx: TacticEvaluationContext = {
+            cycle,
+            turnIndexInCycle: turnIndex,
+            actorPartyIndex: enemyIdx,
+            party: enemies.map((e, i) => ({
+              currentHp: e.currentHp,
+              maxHp: e.derived.HP,
+              currentMp: e.currentMp,
+              maxMp: e.derived.MP,
+              attrStates: attrStatesToSnapshot(enemyAttrStates[i] ?? []),
+              debuffs: debuffsToSnapshot(enemyDebuffs[i] ?? []),
+            })),
+            partyAlive: [...enemyAlive],
+            enemies: party.map((p, i) => ({
+              currentHp: p.currentHp,
+              maxHp: p.derived.HP,
+              currentMp: p.currentMp,
+              maxMp: p.derived.MP,
+              attrStates: attrStatesToSnapshot(partyAttrStates[i] ?? []),
+              debuffs: debuffsToSnapshot(partyDebuffs[i] ?? []),
+            })),
+            enemyAlive: [...partyAlive],
+            partyPositions: currentEnemyPositions,
+            enemyPositions: partyPositions,
+          };
+          const hasSkill = (skillId: string) => {
+            const skill = enemy.skills![skillId];
+            return !!skill && enemy.currentMp >= getMpCost(skill, enemy.base.CAP);
+          };
+          const isSkillOnCooldown = (skillId: string) => (enemyCooldowns[enemyIdx][skillId] ?? 0) > 0;
+          action = evaluateTacticsFromSpec(
+            toSlotsForEval(enemy.tacticSlots!),
+            tacticCtx,
+            hasSkill,
+            isSkillOnCooldown
+          );
+        }
+
+        if (action.actionType === "skill" && action.skillId) {
+          const skill = enemy.skills?.[action.skillId] as SkillDataForBattle | undefined;
+          if (skill && enemy.currentMp >= getMpCost(skill, enemy.base.CAP)) {
+            const targetPartyIdx = pickPartyTarget(partyAlive);
+            if (partyAlive[targetPartyIdx] && party[targetPartyIdx].currentHp > 0) {
+              const attackType = skill.battleSkillType === "magic" ? "magic" : "physical";
+              const powerMult = Number(skill.powerMultiplier) || 1;
+              const result = resolveDamage(
+                enemy,
+                party[targetPartyIdx],
+                attackType,
+                powerMult,
+                fatigue,
+                undefined,
+                partyBuffs[targetPartyIdx],
+                enemyDebuffs[enemyIdx],
+                partyDebuffs[targetPartyIdx],
+                undefined,
+                partyAttributeResistances[targetPartyIdx]
+              );
+              party[targetPartyIdx].currentHp = Math.max(0, party[targetPartyIdx].currentHp - result.damage);
+              if (result.hit && skill.attribute && skill.attribute !== "none") {
+                addAttrState(partyAttrStates[targetPartyIdx], skill.attribute, DEFAULT_ATTR_DURATION_CYCLES);
+              }
+              for (const e of skill.effects ?? []) {
+                if (e.effectType === "move_self_column" && e.param && typeof e.param === "object") {
+                  applyMoveColumn(currentEnemyPositions[enemyIdx], e.param as Record<string, unknown>);
+                }
+              }
+              enemy.currentMp = Math.max(0, enemy.currentMp - getMpCost(skill, enemy.base.CAP));
+              const ct = skill.cooldownCycles ?? 0;
+              if (ct > 0) enemySkillUsedThisTurn[enemyIdx] = { skillId: action.skillId!, cooldownCycles: ct };
+              // Phase 6: 出血デバフ — 敵が物理スキルで与ダメ後、出血持ちなら合計与ダメの20%を自己に与え、出血を解除
+              let enemyBleedingSelfDamage = 0;
+              if (
+                attackType === "physical" &&
+                result.damage > 0 &&
+                (enemyDebuffs[enemyIdx] ?? []).some((d) => d.code === "bleeding" && d.remainingCycles > 0)
+              ) {
+                enemyBleedingSelfDamage = Math.floor(result.damage * 0.2);
+                enemy.currentHp = Math.max(0, enemy.currentHp - enemyBleedingSelfDamage);
+                enemyDebuffs[enemyIdx] = (enemyDebuffs[enemyIdx] ?? []).filter((d) => d.code !== "bleeding");
+              }
+              const legacy = partyToLegacyPlayer(party);
+              const snapParty = snapshotPartyHpMp(party);
+              log.push({
+                cycle,
+                turn: turnIndex,
+                attacker: "enemy",
+                attackerEnemyIndex: enemyIdx,
+                target: "player",
+                targetPartyIndex: targetPartyIdx,
+                actionType: "skill",
+                skillName: skill.name,
+                fizzle: false,
+                hit: result.hit,
+                direct: result.direct,
+                fatal: result.fatal,
+                damage: result.damage,
+                targetHpAfter: party[targetPartyIdx].currentHp,
+                mpRecovery: 0,
+                playerHpAfter: legacy.playerHp,
+                playerMpAfter: legacy.playerMp,
+                enemyHpAfter: enemies.map((e) => e.currentHp),
+                enemyMpAfter: enemies.map((e) => e.currentMp),
+                partyHpAfter: snapParty.partyHp,
+                partyMpAfter: snapParty.partyMp,
+                logMessage: skill.logMessage ?? undefined,
+                tacticSlotOrder: action.matchedOrderIndex,
+                tacticSlotSkippedDueToCt: action.skippedDueToCt,
+                ...(enemyBleedingSelfDamage > 0 ? { bleedingSelfDamage: enemyBleedingSelfDamage } : {}),
+                ...snapshotPositions(partyPositions, currentEnemyPositions),
+              });
+              if (party[targetPartyIdx].currentHp <= 0) {
+                partyAlive[targetPartyIdx] = false;
+                chargeReservation[targetPartyIdx] = null;
+              }
+              if (enemy.currentHp <= 0) enemyAlive[enemyIdx] = false;
+              applyEnemyCooldownEndOfTurn(enemyIdx);
+              continue;
+            }
+          }
+        }
+
         const targetPartyIdx = pickPartyTarget(partyAlive);
         if (!partyAlive[targetPartyIdx] || party[targetPartyIdx].currentHp <= 0) continue;
 
         const result = resolveDamage(
-        enemies[enemyIdx],
-        party[targetPartyIdx],
-        "physical",
-        1.0,
-        fatigue,
-        undefined,
-        partyBuffs[targetPartyIdx],
-        enemyDebuffs[enemyIdx],
-        partyDebuffs[targetPartyIdx],
-        undefined,
-        partyAttributeResistances[targetPartyIdx]
-      );
+          enemy,
+          party[targetPartyIdx],
+          "physical",
+          1.0,
+          fatigue,
+          undefined,
+          partyBuffs[targetPartyIdx],
+          enemyDebuffs[enemyIdx],
+          partyDebuffs[targetPartyIdx],
+          undefined,
+          partyAttributeResistances[targetPartyIdx]
+        );
         party[targetPartyIdx].currentHp = Math.max(0, party[targetPartyIdx].currentHp - result.damage);
 
         const legacy = partyToLegacyPlayer(party);
@@ -1631,6 +1944,7 @@ export function runBattleWithParty(
           partyAlive[targetPartyIdx] = false;
           chargeReservation[targetPartyIdx] = null;
         }
+        applyEnemyCooldownEndOfTurn(enemyIdx);
       }
 
       if (party.every((p, i) => !partyAlive[i] || p.currentHp <= 0)) {

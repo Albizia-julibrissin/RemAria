@@ -33,9 +33,9 @@
 
 ## 2. 用語
 
-- **User**：ユーザーアカウント（`docs/02_domain_model.md` 準拠）。email で一意。
+- **User**：ユーザーアカウント（`docs/02_domain_model.md` 準拠）。email で一意。任意ID（accountId）も一意（指定時のみ）。
 - **セッション**：iron-session による暗号化 Cookie。ログイン時に userId を保持。
-- **登録**：新規 User 作成。email 未登録であること、パスワード要件を満たすことが条件。
+- **登録**：新規 User 作成。メールアドレス・ID（英数字・必須・重複不可）・名前（必須・重複可）で登録。email 未登録であること、accountId 未使用であること、パスワード要件を満たすことが条件。
 - **ログイン**：email + パスワードが正しい場合にセッションを確立。
 
 ------------------------------------------------------------------------
@@ -47,14 +47,16 @@
 ```json
 {
   "email": "user@example.com",
+  "accountId": "my_id_123",
   "password": "validPassword123",
   "name": "冒険者"
 }
 ```
 
-- `email`：必須。メール形式。255文字以内。既存ユーザーと重複不可。
+- `email`：必須。メール形式。255文字以内。既存ユーザーと**重複不可**。
+- `accountId`：必須。英数字のみ。既存ユーザーと**重複不可**。フォーマットは英数字（例: 3〜32文字など実装で規定）。
 - `password`：必須。8文字以上。MVPでは英数字のみ可（後で拡張）。
-- `name`：任意。表示名。50文字以内。未指定時は null または空。
+- `name`：必須。表示名。50文字以内。**重複可**。この値が**主人公の表示名**としても使われる（User にのみ保持、二重管理しない）。
 
 ### 3.2 ログイン
 
@@ -95,7 +97,7 @@
 }
 ```
 
-- `ERROR_CODE` 例：`EMAIL_ALREADY_EXISTS`, `INVALID_CREDENTIALS`, `VALIDATION_ERROR`
+- `ERROR_CODE` 例：`EMAIL_ALREADY_EXISTS`, `ACCOUNT_ID_ALREADY_EXISTS`, `INVALID_CREDENTIALS`, `VALIDATION_ERROR`
 
 ### 4.3 ログアウト成功時
 
@@ -114,8 +116,9 @@
 ### 5.1 登録
 
 - email が既に存在する場合は `EMAIL_ALREADY_EXISTS` を返す。
+- accountId が既に存在する場合は `ACCOUNT_ID_ALREADY_EXISTS` を返す。
 - パスワードは保存前にハッシュ化する（bcrypt 等）。平文は保存しない。
-- name が空文字の場合は null として保存する。
+- name は必須。空文字は不可（名前は重複可のため一意チェックは行わない）。この name が主人公の表示名としても使われる（User にのみ保持）。
 
 ### 5.2 ログイン
 
@@ -131,6 +134,7 @@
 ### 5.4 バリデーション
 
 - email：RFC 5322 の簡易チェック（`/^[^\s@]+@[^\s@]+\.[^\s@]+$/` 相当）、空不可、最大 255 文字。
+- accountId：必須。英数字のみ（例: `^[a-zA-Z0-9_]+$`）、長さは実装で規定（例: 3〜32 文字）。
 - password：8 文字以上、最大 72 文字（bcrypt 制限）。MVP では英数字のみ許可しても可。
 
 ------------------------------------------------------------------------
@@ -139,12 +143,13 @@
 
 ### 6.1 登録
 
-1. 入力検証（email 形式、password 長、name 長）
-2. email 重複チェック
-3. パスワードハッシュ化
-4. User 作成（DB）
-5. セッションに userId を設定
-6. 成功レスポンス + Cookie 返却
+1. 入力検証（email 形式、accountId 形式・長さ、password 長、name 長）
+2. email 重複チェック → 重複時は `EMAIL_ALREADY_EXISTS`
+3. accountId 重複チェック → 重複時は `ACCOUNT_ID_ALREADY_EXISTS`
+4. パスワードハッシュ化
+5. User 作成（DB）
+6. セッションに userId を設定
+7. 成功レスポンス + Cookie 返却
 
 ### 6.2 ログイン
 
@@ -166,7 +171,7 @@
 ### 7.1 永続化するデータ
 
 - **User**（DB）
-  - id, email, passwordHash, name, createdAt, updatedAt
+  - id, email, accountId（必須・一意）, passwordHash, name（必須。主人公の表示名もこれを使用）, createdAt, updatedAt
 - **セッション**（Cookie 内の暗号化データ）
   - userId（復号化して取得）
 
@@ -188,6 +193,7 @@
 ```json
 {
   "email": "new@example.com",
+  "accountId": "test_user_01",
   "password": "password123",
   "name": "テスト冒険者"
 }
@@ -212,6 +218,12 @@
 
 期待：`success: false`, `error: "EMAIL_ALREADY_EXISTS"`。User は作成されない。
 
+### ケース2b：accountId 重複
+
+**登録入力：** accountId に既存ユーザーが使用中の値を指定して登録
+
+期待：`success: false`, `error: "ACCOUNT_ID_ALREADY_EXISTS"`。User は作成されない。
+
 ### ケース3：ログイン認証失敗
 
 **ログイン入力：**
@@ -232,6 +244,7 @@
 | 条件 | 挙動 |
 |------|------|
 | 登録時 email 重複 | `EMAIL_ALREADY_EXISTS` |
+| 登録時 accountId 重複 | `ACCOUNT_ID_ALREADY_EXISTS` |
 | ログイン時 該当なし / パスワード不一致 | `INVALID_CREDENTIALS` |
 | バリデーション違反（形式・長さ） | `VALIDATION_ERROR`、該当フィールドを message に含める |
 | 未ログインで保護画面アクセス | ログイン画面へリダイレクト |
@@ -241,10 +254,11 @@
 
 ## 10. テスト観点
 
-- 登録：新規 email で User が作成され、パスワードがハッシュ化されて保存されること
+- 登録：新規 email（および任意の accountId・name）で User が作成され、パスワードがハッシュ化されて保存されること
 - ログイン：正しい email + パスワードでセッションが確立されること
 - ログイン：誤った認証情報で `INVALID_CREDENTIALS` が返ること
 - 登録：重複 email で `EMAIL_ALREADY_EXISTS` が返ること
+- 登録：重複 accountId で `ACCOUNT_ID_ALREADY_EXISTS` が返ること
 - ログアウト：セッションが破棄され、保護画面にアクセスできないこと
 - バリデーション：不正な email / 短い password でエラーになること
 
@@ -275,7 +289,7 @@
 | **URL** | `/register` |
 | **前提** | 未ログイン（既ログイン時はダッシュボードへリダイレクト可） |
 | **見出し** | 「アカウント登録」等 |
-| **要素（上から順）** | email input（必須）, password input（必須）, name input（任意）, 登録ボタン, 「すでにアカウントをお持ちの方はログイン」リンク |
+| **要素（上から順）** | email input（必須）, accountId input（必須・英数字）, password input（必須）, name input（必須）, 登録ボタン, 「すでにアカウントをお持ちの方はログイン」リンク |
 | **入力タイプ** | email: `type="email"`, password: `type="password"` |
 | **呼び出す API** | register |
 | **成功時** | `/dashboard`（または `/`）へリダイレクト |
@@ -352,17 +366,18 @@
 
 ## 付録：スキーマ変更
 
-認証に必要な Prisma スキーマ変更：
+認証に必要な Prisma スキーマ変更（`docs/08_database_schema.md` と同期）：
 
 ```prisma
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
-  passwordHash String   // 追加
-  name         String?
+  accountId    String   @unique  // ID（英数字・必須）。重複不可。
+  passwordHash String
+  name         String   // 表示名（必須・重複可）。主人公の表示名もこの値を使用。
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  playerCharacter PlayerCharacter?
+  // ... 他のリレーション
 }
 ```

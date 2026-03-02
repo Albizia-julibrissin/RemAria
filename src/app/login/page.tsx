@@ -15,11 +15,15 @@ export default async function LoginPage() {
   }
 
   const iconFilenames = getProtagonistIconFilenames();
+  const welcomeIcon =
+    iconFilenames.length > 0
+      ? iconFilenames[Math.floor(Math.random() * iconFilenames.length)]!
+      : null;
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-[400px] bg-base-elevated border border-base-border rounded-lg p-6">
-        <WelcomeCharacter iconFilenames={iconFilenames} />
+        <WelcomeCharacter iconFilename={welcomeIcon} />
         <h1 className="text-xl font-semibold text-text-primary mb-6">ログイン</h1>
         <LoginForm />
         <p className="mt-6 text-center text-sm text-text-muted">

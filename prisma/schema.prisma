@@ -13,8 +13,9 @@ datasource db {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
+  accountId    String   @unique // 英数字・必須・重複不可。docs/08
   passwordHash String
-  name         String?
+  name         String   // 必須・重複可。主人公の表示名もこの値を使用。docs/08
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
