@@ -3,7 +3,7 @@
 // spec/039: 作戦室 - プリセット編成と3人分の作戦スロット編集
 
 import { useState, useTransition } from "react";
-import { savePresetWithTactics, type TacticSlotRow, type BattleSkillOption } from "@/server/actions/tactics";
+import { savePresetWithTactics, type TacticSlotRow, type BattleSkillOption, type TacticsSkillCatalogItem } from "@/server/actions/tactics";
 import {
   SUBJECT_OPTIONS,
   CONDITION_OPTIONS,
@@ -73,6 +73,8 @@ interface TacticsEditorClientProps {
   initialTactics: { characterId: string; slots: TacticSlotRow[] }[];
   /** キャラID → そのキャラが習得している戦闘スキル一覧 */
   battleSkillsByCharacter: Record<string, BattleSkillOption[]>;
+  /** 編成3人が習得している戦闘スキルの一覧（重複まとめ済み、説明・タグ付き） */
+  skillCatalog: TacticsSkillCatalogItem[];
 }
 
 export function TacticsEditorClient({
@@ -81,6 +83,7 @@ export function TacticsEditorClient({
   mechs,
   initialTactics,
   battleSkillsByCharacter,
+  skillCatalog,
 }: TacticsEditorClientProps) {
   const [name, setName] = useState(preset.name ?? "");
   const [slot2Id, setSlot2Id] = useState<string>(preset.slot2?.characterId ?? "");
@@ -91,6 +94,7 @@ export function TacticsEditorClient({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [showSkillList, setShowSkillList] = useState(false);
 
   const slot1 = preset.slot1!;
   const characters: SlotCharacter[] = [slot1, preset.slot2, preset.slot3].filter(Boolean) as SlotCharacter[];
@@ -199,7 +203,16 @@ export function TacticsEditorClient({
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-base-border bg-base-elevated p-4">
-        <h2 className="text-lg font-medium text-text-primary mb-3">編成</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-text-primary">編成</h2>
+          <button
+            type="button"
+            onClick={() => setShowSkillList((v) => !v)}
+            className="inline-flex items-center rounded border border-base-border bg-base px-3 py-1.5 text-xs font-medium text-text-primary hover:border-brass hover:text-brass focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+          >
+            {showSkillList ? "スキル一覧を閉じる" : "スキル一覧を表示"}
+          </button>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-sm text-text-muted mb-1">プリセット名</label>
@@ -293,6 +306,61 @@ export function TacticsEditorClient({
           </div>
         </div>
       </div>
+
+      {showSkillList && (
+        <div className="rounded-lg border border-base-border bg-base-elevated p-4 space-y-3">
+          <h2 className="text-base font-medium text-text-primary">編成メンバーのスキル一覧</h2>
+          {skillCatalog.length === 0 ? (
+            <p className="text-sm text-text-muted">この編成が習得している戦闘スキルはありません。</p>
+          ) : (
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+              {skillCatalog.map((s) => (
+                <div key={s.id} className="flex gap-3 rounded border border-base-border bg-base px-3 py-2 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-text-primary">{s.name}</span>
+                      {s.battleSkillType && (
+                        <span className="inline-flex items-center rounded-full bg-base border border-base-border px-2 py-0.5 text-2xs text-text-muted">
+                          {BATTLE_SKILL_TYPE_LABELS[s.battleSkillType] ?? s.battleSkillType}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center rounded-full bg-base px-2 py-0.5 text-2xs text-text-muted border border-base-border/60">
+                        CT{s.chargeCycles}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-base px-2 py-0.5 text-2xs text-text-muted border border-base-border/60">
+                        CD{s.cooldownCycles}
+                      </span>
+                    </div>
+                    {s.description && (
+                      <p className="mt-1 text-xs text-text-muted break-words">{s.description}</p>
+                    )}
+                    {s.displayTags.length > 0 && (
+                      <p className="mt-1 text-[11px] text-text-muted break-words">
+                        {s.displayTags.join(" ")}
+                      </p>
+                    )}
+                  </div>
+                  {s.learnedBy.length > 0 && (
+                    <div className="flex flex-col items-end justify-center gap-1 min-w-[96px]">
+                      <span className="text-[11px] text-text-muted">習得キャラ</span>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {s.learnedBy.map((c) => (
+                          <span
+                            key={c.characterId}
+                            className="inline-flex items-center rounded-full bg-base border border-base-border px-2 py-0.5 text-[11px] text-text-primary"
+                          >
+                            {c.displayName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {[
         slot1,

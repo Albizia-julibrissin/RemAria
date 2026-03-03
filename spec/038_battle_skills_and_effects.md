@@ -23,7 +23,7 @@
 
 ## 1. 目的
 
-- 戦闘スキルを「固定カラム（種別・属性・消費・溜め等）」と「拡張可能な効果（effectType＋param）」で表現し、スキル追加・調整を **DB 追記**中心で行えるようにする。
+- 戦闘スキルを「固定カラム（種別・属性・消費・チャージタイム等）」と「拡張可能な効果（effectType＋param）」で表現し、スキル追加・調整を **DB 追記**中心で行えるようにする。
 - 戦闘ログ用の **通常メッセージ＋条件達成時の追加メッセージ**をスキルに持たせ、UI 側で色分けできるようにする。
 
 ------------------------------------------------------------------------
@@ -32,9 +32,9 @@
 
 - **battleSkillType**：physical / magic / support（物理 / 魔法 / 補助）。
 - **attribute（属性）**：none / crush / slash / pierce / burn / freeze / corrode / polarity。
-- **effectType**：スキル効果の種類。スキルは 0 個以上の効果を持つ。
-- **溜め（chargeCycles）**：サイクルで数える。0 なら即時発動。1 以上なら「発動予約」を作る。
-- **クールタイム（CT / cooldownCycles）**：使用後に N サイクル再使用不可。CT 中は作戦スロットで「次の作戦」を評価する（詳細は `docs/023_skill_cooldown_ct_design.md`）。
+- **effectType**：スキル効果の種類。スキルは 0 個以上の効果を持つ。**一覧・各 param の定義は `docs/042_battle_effect_types_reference.md` を正本とする。** 本 spec は API と Skill/SkillEffect の構造の契約のみ。
+- **チャージタイム（chargeCycles）**：サイクルで数える。0 なら即時発動。1 以上なら「発動予約」を作る。
+- **クールダウン（cooldownCycles）**：使用後に N サイクル再使用不可。クールダウン中は作戦スロットで「次の作戦」を評価する（詳細は `docs/023_skill_cooldown_ct_design.md`）。
 - **不発**：MP 不足などでスキルが発動しないこと。ダメージ・効果・属性状態付与なし。MP 消費なし。ターンは消費する。
 
 ------------------------------------------------------------------------
@@ -92,7 +92,7 @@
   - 不発時：MP 消費なし。ダメージなし。効果適用なし。属性状態付与なし。ターンは消費。
   - 不発時は戦闘ログに「MP 不足で不発」を出す（ログイベントの tone は warning 等）。
 
-### 5.2 溜め（chargeCycles）
+### 5.2 チャージタイム（chargeCycles）
 
 - chargeCycles=0：即時実行。
 - chargeCycles>=1：スキル選択時に「発動予約」を作り、そのターンは実行しない。
@@ -101,11 +101,11 @@
   - 0 になったターンでそのスキルを実行する。
 - 予約中に死亡した場合は予約は破棄する。
 
-### 5.2.5 クールタイム（cooldownCycles）
+### 5.2.5 クールダウン（cooldownCycles）
 
-- cooldownCycles=0：CT なし。使用制限なし。
-- cooldownCycles≥1：スキルを**実行した**時点で、そのキャラに「残り N サイクル」のクールを付与。各キャラのターン開始時に残りを 1 減らし、0 になったターンから再使用可能。
-- **作戦評価**：条件を満たしたスロットの行動がスキルで、そのスキルが CT 中なら、そのスロットは採用せず**次のスロットを評価**する（フォールバック）。MP 不足の不発時は次のスロットへは行かない（現行どおり）。
+- cooldownCycles=0：クールダウンなし。使用制限なし。
+- cooldownCycles≥1：スキルを**実行した**時点で、そのキャラに「残り N サイクル」のクールダウンを付与。各キャラのターン開始時に残りを 1 減らし、0 になったターンから再使用可能。
+- **作戦評価**：条件を満たしたスロットの行動がスキルで、そのスキルがクールダウン中なら、そのスロットは採用せず**次のスロットを評価**する（フォールバック）。MP 不足の不発時は次のスロットへは行かない（現行どおり）。
 - 詳細は `docs/023_skill_cooldown_ct_design.md` を参照。
 
 ### 5.3 多ヒット
@@ -139,7 +139,7 @@
 ## 6. 処理フロー（概要）
 
 1. 作戦スロットによりスキルが選ばれる（spec/039）。
-2. 溜め予約の有無を確認し、必要なら予約作成／カウント減算。
+2. チャージタイム予約の有無を確認し、必要なら予約作成／カウント減算。
 3. MP 不足なら不発ログのみ出して終了。
 4. ターゲット抽選（多ヒットならヒットごと）。
 5. 命中→直撃/致命→ダメージ計算→属性耐性→効果（effectType）適用→属性状態付与。
@@ -156,7 +156,7 @@
   - mpCostCapCoef（Decimal）
   - mpCostFlat（Int）
   - chargeCycles（Int）
-  - cooldownCycles（Int）：使用後の再使用不可サイクル数。0=CT なし。`docs/023_skill_cooldown_ct_design.md` 参照。
+  - cooldownCycles（Int）：使用後の再使用不可サイクル数。0=クールダウンなし。`docs/023_skill_cooldown_ct_design.md` 参照。
   - powerMultiplier（Decimal?）
   - hitsMin/hitsMax（Int）
   - resampleTargetPerHit（Boolean）
@@ -174,6 +174,8 @@
 
 #### effectType と param（JSON）の具体例
 
+**※ 全 effectType の一覧・param の詳細は `docs/042_battle_effect_types_reference.md` を正本として参照すること。** 以下は概要。
+
 | effectType | 意味 | param 例（JSON） | 使うスキル例 |
 |------------|------|------------------|--------------|
 | **attr_state_trigger_damage** | 対象が指定の属性状態ならダメージ倍率を掛け、その属性状態を消費する | `{ "triggerAttr": "crush", "damageMultiplier": 1.5, "consumeAttr": true }` | ハイスピア（圧縮なら1.5倍＋圧縮消費） |
@@ -187,15 +189,15 @@
 | **attr_state_chance_debuff** | 対象が指定の属性状態なら確率で状態異常を付与し、属性状態を消費する | `{ "triggerAttr": "burn", "chance": 0.5, "debuffCode": "burning", "durationCycles": 2, "includeCurrent": true, "recordDamagePct": 0.2 }` | メテオ（焼損→燃焼） |
 | **heal_all** / **heal_single** | 味方全体／味方単体を回復する | `{ "scale": "MATK*0.5" }` | 癒しの光、応急手当 |
 | **dispel_debuffs** / **dispel_debuff** | 指定状態異常を解除／最大 N 個解除 | `{ "list": [] }` または `{ "count": 1 }` | 癒しの光、浄化 |
-| **apply_debuff** | 対象に状態異常を付与する | `{ "debuffCode": "poison", "durationCycles": 2, "tick": "turn_start", "damageKind": "current_hp_pct", "pct": 0.05 }` など | 毒霧、萎縮の呪い |
+| **apply_debuff** | 対象に状態異常を付与する | `{ "debuffCode": "poison", "durationCycles": 2, "tick": "turn_start", "damageKind": "current_hp_pct", "pct": 0.05 }` など。**statMult** でステータス倍率を指定可能（例: `{ "HIT": 0.8 }` で命中力20%ダウン）。付与されたユニットが**攻撃者**のとき命中判定で HIT に乗算、**防御者**のときは EVA/PDEF/MDEF 等に乗算。 | 毒霧、萎縮の呪い、排熱スチーム（accuracy_down） |
 
 - 複数効果を持つスキルは、SkillEffect を複数行持つ（例：研ぎ澄まされた感覚＝ally_buff 2 件＋self_attr_state_cost 1 件）。
-- **seed** では 30 種のうち効果が必要な 22 スキル分の SkillEffect を登録している（合計 29 行）。効果なしは列ウェイト・多ヒット・溜め・属性付与のみで Skill 側で完結するスキル。
+- **seed** では 30 種のうち効果が必要な 22 スキル分の SkillEffect を登録している（合計 29 行）。効果なしは列ウェイト・多ヒット・チャージタイム・属性付与のみで Skill 側で完結するスキル。
 - CSV の `effects` 列は**仕様メモ・人間向け**。実装では上記の effectType ＋ param を DB に持ち、戦闘解決時にこれだけ見れば動くようにする。
 
 ### 7.2 保存しないデータ（戦闘中のみ）
 
-- HP/MP の現在値、属性状態、状態異常、バフ、溜め予約、列（col）の現在位置。
+- HP/MP の現在値、属性状態、状態異常、バフ、チャージタイム予約、列（col）の現在位置。
 - 状態異常の「付与時メタ情報」（例：燃焼の元ダメージ）など。
 
 ------------------------------------------------------------------------

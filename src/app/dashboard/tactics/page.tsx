@@ -1,7 +1,14 @@
 // spec/039: 作戦室 - パーティプリセット選択と作戦スロット編集
 
 import Link from "next/link";
-import { getPartyPresets, getPartyPresetWithCharacters, getTacticsForCharacters, getCharactersForPartySlots, getBattleSkillsForCharacters } from "@/server/actions/tactics";
+import {
+  getPartyPresets,
+  getPartyPresetWithCharacters,
+  getTacticsForCharacters,
+  getCharactersForPartySlots,
+  getBattleSkillsForCharacters,
+  getTacticsSkillCatalogForCharacters,
+} from "@/server/actions/tactics";
 import { TacticsEditorClient } from "./tactics-editor-client";
 import { CreatePresetForm } from "./create-preset-form";
 
@@ -72,6 +79,7 @@ export default async function TacticsRoomPage({
   const { tactics: initialTactics } = await getTacticsForCharacters(characterIds);
   const { companions, mechs } = await getCharactersForPartySlots();
   const battleSkillsByCharacter = await getBattleSkillsForCharacters(characterIds);
+  const { skills: skillCatalog } = await getTacticsSkillCatalogForCharacters(characterIds);
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -89,6 +97,7 @@ export default async function TacticsRoomPage({
         mechs={mechs}
         initialTactics={initialTactics}
         battleSkillsByCharacter={battleSkillsByCharacter}
+        skillCatalog={skillCatalog}
       />
 
       <p className="mt-8">

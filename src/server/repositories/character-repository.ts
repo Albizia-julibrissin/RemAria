@@ -69,7 +69,9 @@ export async function createProtagonist(data: { userId: string; iconFilename: st
       select: { name: true },
     });
     if (!user) throw new Error("User not found");
-    const character = await tx.character.create({
+
+    // 主人公本体
+    const protagonist = await tx.character.create({
       data: {
         userId: data.userId,
         category: "protagonist",
@@ -79,11 +81,24 @@ export async function createProtagonist(data: { userId: string; iconFilename: st
       },
       select: { id: true },
     });
+
+    // ベースメカ（装備なし・基礎ステのみ）
+    await tx.character.create({
+      data: {
+        userId: data.userId,
+        category: "mech",
+        displayName: "メカ",
+        iconFilename: null,
+        ...INITIAL_PROTAGONIST_STATS,
+      },
+      select: { id: true },
+    });
+
     await tx.user.update({
       where: { id: data.userId },
-      data: { protagonistCharacterId: character.id },
+      data: { protagonistCharacterId: protagonist.id },
     });
-    return character;
+    return protagonist;
   });
 }
 

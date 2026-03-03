@@ -90,9 +90,26 @@ model Character {
   partyPresetsSlot1 PartyPreset[] @relation("PresetSlot1")
   partyPresetsSlot2 PartyPreset[] @relation("PresetSlot2")
   partyPresetsSlot3 PartyPreset[] @relation("PresetSlot3")
+  mechaEquipments  MechaEquipment[]
 
   @@index([userId])
   @@index([userId, category])
+}
+
+/// spec/044: メカの装備。1メカあたり各部位1つまで。
+model MechaEquipment {
+  id              String        @id @default(cuid())
+  characterId     String        // メカ（category=mech の Character）
+  character       Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  slot            String        // frame | core | head | rightArm | leftArm | legs
+  mechaPartTypeId String
+  mechaPartType   MechaPartType @relation(fields: [mechaPartTypeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([characterId, slot])
+  @@index([characterId])
+  @@index([mechaPartTypeId])
 }
 
 /// spec/039: 作戦室で編集するパーティプリセット。slot1=主人公（固定）、slot2=仲間、slot3=メカ。
@@ -264,12 +281,56 @@ model FacilityTypeTag {
   @@index([tagId])
 }
 
+/// spec/044: メカパーツ種別マスタ。部位ごとの基礎ステ加算とフレーム倍率、紐づくメカスキルを定義。
+model MechaPartType {
+  id        String   @id @default(cuid())
+  slot      String   // frame | core | head | rightArm | leftArm | legs
+  name      String
+
+  /// フレーム用の基礎ステ倍率（JSON オブジェクト）。slot=frame のときのみ使用。
+  /// 例: { "STR": 1.2, "DEX": 0.8 }。キーが無い基礎ステは 1.0 扱い。
+  statRates Json?
+
+  /// フレーム以外の部位用のフラット加算値。NULL は 0 扱い。
+  strAdd   Int? @default(0)
+  intAdd   Int? @default(0)
+  vitAdd   Int? @default(0)
+  wisAdd   Int? @default(0)
+  dexAdd   Int? @default(0)
+  agiAdd   Int? @default(0)
+  lukAdd   Int? @default(0)
+  capAdd   Int? @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mechaPartTypeSkills MechaPartTypeSkill[]
+  mechaEquipments     MechaEquipment[]
+}
+
+/// spec/044: メカパーツ種別 ↔ スキル の多対多。1 パーツ種別に 0 個以上のメカスキルを紐づける。
+model MechaPartTypeSkill {
+  id              String        @id @default(cuid())
+  mechaPartTypeId String
+  mechaPartType   MechaPartType @relation(fields: [mechaPartTypeId], references: [id], onDelete: Cascade)
+  skillId         String
+  skill           Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  orderIndex      Int           @default(0)
+  createdAt       DateTime      @default(now())
+
+  @@unique([mechaPartTypeId, skillId])
+  @@index([mechaPartTypeId])
+  @@index([skillId])
+}
+
 /// spec/030, docs/08, 15: スキルマスタ。工業スキルは category=industrial。戦闘スキルは category=battle_active（spec/038）。
 model Skill {
   id          String   @id @default(cuid())
   name        String
   category    String   // industrial / battle_active / battle_passive 等
   description String?
+  // 表示用タグ（作戦室スキル一覧・ツールチップ用）。docs/14_initial_skills.csv の display_tags から Seed で投入。
+  displayTags Json?
   // 工業スキル用。effectType: time_reduction | production_bonus。effectValue: 百分率（5 = 5%）。targetTagId の設備に配備時のみ発動。
   effectType   String?  // time_reduction | production_bonus
   effectValue  Int?     // 例: 5 → 5%
@@ -282,8 +343,8 @@ model Skill {
   battleSkillType      String?   // physical / magic / support
   mpCostCapCoef        Decimal?  // CAP * this + mpCostFlat
   mpCostFlat           Int?
-  chargeCycles         Int?      // 溜めサイクル。0=即時
-  cooldownCycles       Int?      // クールタイム。使用後Nサイクル再使用不可。0=CTなし（docs/023）
+  chargeCycles         Int?      // チャージタイム（サイクル）。0=即時発動
+  cooldownCycles       Int?      // クールダウン（サイクル）。使用後Nサイクル再使用不可。0=クールダウンなし（docs/023）
   powerMultiplier      Decimal?  // ダメージ/回復倍率
   hitsMin              Int?      // 攻撃回数 min
   hitsMax              Int?      // 攻撃回数 max
@@ -299,6 +360,7 @@ model Skill {
   characterSkills CharacterSkill[]
   skillEffects    SkillEffect[]
   tacticSlots     TacticSlot[]
+  mechaPartTypeSkills MechaPartTypeSkill[]
 
   @@unique([name, category])
   @@index([category])

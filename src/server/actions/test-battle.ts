@@ -131,6 +131,84 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     },
   });
 
+  // spec/044: メカは装備パーツのスキルを使用。戦闘用に skillId → SkillDataForBattle を事前取得。
+  const mechIds = characters.filter((x) => x.category === "mech").map((x) => x.id);
+  const mechSkillsByCharId = new Map<string, Record<string, SkillDataForBattle>>();
+  if (mechIds.length > 0) {
+    const mechEquips = await prisma.mechaEquipment.findMany({
+      where: { characterId: { in: mechIds } },
+      select: {
+        characterId: true,
+        mechaPartType: {
+          select: {
+            mechaPartTypeSkills: {
+              select: {
+                skill: {
+                  select: {
+                    id: true,
+                    name: true,
+                    battleSkillType: true,
+                    powerMultiplier: true,
+                    mpCostCapCoef: true,
+                    mpCostFlat: true,
+                    hitsMin: true,
+                    hitsMax: true,
+                    resampleTargetPerHit: true,
+                    targetScope: true,
+                    attribute: true,
+                    chargeCycles: true,
+                    cooldownCycles: true,
+                    weightAddFront: true,
+                    weightAddMid: true,
+                    weightAddBack: true,
+                    logMessage: true,
+                    logMessageOnCondition: true,
+                    skillEffects: { select: { effectType: true, param: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    for (const eq of mechEquips) {
+      let map = mechSkillsByCharId.get(eq.characterId);
+      if (!map) {
+        map = {};
+        mechSkillsByCharId.set(eq.characterId, map);
+      }
+      for (const pts of eq.mechaPartType.mechaPartTypeSkills) {
+        const sk = pts.skill;
+        if (!sk || map[sk.id]) continue;
+        map[sk.id] = {
+          name: sk.name,
+          battleSkillType: sk.battleSkillType,
+          powerMultiplier: sk.powerMultiplier != null ? Number(sk.powerMultiplier) : null,
+          mpCostCapCoef: Number(sk.mpCostCapCoef ?? 0),
+          mpCostFlat: sk.mpCostFlat ?? 0,
+          hitsMin: sk.hitsMin ?? undefined,
+          hitsMax: sk.hitsMax ?? undefined,
+          resampleTargetPerHit: sk.resampleTargetPerHit ?? undefined,
+          targetScope: sk.targetScope ?? undefined,
+          attribute: sk.attribute ?? undefined,
+          chargeCycles: sk.chargeCycles ?? undefined,
+          cooldownCycles: sk.cooldownCycles ?? undefined,
+          weightAddFront: sk.weightAddFront != null ? Number(sk.weightAddFront) : undefined,
+          weightAddMid: sk.weightAddMid != null ? Number(sk.weightAddMid) : undefined,
+          weightAddBack: sk.weightAddBack != null ? Number(sk.weightAddBack) : undefined,
+          effects:
+            sk.skillEffects?.map((e) => ({
+              effectType: e.effectType,
+              param: (e.param as Record<string, unknown>) ?? {},
+            })) ?? [],
+          logMessage: sk.logMessage ?? undefined,
+          logMessageOnCondition: sk.logMessageOnCondition ?? undefined,
+        };
+      }
+    }
+  }
+
   const partyInput: PartyMemberInput[] = [];
   const partyIconFilenames: (string | null)[] = [];
   const order = [preset.slot1CharacterId, preset.slot2CharacterId, preset.slot3CharacterId].filter(Boolean) as string[];
@@ -165,34 +243,41 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
       actionType: s.actionType,
       skillId: s.skillId,
     }));
-    const skills: Record<string, SkillDataForBattle> = {};
-    for (const cs of c.characterSkills) {
-      const sk = cs.skill;
-      skills[sk.id] = {
-        name: sk.name,
-        battleSkillType: sk.battleSkillType,
-        powerMultiplier: sk.powerMultiplier != null ? Number(sk.powerMultiplier) : null,
-        mpCostCapCoef: Number(sk.mpCostCapCoef ?? 0),
-        mpCostFlat: sk.mpCostFlat ?? 0,
-        hitsMin: sk.hitsMin ?? undefined,
-        hitsMax: sk.hitsMax ?? undefined,
-        resampleTargetPerHit: sk.resampleTargetPerHit ?? undefined,
-        targetScope: sk.targetScope ?? undefined,
-        attribute: sk.attribute ?? undefined,
-        chargeCycles: sk.chargeCycles ?? undefined,
-        cooldownCycles: sk.cooldownCycles ?? undefined,
-        weightAddFront: sk.weightAddFront != null ? Number(sk.weightAddFront) : undefined,
-        weightAddMid: sk.weightAddMid != null ? Number(sk.weightAddMid) : undefined,
-        weightAddBack: sk.weightAddBack != null ? Number(sk.weightAddBack) : undefined,
-        effects:
-          sk.skillEffects?.map((e) => ({
-            effectType: e.effectType,
-            param: (e.param as Record<string, unknown>) ?? {},
-          })) ?? [],
-        logMessage: sk.logMessage ?? undefined,
-        logMessageOnCondition: sk.logMessageOnCondition ?? undefined,
-      };
+
+    // メカは装備パーツのスキル、それ以外は CharacterSkill（battle_active）
+    let skills: Record<string, SkillDataForBattle> = {};
+    if (c.category === "mech") {
+      skills = mechSkillsByCharId.get(c.id) ?? {};
+    } else {
+      for (const cs of c.characterSkills) {
+        const sk = cs.skill;
+        skills[sk.id] = {
+          name: sk.name,
+          battleSkillType: sk.battleSkillType,
+          powerMultiplier: sk.powerMultiplier != null ? Number(sk.powerMultiplier) : null,
+          mpCostCapCoef: Number(sk.mpCostCapCoef ?? 0),
+          mpCostFlat: sk.mpCostFlat ?? 0,
+          hitsMin: sk.hitsMin ?? undefined,
+          hitsMax: sk.hitsMax ?? undefined,
+          resampleTargetPerHit: sk.resampleTargetPerHit ?? undefined,
+          targetScope: sk.targetScope ?? undefined,
+          attribute: sk.attribute ?? undefined,
+          chargeCycles: sk.chargeCycles ?? undefined,
+          cooldownCycles: sk.cooldownCycles ?? undefined,
+          weightAddFront: sk.weightAddFront != null ? Number(sk.weightAddFront) : undefined,
+          weightAddMid: sk.weightAddMid != null ? Number(sk.weightAddMid) : undefined,
+          weightAddBack: sk.weightAddBack != null ? Number(sk.weightAddBack) : undefined,
+          effects:
+            sk.skillEffects?.map((e) => ({
+              effectType: e.effectType,
+              param: (e.param as Record<string, unknown>) ?? {},
+            })) ?? [],
+          logMessage: sk.logMessage ?? undefined,
+          logMessageOnCondition: sk.logMessageOnCondition ?? undefined,
+        };
+      }
     }
+
     partyInput.push({
       displayName: c.category === "protagonist" && user?.name ? user.name : c.displayName,
       base,

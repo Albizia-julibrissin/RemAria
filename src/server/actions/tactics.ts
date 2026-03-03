@@ -283,6 +283,23 @@ export async function savePresetWithTactics(
 
 export type BattleSkillOption = { id: string; name: string; battleSkillType: string | null };
 
+export type TacticsSkillCatalogItem = {
+  id: string;
+  name: string;
+  battleSkillType: string | null;
+  chargeCycles: number;
+  cooldownCycles: number;
+  targetScope: string | null;
+  attribute: string | null;
+  description: string | null;
+  displayTags: string[];
+  learnedBy: {
+    characterId: string;
+    displayName: string;
+    iconFilename: string | null;
+  }[];
+};
+
 /** 作戦室用：仲間・メカの一覧（slot2/slot3 の選択肢） */
 export async function getCharactersForPartySlots() {
   const session = await getSession();
@@ -298,39 +315,215 @@ export async function getCharactersForPartySlots() {
   return { companions, mechs };
 }
 
-/** 指定キャラが習得している戦闘スキルのみ取得（作戦の行動プルダウン用） */
+/** 指定キャラが習得している戦闘スキルのみ取得（作戦の行動プルダウン用）。メカは装備パーツのスキルを返す（spec/044）。 */
 export async function getBattleSkillsForCharacters(characterIds: string[]) {
   const session = await getSession();
   if (!session.userId || characterIds.length === 0) return {} as Record<string, BattleSkillOption[]>;
 
   const allowed = await prisma.character.findMany({
     where: { id: { in: characterIds }, userId: session.userId },
-    select: { id: true },
+    select: { id: true, category: true },
   });
   const allowedSet = new Set(allowed.map((c) => c.id));
-
-  const learned = await prisma.characterSkill.findMany({
-    where: {
-      characterId: { in: characterIds },
-      skill: { category: "battle_active" },
-    },
-    select: {
-      characterId: true,
-      skill: { select: { id: true, name: true, battleSkillType: true } },
-    },
-  });
+  const mechIds = new Set(allowed.filter((c) => c.category === "mech").map((c) => c.id));
+  const nonMechIds = characterIds.filter((id) => allowedSet.has(id) && !mechIds.has(id));
 
   const byChar: Record<string, BattleSkillOption[]> = {};
-  for (const id of characterIds) {
-    if (!allowedSet.has(id)) continue;
-    byChar[id] = learned
-      .filter((l) => l.characterId === id)
-      .map((l) => ({
-        id: l.skill.id,
-        name: l.skill.name,
-        battleSkillType: l.skill.battleSkillType,
-      }))
-      .sort((a, b) => (a.battleSkillType ?? "").localeCompare(b.battleSkillType ?? "") || a.name.localeCompare(b.name));
+
+  // 主人公・仲間: CharacterSkill（battle_active）
+  if (nonMechIds.length > 0) {
+    const learned = await prisma.characterSkill.findMany({
+      where: {
+        characterId: { in: nonMechIds },
+        skill: { category: "battle_active" },
+      },
+      select: {
+        characterId: true,
+        skill: { select: { id: true, name: true, battleSkillType: true } },
+      },
+    });
+    for (const id of nonMechIds) {
+      byChar[id] = learned
+        .filter((l) => l.characterId === id)
+        .map((l) => ({
+          id: l.skill.id,
+          name: l.skill.name,
+          battleSkillType: l.skill.battleSkillType,
+        }))
+        .sort((a, b) => (a.battleSkillType ?? "").localeCompare(b.battleSkillType ?? "") || a.name.localeCompare(b.name));
+    }
   }
+
+  // メカ: 装備パーツ経由のスキル（MechaEquipment → MechaPartTypeSkill → Skill, category=mecha）
+  if (mechIds.size > 0) {
+    const mechPartSkills = await prisma.mechaEquipment.findMany({
+      where: { characterId: { in: [...mechIds] } },
+      select: {
+        characterId: true,
+        mechaPartType: {
+          select: {
+            mechaPartTypeSkills: {
+              select: { skill: { select: { id: true, name: true, battleSkillType: true } } },
+            },
+          },
+        },
+      },
+    });
+    for (const id of mechIds) {
+      const skillSet = new Map<string, BattleSkillOption>();
+      for (const eq of mechPartSkills) {
+        if (eq.characterId !== id) continue;
+        for (const pts of eq.mechaPartType.mechaPartTypeSkills) {
+          const skill = pts.skill;
+          if (skill && !skillSet.has(skill.id)) {
+            skillSet.set(skill.id, {
+              id: skill.id,
+              name: skill.name,
+              battleSkillType: skill.battleSkillType,
+            });
+          }
+        }
+      }
+      byChar[id] = Array.from(skillSet.values()).sort(
+        (a, b) => (a.battleSkillType ?? "").localeCompare(b.battleSkillType ?? "") || a.name.localeCompare(b.name)
+      );
+    }
+  }
+
   return byChar;
+}
+
+/** 作戦室用: 編成3人が習得／装備している戦闘スキルを重複排除して一覧取得。メカは装備パーツのスキルを含む（spec/044）。 */
+export async function getTacticsSkillCatalogForCharacters(characterIds: string[]) {
+  const session = await getSession();
+  if (!session.userId || characterIds.length === 0) {
+    return { skills: [] as TacticsSkillCatalogItem[], error: "UNAUTHORIZED" as const };
+  }
+
+  // 所有キャラのみ対象（category も取得してメカ判定）
+  const owned = await prisma.character.findMany({
+    where: { id: { in: characterIds }, userId: session.userId },
+    select: { id: true, displayName: true, iconFilename: true, category: true },
+  });
+  const ownedIds = new Set(owned.map((c) => c.id));
+  const ids = characterIds.filter((id) => ownedIds.has(id));
+  if (ids.length === 0) {
+    return { skills: [] as TacticsSkillCatalogItem[] };
+  }
+
+  const ownedById = new Map(owned.map((c) => [c.id, c]));
+  const mechIds = ids.filter((id) => ownedById.get(id)?.category === "mech");
+  const nonMechIds = ids.filter((id) => ownedById.get(id)?.category !== "mech");
+
+  const bySkillId = new Map<string, TacticsSkillCatalogItem>();
+
+  const pushSkill = (skill: {
+    id: string;
+    name: string;
+    battleSkillType: string | null;
+    chargeCycles: number | null;
+    cooldownCycles: number | null;
+    targetScope: string | null;
+    attribute: string | null;
+    description: string | null;
+    displayTags: unknown;
+  }, characterId: string) => {
+    const character = ownedById.get(characterId);
+    const learnedByEntry = character
+      ? { characterId: character.id, displayName: character.displayName, iconFilename: character.iconFilename }
+      : null;
+    const existing = bySkillId.get(skill.id);
+    if (!existing) {
+      const rawTags = (skill.displayTags ?? []) as unknown;
+      const tags: string[] = Array.isArray(rawTags) ? rawTags.filter((t): t is string => typeof t === "string") : [];
+      bySkillId.set(skill.id, {
+        id: skill.id,
+        name: skill.name,
+        battleSkillType: skill.battleSkillType,
+        chargeCycles: skill.chargeCycles ?? 0,
+        cooldownCycles: skill.cooldownCycles ?? 0,
+        targetScope: skill.targetScope ?? null,
+        attribute: skill.attribute ?? null,
+        description: skill.description ?? null,
+        displayTags: tags,
+        learnedBy: learnedByEntry ? [learnedByEntry] : [],
+      });
+    } else if (learnedByEntry && !existing.learnedBy.some((c) => c.characterId === learnedByEntry.characterId)) {
+      existing.learnedBy.push(learnedByEntry);
+    }
+  };
+
+  // 主人公・仲間: CharacterSkill（battle_active）
+  if (nonMechIds.length > 0) {
+    const learned = await prisma.characterSkill.findMany({
+      where: {
+        characterId: { in: nonMechIds },
+        skill: { category: "battle_active" },
+      },
+      select: {
+        characterId: true,
+        skill: {
+          select: {
+            id: true,
+            name: true,
+            battleSkillType: true,
+            chargeCycles: true,
+            cooldownCycles: true,
+            targetScope: true,
+            attribute: true,
+            description: true,
+            displayTags: true,
+          },
+        },
+      },
+    });
+    for (const row of learned) {
+      if (row.skill) pushSkill(row.skill, row.characterId);
+    }
+  }
+
+  // メカ: 装備パーツ経由のスキル（category=mecha）
+  if (mechIds.length > 0) {
+    const mechEquips = await prisma.mechaEquipment.findMany({
+      where: { characterId: { in: mechIds } },
+      select: {
+        characterId: true,
+        mechaPartType: {
+          select: {
+            mechaPartTypeSkills: {
+              select: {
+                skill: {
+                  select: {
+                    id: true,
+                    name: true,
+                    battleSkillType: true,
+                    chargeCycles: true,
+                    cooldownCycles: true,
+                    targetScope: true,
+                    attribute: true,
+                    description: true,
+                    displayTags: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    for (const eq of mechEquips) {
+      for (const pts of eq.mechaPartType.mechaPartTypeSkills) {
+        if (pts.skill) pushSkill(pts.skill, eq.characterId);
+      }
+    }
+  }
+
+  const skills = Array.from(bySkillId.values()).sort((a, b) => {
+    const typeA = a.battleSkillType ?? "";
+    const typeB = b.battleSkillType ?? "";
+    if (typeA !== typeB) return typeA.localeCompare(typeB);
+    return a.name.localeCompare(b.name);
+  });
+
+  return { skills };
 }

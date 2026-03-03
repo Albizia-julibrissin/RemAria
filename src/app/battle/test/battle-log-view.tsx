@@ -158,12 +158,12 @@ export function EntryLines({
         isPlayer ? "border-base-border/50" : "border-amber-600/60 bg-amber-950/15"
       }`}
     >
-      {/* Call Tactical-slot order: No.N Skip To CT...No.M Execute!（味方・スロット採用時のみ） */}
+      {/* Call Tactical-slot order: No.N Cooling down... No.M Execute!（味方・スロット採用時のみ） */}
       {isPlayer && (entry.tacticSlotSkippedDueToCt?.length ?? 0) > 0 && (
         <div className="text-text-muted text-xs font-mono">
           Call Tactical-slot order:{" "}
           {entry.tacticSlotSkippedDueToCt!.map((n) => (
-            <span key={n}>No.{n} Skip To CT... </span>
+            <span key={n}>No.{n} Cooling down... </span>
           ))}
           {entry.tacticSlotOrder != null ? (
             <>No.{entry.tacticSlotOrder} Execute!</>

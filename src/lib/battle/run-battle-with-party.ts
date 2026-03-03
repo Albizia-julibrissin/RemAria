@@ -312,6 +312,7 @@ function getDebuffStatMult(debuffs: DebuffEntry[], stat: string): number {
 /** Phase 5: デバフコード別のデフォルト statMult（麻痺＝EVA半減など）。付与時に未指定ならここを参照 */
 const DEBUFF_STAT_MULT_BY_CODE: Record<string, Record<string, number>> = {
   paralysis: { EVA: 0.5 },
+  accuracy_down: { HIT: 0.8 },
 };
 
 /** Phase 7: 毒デバフの DoT 割合（ターン開始時・現在HPのこの割合でダメージ）。HP0にしない処理は DoT 適用箇所で実施 */
@@ -433,7 +434,8 @@ function resolveDamage(
 ): { hit: boolean; direct: boolean; fatal: boolean; damage: number } {
   const aDerived = attacker.derived as Record<string, number>;
   const dDerived = defender.derived as Record<string, number>;
-  const hitStat = (attackerBuffs?.length ? getBuffedStat(aDerived, attackerBuffs, "HIT") : attacker.derived.HIT) as number;
+  let hitStat = (attackerBuffs?.length ? getBuffedStat(aDerived, attackerBuffs, "HIT") : attacker.derived.HIT) as number;
+  hitStat *= attackerDebuffs?.length ? getDebuffStatMult(attackerDebuffs, "HIT") : 1;
   let evaStat = (defenderBuffs?.length ? getBuffedStat(dDerived, defenderBuffs, "EVA") : defender.derived.EVA) as number;
   evaStat *= defenderDebuffs?.length ? getDebuffStatMult(defenderDebuffs, "EVA") : 1;
   const hit = rollHit(hitStat, evaStat);
