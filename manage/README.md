@@ -7,6 +7,7 @@
 | ファイル | 説明 |
 |----------|------|
 | [MVP_PROGRESS.md](./MVP_PROGRESS.md) | MVP までの進捗ダッシュボード。`docs/01_features.md` の項目と spec/実装の対応を一覧化。進捗率・カテゴリ別状況・次のステップを記載。 |
+| [SECURITY_READINESS.md](./SECURITY_READINESS.md) | 認証・セッション・通貨・運用まわりのチェックリスト。商用リリースを意識した TODO を優先度付きで整理。 |
 
 ## 使い方
 

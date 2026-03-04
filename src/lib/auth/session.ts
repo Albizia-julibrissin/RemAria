@@ -6,10 +6,20 @@ export interface SessionData {
   isLoggedIn: boolean;
 }
 
-const defaultPassword = "at-least-32-characters-long-secret-key-here";
+// プロダクションでは必ず SESSION_SECRET を使う（32文字以上必須）。
+// 開発環境のみ、未設定なら弱いデフォルトを使う。
+const rawPassword = process.env.SESSION_SECRET;
+
+if (process.env.NODE_ENV === "production") {
+  if (!rawPassword || rawPassword.length < 32) {
+    throw new Error("SESSION_SECRET is required in production and must be at least 32 characters long.");
+  }
+}
+
+const sessionPassword = rawPassword ?? "dev-only-weak-secret-for-local";
 
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET ?? defaultPassword,
+  password: sessionPassword,
   cookieName: "remaria-session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",

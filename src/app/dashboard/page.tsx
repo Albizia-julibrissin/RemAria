@@ -75,11 +75,25 @@ export default async function DashboardPage() {
           <span className="mt-1 text-sm text-text-muted">初期エリア・設備配置（spec/035）</span>
         </Link>
         <Link
+          href="/dashboard/craft"
+          className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          <span className="text-lg font-medium">アイテムクラフト</span>
+          <span className="mt-1 text-sm text-text-muted">装備・消耗品を製作（spec/046）</span>
+        </Link>
+        <Link
+          href="/dashboard/bag"
+          className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          <span className="text-lg font-medium">バッグ</span>
+          <span className="mt-1 text-sm text-text-muted">所持アイテムの確認（種別タブ）spec/045</span>
+        </Link>
+        <Link
           href="/dashboard/warehouse"
           className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
         >
           <span className="text-lg font-medium">倉庫</span>
-          <span className="mt-1 text-sm text-text-muted">所持アイテムの確認</span>
+          <span className="mt-1 text-sm text-text-muted">所持数一覧（簡易）</span>
         </Link>
         <Link
           href="/dashboard/tactics"

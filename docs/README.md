@@ -26,6 +26,7 @@
 | 06_dev_setup.md | 開発環境構築 |
 | 07_ui_guidelines.md | UI ガイドライン |
 | 08_database_schema.md | DB スキーマ概要 |
+| **027_hardcoded_and_deferred.md** | **ハードコード・暫定実装のルールと一覧**（追加・解消時に更新） |
 | 999_レムアリア_世界観確定稿.md | 世界観 |
 
 ---
@@ -65,6 +66,7 @@
 | 13_companion_employment_design.md | 仲間雇用設計 |
 | 16_base_stats_alignment.md | 基礎ステータス整合 |
 | **024_mecha_design.md** | **メカ設計（パーツ部位・スキル方針・ステ計算）** |
+| **026_user_inventory_and_items.md** | **ユーザーアイテム所持（資源・装備・メカパーツ・遺物・スキル分析書・課金）** |
 
 → spec/015, 025, 030
 

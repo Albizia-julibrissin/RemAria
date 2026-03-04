@@ -11,6 +11,7 @@
 - **マスタデータの投入**: `prisma/seed.ts`（`npm run db:seed`）。スキル・効果の具体値はここで定義。
 - **ドキュメント索引**: `docs/README.md` でテーマ別の一覧と参照先を確認できる。
 - **アーキテクチャ・ディレクトリ構成**: `docs/03_architecture_spec.md`。依存方向は UI → server(actions) → repositories → db。`lib/` は純粋ロジック。
+- **ハードコード・暫定実装**: 「後でちゃんと実装する」前提のコードは **`docs/027_hardcoded_and_deferred.md`** に一覧化する。新規に追加するときは一覧に 1 行追記し、解消したらその行を削除する。
 
 ### docs / spec / content-guides の役割
 
@@ -48,6 +49,9 @@
 | 作戦編集 | spec/039_battle_tactics_and_editor | `src/app/dashboard/tactics/`, `src/server/actions/tactics.ts`, `src/app/dashboard/tactics/tactics-constants.ts` |
 | 作戦スロット評価（行動決定） | spec/040_tactic_slot_evaluation | `src/lib/battle/tactic-evaluation.ts`。戦闘ループからここを呼ぶ。 |
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |
+| アイテム・所持・バッグ | spec/045_inventory_and_items | `src/server/actions/inventory.ts`（または bag.ts）, `src/app/dashboard/bag/`, schema: Item.category, EquipmentType, EquipmentInstance, CharacterEquipment, MechaPartInstance |
+| アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
+| 研究・解放・建設 | spec/047_research_unlock_construction | `src/server/actions/research.ts`, `src/server/actions/facilities.ts`（place/dismantle）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityVariant, FacilityConstructionRecipeInput, UserFacilityTypeUnlock |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
 

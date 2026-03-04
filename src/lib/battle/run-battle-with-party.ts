@@ -21,7 +21,7 @@ import {
   BATTLE_DAMAGE_RAND_DEF_MAX,
   BATTLE_DIRECT_MULT,
   BATTLE_FATAL_MULT,
-  BATTLE_MITIGATION_DENOM,
+  BATTLE_MITIGATION_K,
 } from "./battle-constants";
 import {
   evaluateTactics as evaluateTacticsFromSpec,
@@ -458,7 +458,8 @@ function resolveDamage(
     }
     const randDef = randomFloat(BATTLE_DAMAGE_RAND_DEF_MIN, BATTLE_DAMAGE_RAND_DEF_MAX);
     defEffective *= randDef;
-    const mitigation = BATTLE_MITIGATION_DENOM / (BATTLE_MITIGATION_DENOM + defEffective);
+    const denom = BATTLE_MITIGATION_K * defender.base.CAP;
+    const mitigation = denom <= 0 ? 1 : denom / (denom + defEffective);
     const atkStatName = attackType === "physical" ? "PATK" : "MATK";
     let atk = attackerBuffs?.length
       ? getBuffedStat(aDerived, attackerBuffs, atkStatName)
@@ -493,7 +494,8 @@ function resolveSplashDamage(
     : (attackType === "physical" ? defender.derived.PDEF : defender.derived.MDEF);
   const randDef = randomFloat(BATTLE_DAMAGE_RAND_DEF_MIN, BATTLE_DAMAGE_RAND_DEF_MAX);
   const defEffective = defRaw * randDef;
-  const mitigation = BATTLE_MITIGATION_DENOM / (BATTLE_MITIGATION_DENOM + defEffective);
+  const denom = BATTLE_MITIGATION_K * defender.base.CAP;
+  const mitigation = denom <= 0 ? 1 : denom / (denom + defEffective);
   const resistMult =
     attribute && attribute !== "none" && defenderResistances
       ? (defenderResistances[attribute] ?? 1.0)

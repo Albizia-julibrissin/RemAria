@@ -139,6 +139,41 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
       where: { characterId: { in: mechIds } },
       select: {
         characterId: true,
+        mechaPartInstance: {
+          select: {
+            mechaPartType: {
+              select: {
+                mechaPartTypeSkills: {
+                  select: {
+                    skill: {
+                      select: {
+                        id: true,
+                        name: true,
+                        battleSkillType: true,
+                        powerMultiplier: true,
+                        mpCostCapCoef: true,
+                        mpCostFlat: true,
+                        hitsMin: true,
+                        hitsMax: true,
+                        resampleTargetPerHit: true,
+                        targetScope: true,
+                        attribute: true,
+                        chargeCycles: true,
+                        cooldownCycles: true,
+                        weightAddFront: true,
+                        weightAddMid: true,
+                        weightAddBack: true,
+                        logMessage: true,
+                        logMessageOnCondition: true,
+                        skillEffects: { select: { effectType: true, param: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         mechaPartType: {
           select: {
             mechaPartTypeSkills: {
@@ -173,12 +208,14 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
       },
     });
     for (const eq of mechEquips) {
+      const partType = eq.mechaPartInstance?.mechaPartType ?? eq.mechaPartType;
+      if (!partType) continue;
       let map = mechSkillsByCharId.get(eq.characterId);
       if (!map) {
         map = {};
         mechSkillsByCharId.set(eq.characterId, map);
       }
-      for (const pts of eq.mechaPartType.mechaPartTypeSkills) {
+      for (const pts of partType.mechaPartTypeSkills) {
         const sk = pts.skill;
         if (!sk || map[sk.id]) continue;
         map[sk.id] = {

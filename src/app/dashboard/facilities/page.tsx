@@ -1,11 +1,17 @@
-// spec/035, 036, docs/019 - 工業（単一プール）・全設備一括受け取り
+// spec/035, 036, 047 - 工業・全設備一括受け取り・建設・解体
 
 import Link from "next/link";
 import { getIndustrial } from "@/server/actions/initial-area";
+import { getUnlockedFacilityTypes } from "@/server/actions/facilities-placement";
 import { ReceiveAllForm } from "./receive-all-form";
+import { PlaceFacilityForm } from "./place-facility-form";
+import { DismantleFacilityButton } from "./dismantle-facility-button";
 
 export default async function FacilitiesPage() {
-  const data = await getIndustrial();
+  const [data, unlockedTypes] = await Promise.all([
+    getIndustrial(),
+    getUnlockedFacilityTypes(),
+  ]);
 
   if (!data) {
     return (
@@ -61,12 +67,23 @@ export default async function FacilitiesPage() {
                   <div className="min-w-0 flex-1">
                     <span className="font-medium text-text-primary">{f.facilityName}</span>
                     <span className="ml-2 text-sm text-text-muted">コスト {f.cost}</span>
+                    {f.isForced && (
+                      <span className="ml-2 text-xs text-text-muted">（初期配置）</span>
+                    )}
                   </div>
-                  {f.receivableCycles > 0 && (
-                    <span className="text-sm text-brass">
-                      受け取り可能: {f.receivableOutputAmount}個（{f.receivableCycles}サイクル）
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {f.receivableCycles > 0 && (
+                      <span className="text-sm text-brass">
+                        受け取り可能: {f.receivableOutputAmount}個（{f.receivableCycles}サイクル）
+                      </span>
+                    )}
+                    {!f.isForced && (
+                      <DismantleFacilityButton
+                        facilityInstanceId={f.id}
+                        facilityName={f.facilityName}
+                      />
+                    )}
+                  </div>
                 </div>
                 {f.recipe && (
                   <div className="mt-2 text-sm text-text-muted">
@@ -88,6 +105,14 @@ export default async function FacilitiesPage() {
           生産チェーン: 川→水 / 浄水→飲料水 / 小麦畑→小麦 / 製粉→小麦粉 / 包装→携帯食料（1時間で100個）
         </p>
       </section>
+
+      <PlaceFacilityForm
+        unlockedTypes={unlockedTypes ?? []}
+        usedSlots={usedSlots}
+        maxSlots={maxSlots}
+        usedCost={usedCost}
+        maxCost={maxCost}
+      />
     </main>
   );
 }

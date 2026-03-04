@@ -15,4 +15,10 @@ export const BATTLE_DAMAGE_RAND_DEF_MIN = 0.8;
 export const BATTLE_DAMAGE_RAND_DEF_MAX = 1.0;
 export const BATTLE_DIRECT_MULT = 1.2;
 export const BATTLE_FATAL_MULT = 1.2;
-export const BATTLE_MITIGATION_DENOM = 1000;
+/**
+ * 防御減衰の CAP 係数 k。
+ * docs/10_battle_calc_formulas.md 6.5.1:
+ *   Denom_defender(CAP_def) = k * CAP_def
+ * 初期値は 1.0。決着速度に応じて微調整する。
+ */
+export const BATTLE_MITIGATION_K = 1.0;

@@ -12,8 +12,8 @@ export const INITIAL_DEX = 10;
 export const INITIAL_AGI = 10;
 export const INITIAL_LUK = 10;
 
-/** 主人公の CAP 初期値 */
-export const INITIAL_CAP = 60;
+/** 主人公の CAP 初期値（基礎ステ7種がすべて10なので 7*10=70） */
+export const INITIAL_CAP = 70;
 
 /** 初期ステータスをまとめたオブジェクト（作成時に使用） */
 export const INITIAL_PROTAGONIST_STATS = {

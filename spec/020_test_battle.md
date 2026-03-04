@@ -179,7 +179,7 @@
 | 直撃/致命 D | 0.5 |
 | K | CAP * 0.3 * 12 |
 | 列ウェイト | 前列 1.5、中列 1.0、後列 0.5 |
-| 防御減衰 | 1000 / (1000 + DEF_effective) |
+| 防御減衰 | `Mitigation = Denom / (Denom + DEF_effective)`、`Denom_defender(CAP_def) = k * CAP_def`（初期 `k = 1.0`） |
 | 疲労 | 1～5 サイクル 1.0、6 以降 1 + 0.04*(cycle-5) |
 | 通常攻撃乱数 | 攻撃側 1.0、防御側 0.8～1.0 |
 | MP 回復 | floor(MaxMP*0.02) + Random(6,12) |

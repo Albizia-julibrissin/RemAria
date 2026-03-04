@@ -19,28 +19,21 @@ const TEST_USERS = [
   { email: "test2@example.com", accountId: "test_user_2", password: "password123", name: "テストユーザー2" },
 ] as const;
 
-/** docs/10_battle_status.csv 物理型A の基礎ステータス（15行目。7種＋CAP） */
-const PHYSICAL_TYPE_A_STATS = {
-  STR: 210,
-  INT: 20,
-  VIT: 80,
-  WIS: 30,
-  DEX: 140,
-  AGI: 210,
-  LUK: 10,
-  CAP: 700,
-} as const;
-
-/** テスト用：初期仲間キャラ用。CAP700・魔法型（INT/WIS 高め） */
-const COMPANION_MAGIC_TYPE_STATS = {
-  STR: 20,
-  INT: 230,
-  VIT: 60,
-  WIS: 220,
-  DEX: 70,
-  AGI: 60,
-  LUK: 40,
-  CAP: 700,
+/**
+ * テスト用：Lv50 時点・割り振り未使用状態の基礎ステータス。
+ * docs/09: Lv1 CAP=560, 1レベルごとに CAP+60 → Lv50 で CAP=3,500。
+ * 各ステは CAP の 5% を下限とするため、floor(3,500 * 0.05) = 175。
+ * 7 ステすべて 175、CAP=3,500 の状態を「未割り振り」として Seed する。
+ */
+const LEVEL_50_BASE_STATS = {
+  STR: 175,
+  INT: 175,
+  VIT: 175,
+  WIS: 175,
+  DEX: 175,
+  AGI: 175,
+  LUK: 175,
+  CAP: 3500,
 } as const;
 
 /** docs/15: タグ一覧。code で参照、増減は将来調整可。 */
@@ -121,12 +114,13 @@ const INITIAL_AREA_FACILITY_NAMES = [
 ] as const;
 
 /** spec/035: 生産チェーン用アイテム（水・飲料水・小麦・小麦粉・携帯食料）。 */
+/** spec/045: category で種別。既存はすべて material。 */
 const ITEMS = [
-  { code: "water", name: "水" },
-  { code: "drinkable_water", name: "飲料水" },
-  { code: "wheat", name: "小麦" },
-  { code: "flour", name: "小麦粉" },
-  { code: "portable_ration", name: "携帯食料" },
+  { code: "water", name: "水", category: "material" as const },
+  { code: "drinkable_water", name: "飲料水", category: "material" as const },
+  { code: "wheat", name: "小麦", category: "material" as const },
+  { code: "flour", name: "小麦粉", category: "material" as const },
+  { code: "portable_ration", name: "携帯食料", category: "material" as const },
 ] as const;
 
 /** spec/030, docs/15: 工業スキル 5 種。対象タグの設備に配備時のみ効果。 */
@@ -1152,7 +1146,7 @@ async function seedOnboroPartTypes() {
   console.log(`Onboro part types: ${ONBORO_PART_TYPES.length} 件 upsert`);
 }
 
-/** テストユーザー(test1)のメカにおんぼろシリーズを全装備する。 */
+/** テストユーザー(test1)のメカにおんぼろシリーズを所持装備として持たせ、装着する。spec/046 個体参照。 */
 async function ensureTest1MechHasOnboroEquipped() {
   const user = await prisma.user.findUnique({
     where: { email: "test1@example.com" },
@@ -1178,6 +1172,18 @@ async function ensureTest1MechHasOnboroEquipped() {
   for (const p of ONBORO_PART_TYPES) {
     const partTypeId = bySlot.get(p.slot);
     if (!partTypeId) continue;
+
+    let instance = await prisma.mechaPartInstance.findFirst({
+      where: { userId: user.id, mechaPartTypeId: partTypeId },
+      select: { id: true },
+    });
+    if (!instance) {
+      instance = await prisma.mechaPartInstance.create({
+        data: { userId: user.id, mechaPartTypeId: partTypeId },
+        select: { id: true },
+      });
+    }
+
     await prisma.mechaEquipment.upsert({
       where: {
         characterId_slot: { characterId: mech.id, slot: p.slot },
@@ -1185,12 +1191,12 @@ async function ensureTest1MechHasOnboroEquipped() {
       create: {
         characterId: mech.id,
         slot: p.slot,
-        mechaPartTypeId: partTypeId,
+        mechaPartInstanceId: instance.id,
       },
-      update: { mechaPartTypeId: partTypeId },
+      update: { mechaPartInstanceId: instance.id, mechaPartTypeId: null },
     });
   }
-  console.log("test1 のメカにおんぼろシリーズを装備しました");
+  console.log("test1 のメカにおんぼろシリーズを所持装備として装着しました");
 }
 
 /** spec/038: テスト主人公が戦闘スキルを全習得しているようにする。 */
@@ -1211,13 +1217,13 @@ async function ensureProtagonistHasAllBattleSkills(characterId: string) {
   console.log(`Protagonist: 戦闘スキル ${battleSkills.length} 種を習得済みにしました`);
 }
 
-/** spec/035: 素材・製品マスタ。 */
+/** spec/035, 045: 素材・製品マスタ。category で種別。 */
 async function seedItems() {
   for (const i of ITEMS) {
     await prisma.item.upsert({
       where: { code: i.code },
-      create: { code: i.code, name: i.name },
-      update: { name: i.name },
+      create: { code: i.code, name: i.name, category: i.category },
+      update: { name: i.name, category: i.category },
     });
   }
   console.log(`Items: ${ITEMS.length} 件 upsert`);
@@ -1264,6 +1270,157 @@ async function seedRecipes() {
     }
   }
   console.log(`Recipes: ${recipes.length} 件 upsert`);
+}
+
+/** spec/046: 装備種別マスタ。クラフト出力用。 */
+async function seedEquipmentTypes() {
+  const types = [
+    { code: "iron_sword", name: "鉄の剣", slot: "main_weapon" },
+    { code: "cloth_armor", name: "布の鎧", slot: "body" },
+  ];
+  for (const t of types) {
+    await prisma.equipmentType.upsert({
+      where: { code: t.code },
+      create: { code: t.code, name: t.name, slot: t.slot },
+      update: { name: t.name, slot: t.slot },
+    });
+  }
+  console.log(`EquipmentTypes: ${types.length} 件 upsert`);
+}
+
+/** spec/046: クラフトレシピと入力。工業設備の Recipe とは別体系。 */
+async function seedCraftRecipes() {
+  const itemByCode = new Map<string, string>();
+  for (const i of await prisma.item.findMany({ select: { id: true, code: true } })) {
+    itemByCode.set(i.code, i.id);
+  }
+  const equipmentTypeByCode = new Map<string, string>();
+  for (const e of await prisma.equipmentType.findMany({ select: { id: true, code: true } })) {
+    equipmentTypeByCode.set(e.code, e.id);
+  }
+
+  const recipes: {
+    code: string;
+    name: string;
+    outputKind: "equipment" | "item";
+    outputEquipmentTypeCode?: string;
+    outputItemCode?: string;
+    inputs: { itemCode: string; amount: number }[];
+  }[] = [
+    {
+      code: "iron_sword",
+      name: "鉄の剣",
+      outputKind: "equipment",
+      outputEquipmentTypeCode: "iron_sword",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
+      code: "cloth_armor",
+      name: "布の鎧",
+      outputKind: "equipment",
+      outputEquipmentTypeCode: "cloth_armor",
+      inputs: [{ itemCode: "flour", amount: 15 }, { itemCode: "wheat", amount: 10 }],
+    },
+    {
+      code: "portable_ration_craft",
+      name: "携帯食料（クラフト）",
+      outputKind: "item",
+      outputItemCode: "portable_ration",
+      inputs: [{ itemCode: "drinkable_water", amount: 2 }, { itemCode: "flour", amount: 2 }],
+    },
+  ];
+
+  for (const r of recipes) {
+    const outputEquipmentTypeId = r.outputEquipmentTypeCode
+      ? equipmentTypeByCode.get(r.outputEquipmentTypeCode)
+      : null;
+    const outputItemId = r.outputItemCode ? itemByCode.get(r.outputItemCode) : null;
+    const recipe = await prisma.craftRecipe.upsert({
+      where: { code: r.code },
+      create: {
+        code: r.code,
+        name: r.name,
+        outputKind: r.outputKind,
+        outputEquipmentTypeId: outputEquipmentTypeId ?? undefined,
+        outputItemId: outputItemId ?? undefined,
+      },
+      update: {
+        name: r.name,
+        outputKind: r.outputKind,
+        outputEquipmentTypeId: outputEquipmentTypeId ?? undefined,
+        outputItemId: outputItemId ?? undefined,
+      },
+    });
+    for (const inp of r.inputs) {
+      const itemId = itemByCode.get(inp.itemCode);
+      if (!itemId) continue;
+      await prisma.craftRecipeInput.upsert({
+        where: { craftRecipeId_itemId: { craftRecipeId: recipe.id, itemId } },
+        create: { craftRecipeId: recipe.id, itemId, amount: inp.amount },
+        update: { amount: inp.amount },
+      });
+    }
+  }
+  console.log(`CraftRecipes: ${recipes.length} 件 upsert`);
+}
+
+/** spec/047: 型マスタ（基本型）と建設レシピ。MVP では初期 5 設備種別に base のみ。 */
+async function seedFacilityVariantsAndConstruction() {
+  const itemByCode = new Map<string, string>();
+  for (const i of await prisma.item.findMany({ select: { id: true, code: true } })) {
+    itemByCode.set(i.code, i.id);
+  }
+  const facilityByName = new Map<string, string>();
+  for (const f of await prisma.facilityType.findMany({ select: { id: true, name: true } })) {
+    facilityByName.set(f.name, f.id);
+  }
+
+  const constructionRecipes: { facilityName: string; inputs: { itemCode: string; amount: number }[] }[] = [
+    { facilityName: "川探索拠点", inputs: [{ itemCode: "water", amount: 30 }] },
+    { facilityName: "浄水施設", inputs: [{ itemCode: "water", amount: 60 }] },
+    { facilityName: "小麦畑", inputs: [{ itemCode: "wheat", amount: 20 }] },
+    { facilityName: "小麦製粉器", inputs: [{ itemCode: "wheat", amount: 40 }] },
+    { facilityName: "携帯食料包装", inputs: [{ itemCode: "drinkable_water", amount: 25 }, { itemCode: "flour", amount: 25 }] },
+  ];
+
+  for (const cr of constructionRecipes) {
+    const facilityTypeId = facilityByName.get(cr.facilityName);
+    if (!facilityTypeId) continue;
+    const variant = await prisma.facilityVariant.upsert({
+      where: { facilityTypeId_variantCode: { facilityTypeId, variantCode: "base" } },
+      create: { facilityTypeId, variantCode: "base", name: "基本型" },
+      update: { name: "基本型" },
+    });
+    for (const inp of cr.inputs) {
+      const itemId = itemByCode.get(inp.itemCode);
+      if (!itemId) continue;
+      await prisma.facilityConstructionRecipeInput.upsert({
+        where: { facilityVariantId_itemId: { facilityVariantId: variant.id, itemId } },
+        create: { facilityVariantId: variant.id, itemId, amount: inp.amount },
+        update: { amount: inp.amount },
+      });
+    }
+  }
+  console.log("FacilityVariants + ConstructionRecipeInput: 5 設備の基本型を登録");
+}
+
+/** spec/047: テストユーザーに初期 5 設備種別を解放（建設可能にする）。 */
+async function seedUserFacilityTypeUnlocks() {
+  const facilityByName = new Map<string, string>();
+  for (const f of await prisma.facilityType.findMany({ select: { id: true, name: true } })) {
+    facilityByName.set(f.name, f.id);
+  }
+  const facilityTypeIds = INITIAL_AREA_FACILITY_NAMES.map((name) => facilityByName.get(name)).filter(Boolean) as string[];
+  for (const user of await prisma.user.findMany({ select: { id: true } })) {
+    for (const facilityTypeId of facilityTypeIds) {
+      await prisma.userFacilityTypeUnlock.upsert({
+        where: { userId_facilityTypeId: { userId: user.id, facilityTypeId } },
+        create: { userId: user.id, facilityTypeId },
+        update: {},
+      });
+    }
+  }
+  console.log("UserFacilityTypeUnlock: テストユーザーに 5 設備種別を解放");
 }
 
 /** spec/035: ユーザーに強制配置 5 設備が無ければ作成（エリア制廃止・単一プール）。 */
@@ -1319,7 +1476,8 @@ async function main() {
           data: {
             displayName: user.name, // 主人公の表示名は User.name に準拠（docs/08）
             iconFilename: "1.gif",
-            ...PHYSICAL_TYPE_A_STATS,
+            level: 50,
+            ...LEVEL_50_BASE_STATS,
           },
         });
       } else {
@@ -1329,7 +1487,8 @@ async function main() {
             category: "protagonist",
             displayName: user.name, // 主人公の表示名は User.name に準拠（docs/08）
             iconFilename: "1.gif",
-            ...PHYSICAL_TYPE_A_STATS,
+            level: 50,
+            ...LEVEL_50_BASE_STATS,
           },
         });
         await prisma.user.update({
@@ -1349,7 +1508,8 @@ async function main() {
           data: {
             displayName: "初期仲間",
             iconFilename: "2.gif",
-            ...COMPANION_MAGIC_TYPE_STATS,
+            level: 50,
+            ...LEVEL_50_BASE_STATS,
           },
         });
         console.log("Created/updated: test1 の初期仲間（魔法型・CAP700）");
@@ -1360,7 +1520,8 @@ async function main() {
             category: "companion",
             displayName: "初期仲間",
             iconFilename: "2.gif",
-            ...COMPANION_MAGIC_TYPE_STATS,
+            level: 50,
+            ...LEVEL_50_BASE_STATS,
           },
         });
         console.log("Created: test1 の初期仲間（魔法型・CAP700）");
@@ -1387,6 +1548,9 @@ async function main() {
   await seedOnboroPartTypes();
   await seedItems();
   await seedRecipes();
+  await seedEquipmentTypes();
+  await seedCraftRecipes();
+  await seedFacilityVariantsAndConstruction();
 
   for (const u of TEST_USERS) {
     const user = await prisma.user.findUnique({ where: { email: u.email } });
@@ -1396,6 +1560,21 @@ async function main() {
   }
   console.log("Initial facilities: テストユーザーに強制配置 5 設備を確保");
 
+  await seedUserFacilityTypeUnlocks();
+
+  // テスト用: test1 の設備枠・コスト上限を引き上げ（一時的）
+  const test1User = await prisma.user.findUnique({
+    where: { email: "test1@example.com" },
+    select: { id: true },
+  });
+  if (test1User) {
+    await prisma.user.update({
+      where: { id: test1User.id },
+      data: { industrialMaxSlots: 20, industrialMaxCost: 1000 },
+    });
+    console.log("test1: 設備枠 20・コスト上限 1000 に設定（テスト用）");
+  }
+
   const test1 = await prisma.user.findUnique({
     where: { email: "test1@example.com" },
     select: { id: true, protagonistCharacterId: true },
@@ -1403,6 +1582,10 @@ async function main() {
   if (test1) {
     if (test1.protagonistCharacterId) {
       await ensureProtagonistHasAllBattleSkills(test1.protagonistCharacterId);
+      await prisma.character.update({
+        where: { id: test1.protagonistCharacterId },
+        data: { level: 50, ...LEVEL_50_BASE_STATS },
+      });
     }
     const companions = await prisma.character.findMany({
       where: { userId: test1.id, category: "companion" },
@@ -1410,6 +1593,10 @@ async function main() {
     });
     for (const c of companions) {
       await ensureProtagonistHasAllBattleSkills(c.id);
+      await prisma.character.update({
+        where: { id: c.id },
+        data: { level: 50, ...LEVEL_50_BASE_STATS },
+      });
     }
 
     // spec/044: test1 にメカがいなければ作成し、おんぼろシリーズを装備
@@ -1424,6 +1611,7 @@ async function main() {
           category: "mech",
           displayName: "メカ",
           iconFilename: null,
+          // メカは基礎ステ10/CAP70（7*10）をベースとし、実際の性能はパーツで表現する。
           STR: 10,
           INT: 10,
           VIT: 10,
@@ -1431,7 +1619,7 @@ async function main() {
           DEX: 10,
           AGI: 10,
           LUK: 10,
-          CAP: 60,
+          CAP: 70,
         },
         select: { id: true },
       });

@@ -21,7 +21,7 @@ import {
   BATTLE_DAMAGE_RAND_DEF_MAX,
   BATTLE_DIRECT_MULT,
   BATTLE_FATAL_MULT,
-  BATTLE_MITIGATION_DENOM,
+  BATTLE_MITIGATION_K,
 } from "./battle-constants";
 
 export type BattleSide = "player" | "enemy";
@@ -190,7 +190,8 @@ function resolveNormalAttack(
     }
     const randDef = randomFloat(BATTLE_DAMAGE_RAND_DEF_MIN, BATTLE_DAMAGE_RAND_DEF_MAX);
     defEffective *= randDef;
-    const mitigation = BATTLE_MITIGATION_DENOM / (BATTLE_MITIGATION_DENOM + defEffective);
+    const denom = BATTLE_MITIGATION_K * defender.base.CAP;
+    const mitigation = denom <= 0 ? 1 : denom / (denom + defEffective);
     let dmg = attacker.derived.PATK * 1.0 * mitigation * fatigue;
     if (direct) dmg *= BATTLE_DIRECT_MULT;
     if (fatal) dmg *= BATTLE_FATAL_MULT;

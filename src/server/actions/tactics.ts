@@ -354,12 +354,23 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
     }
   }
 
-  // メカ: 装備パーツ経由のスキル（MechaEquipment → MechaPartTypeSkill → Skill, category=mecha）
+  // メカ: 装備パーツ経由のスキル（MechaEquipment → 個体 or 種別 → MechaPartTypeSkill → Skill）
   if (mechIds.size > 0) {
     const mechPartSkills = await prisma.mechaEquipment.findMany({
       where: { characterId: { in: [...mechIds] } },
       select: {
         characterId: true,
+        mechaPartInstance: {
+          select: {
+            mechaPartType: {
+              select: {
+                mechaPartTypeSkills: {
+                  select: { skill: { select: { id: true, name: true, battleSkillType: true } } },
+                },
+              },
+            },
+          },
+        },
         mechaPartType: {
           select: {
             mechaPartTypeSkills: {
@@ -373,7 +384,9 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
       const skillSet = new Map<string, BattleSkillOption>();
       for (const eq of mechPartSkills) {
         if (eq.characterId !== id) continue;
-        for (const pts of eq.mechaPartType.mechaPartTypeSkills) {
+        const partType = eq.mechaPartInstance?.mechaPartType ?? eq.mechaPartType;
+        if (!partType) continue;
+        for (const pts of partType.mechaPartTypeSkills) {
           const skill = pts.skill;
           if (skill && !skillSet.has(skill.id)) {
             skillSet.set(skill.id, {
@@ -482,12 +495,37 @@ export async function getTacticsSkillCatalogForCharacters(characterIds: string[]
     }
   }
 
-  // メカ: 装備パーツ経由のスキル（category=mecha）
+  // メカ: 装備パーツ経由のスキル（個体 or 種別 → MechaPartTypeSkill）
   if (mechIds.length > 0) {
     const mechEquips = await prisma.mechaEquipment.findMany({
       where: { characterId: { in: mechIds } },
       select: {
         characterId: true,
+        mechaPartInstance: {
+          select: {
+            mechaPartType: {
+              select: {
+                mechaPartTypeSkills: {
+                  select: {
+                    skill: {
+                      select: {
+                        id: true,
+                        name: true,
+                        battleSkillType: true,
+                        chargeCycles: true,
+                        cooldownCycles: true,
+                        targetScope: true,
+                        attribute: true,
+                        description: true,
+                        displayTags: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         mechaPartType: {
           select: {
             mechaPartTypeSkills: {
@@ -512,7 +550,9 @@ export async function getTacticsSkillCatalogForCharacters(characterIds: string[]
       },
     });
     for (const eq of mechEquips) {
-      for (const pts of eq.mechaPartType.mechaPartTypeSkills) {
+      const partType = eq.mechaPartInstance?.mechaPartType ?? eq.mechaPartType;
+      if (!partType) continue;
+      for (const pts of partType.mechaPartTypeSkills) {
         if (pts.skill) pushSkill(pts.skill, eq.characterId);
       }
     }

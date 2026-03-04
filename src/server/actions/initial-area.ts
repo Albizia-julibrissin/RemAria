@@ -23,6 +23,8 @@ export type IndustrialFacility = {
   facilityName: string;
   cost: number;
   displayOrder: number;
+  /** spec/047: 強制配置は解体不可 */
+  isForced: boolean;
   /** 受け取り可能サイクル数（019 プレビュー。実際の受け取りは 036 で一括計算） */
   receivableCycles: number;
   receivableOutputAmount: number;
@@ -155,6 +157,7 @@ export async function getIndustrial(): Promise<GetIndustrialResult | null> {
       facilityName: inst.facilityType.name,
       cost: inst.facilityType.cost,
       displayOrder: inst.displayOrder,
+      isForced: inst.isForced,
       receivableCycles,
       receivableOutputAmount,
       recipe: recipe

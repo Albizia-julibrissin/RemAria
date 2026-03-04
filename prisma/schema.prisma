@@ -57,6 +57,9 @@ model User {
   inventories          UserInventory[]
   chatMessages         ChatMessage[]
   partyPresets         PartyPreset[]
+  equipmentInstances   EquipmentInstance[]
+  mechaPartInstances   MechaPartInstance[]
+  userFacilityTypeUnlocks UserFacilityTypeUnlock[]
 }
 
 /// docs/02_domain_model.md, 08: 主人公・仲間・メカを 1 テーブルで統一。category で判別
@@ -75,6 +78,9 @@ model Character {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// キャラレベル。docs/09: レベル＋CAP採用。LvN の CAP は 560 + 60 * (N - 1) を基本とする。
+  level Int @default(1)
+
   STR Int @default(10)
   INT Int @default(10)
   VIT Int @default(10)
@@ -90,26 +96,30 @@ model Character {
   partyPresetsSlot1 PartyPreset[] @relation("PresetSlot1")
   partyPresetsSlot2 PartyPreset[] @relation("PresetSlot2")
   partyPresetsSlot3 PartyPreset[] @relation("PresetSlot3")
-  mechaEquipments  MechaEquipment[]
+  mechaEquipments   MechaEquipment[]
+  characterEquipments CharacterEquipment[]
 
   @@index([userId])
   @@index([userId, category])
 }
 
-/// spec/044: メカの装備。1メカあたり各部位1つまで。
+/// spec/044, 046: メカの装備。1メカあたり各部位1つまで。個体参照（mechaPartInstanceId）を優先し、無い場合は種別のみ（移行用）。
 model MechaEquipment {
-  id              String        @id @default(cuid())
-  characterId     String        // メカ（category=mech の Character）
-  character       Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  slot            String        // frame | core | head | rightArm | leftArm | legs
-  mechaPartTypeId String
-  mechaPartType   MechaPartType @relation(fields: [mechaPartTypeId], references: [id], onDelete: Cascade)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                  String              @id @default(cuid())
+  characterId         String              // メカ（category=mech の Character）
+  character           Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  slot                String              // frame | core | head | rightArm | leftArm | legs
+  mechaPartInstanceId String?
+  mechaPartInstance   MechaPartInstance?  @relation(fields: [mechaPartInstanceId], references: [id], onDelete: SetNull)
+  mechaPartTypeId     String?             // 互換用。mechaPartInstance があれば instance から種別を参照
+  mechaPartType       MechaPartType?      @relation(fields: [mechaPartTypeId], references: [id], onDelete: SetNull)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   @@unique([characterId, slot])
   @@index([characterId])
   @@index([mechaPartTypeId])
+  @@index([mechaPartInstanceId])
 }
 
 /// spec/039: 作戦室で編集するパーティプリセット。slot1=主人公（固定）、slot2=仲間、slot3=メカ。
@@ -179,13 +189,60 @@ model FacilityType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  facilityTypeTags FacilityTypeTag[]
-  facilityInstances FacilityInstance[]
-  recipes          Recipe[]
+  facilityTypeTags   FacilityTypeTag[]
+  facilityInstances  FacilityInstance[]
+  recipes            Recipe[]
+  facilityVariants   FacilityVariant[]
+  userFacilityTypeUnlocks UserFacilityTypeUnlock[]
 
   @@unique([name])
   @@index([name])
   @@index([kind])
+}
+
+/// spec/047: 型マスタ。1 型 : 1 建設レシピ。基本型は variantCode='base'。
+model FacilityVariant {
+  id              String   @id @default(cuid())
+  facilityTypeId  String
+  facilityType    FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
+  variantCode     String   // base | alpha | beta
+  name            String?  // 表示名（基本型、α型）
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  constructionInputs FacilityConstructionRecipeInput[]
+
+  @@unique([facilityTypeId, variantCode])
+  @@index([facilityTypeId])
+}
+
+/// spec/047: 建設レシピ入力。その型で 1 設備建設時に消費する資源。
+model FacilityConstructionRecipeInput {
+  id                  String   @id @default(cuid())
+  facilityVariantId   String
+  facilityVariant     FacilityVariant @relation(fields: [facilityVariantId], references: [id], onDelete: Cascade)
+  itemId              String
+  item                Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  amount              Int      // 1 回の建設で消費する個数
+  createdAt           DateTime @default(now())
+
+  @@unique([facilityVariantId, itemId])
+  @@index([facilityVariantId])
+  @@index([itemId])
+}
+
+/// spec/047: 設備種別の解放。研究で解放済みの設備だけ建設可能。
+model UserFacilityTypeUnlock {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facilityTypeId  String
+  facilityType    FacilityType @relation(fields: [facilityTypeId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+
+  @@unique([userId, facilityTypeId])
+  @@index([userId])
+  @@index([facilityTypeId])
 }
 
 /// spec/035, docs/018: 設置済み設備。単一プール（エリアなし）。docs/019: lastProducedAt で生産消化時刻。
@@ -222,17 +279,121 @@ model UserInventory {
   @@index([itemId])
 }
 
-/// spec/035: 素材・製品マスタ。水・飲料水・小麦・小麦粉・携帯食料など。希少部品は将来 category で区別。
+/// spec/035, 045: 素材・製品マスタ。category で種別（material / consumable / blueprint / skill_book / paid）。
 model Item {
   id          String   @id @default(cuid())
   code        String   @unique // water, drinkable_water, wheat, flour, portable_ration
   name        String
+  category    String   @default("material") // spec/045: material | consumable | blueprint | skill_book | paid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  recipeOutputs  Recipe[]       @relation("RecipeOutput")
-  recipeInputs  RecipeInput[]
+  recipeOutputs   Recipe[]        @relation("RecipeOutput")
+  recipeInputs    RecipeInput[]
   userInventories UserInventory[]
+  facilityConstructionRecipeInputs FacilityConstructionRecipeInput[]
+  craftRecipesAsOutput CraftRecipe[]
+  craftRecipeInputs    CraftRecipeInput[]
+}
+
+/// spec/045, 046: 装備種別マスタ。クラフトの出力として参照。slot は EQUIPMENT_SLOTS のいずれか。
+model EquipmentType {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  slot      String   // main_weapon | sub_weapon | head | body | arm | leg
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipmentInstances EquipmentInstance[]
+  craftRecipesAsOutput CraftRecipe[]
+}
+
+/// spec/046: クラフトレシピ。工業設備の Recipe とは別体系。
+model CraftRecipe {
+  id                      String   @id @default(cuid())
+  code                    String   @unique
+  name                    String
+  outputKind              String   // equipment | mecha_part | item
+  outputEquipmentTypeId   String?
+  outputEquipmentType     EquipmentType?  @relation(fields: [outputEquipmentTypeId], references: [id], onDelete: SetNull)
+  outputMechaPartTypeId   String?
+  outputMechaPartType     MechaPartType?  @relation(fields: [outputMechaPartTypeId], references: [id], onDelete: SetNull)
+  outputItemId            String?
+  outputItem              Item?    @relation(fields: [outputItemId], references: [id], onDelete: SetNull)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  inputs CraftRecipeInput[]
+
+  @@index([outputKind])
+}
+
+/// spec/046: クラフトレシピの入力（消費資源）。
+model CraftRecipeInput {
+  id             String     @id @default(cuid())
+  craftRecipeId  String
+  craftRecipe    CraftRecipe @relation(fields: [craftRecipeId], references: [id], onDelete: Cascade)
+  itemId         String
+  item           Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  amount         Int        // 1 回あたりの消費個数
+  createdAt      DateTime   @default(now())
+
+  @@unique([craftRecipeId, itemId])
+  @@index([craftRecipeId])
+  @@index([itemId])
+}
+
+/// spec/045, 046: 装備個体。クラフトで 1 個ずつ作成。ステータスは 021 に従い JSON で保持。
+model EquipmentInstance {
+  id                String         @id @default(cuid())
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipmentTypeId   String
+  equipmentType     EquipmentType  @relation(fields: [equipmentTypeId], references: [id], onDelete: Cascade)
+  /// 戦闘用ステ補正・属性耐性等。021 に従う。{ "physicalAttack": 50, "physicalDefense": 20 } 等。
+  stats             Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  characterEquipments CharacterEquipment[]
+
+  @@index([userId])
+  @@index([equipmentTypeId])
+}
+
+/// spec/045, 046: 主人公・仲間の装着。1 キャラあたり各スロット 1 つまで。
+model CharacterEquipment {
+  id                  String              @id @default(cuid())
+  characterId         String
+  character           Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  slot                String              // main_weapon | sub_weapon | head | body | arm | leg
+  equipmentInstanceId String?
+  equipmentInstance   EquipmentInstance?   @relation(fields: [equipmentInstanceId], references: [id], onDelete: SetNull)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([characterId, slot])
+  @@index([characterId])
+  @@index([equipmentInstanceId])
+}
+
+/// spec/045, 046: メカパーツ個体。クラフトで 1 個ずつ作成。ステータスは 021・044 に従い JSON で保持。
+model MechaPartInstance {
+  id                String         @id @default(cuid())
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mechaPartTypeId   String
+  mechaPartType     MechaPartType  @relation(fields: [mechaPartTypeId], references: [id], onDelete: Cascade)
+  /// 基礎ステ補正等。021・044 に従う。
+  stats             Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  mechaEquipments   MechaEquipment[]
+
+  @@index([userId])
+  @@index([mechaPartTypeId])
 }
 
 /// spec/035, docs/018: 設備種別ごとの生産レシピ。周期・出力を定義。
@@ -306,6 +467,8 @@ model MechaPartType {
 
   mechaPartTypeSkills MechaPartTypeSkill[]
   mechaEquipments     MechaEquipment[]
+  mechaPartInstances  MechaPartInstance[]
+  craftRecipesAsOutput CraftRecipe[]
 }
 
 /// spec/044: メカパーツ種別 ↔ スキル の多対多。1 パーツ種別に 0 個以上のメカスキルを紐づける。
