@@ -541,7 +541,7 @@ function pickAllyTargetSingle(
       best = i;
     }
   }
-  return best >= 0 ? best : party.findIndex((_, i) => partyAlive[i]);
+  return best >= 0 ? best : party.findIndex((_, i) => partyAlive[i] && party[i].currentHp > 0);
 }
 
 /** 作戦スロット入力を評価用スロットに変換（subject 省略時は "self"） */
@@ -697,20 +697,31 @@ export function runBattleWithParty(
   /** 敵の作戦スロット（省略時は常に通常攻撃）。渡す場合は敵全員が同じスロットを持つ。 */
   enemyTacticSlots?: TacticSlotInput[],
   /** 敵のスキルマスタ（skillId → SkillDataForBattle）。省略時はスキルなし。 */
-  enemySkills?: Record<string, SkillDataForBattle>
+  enemySkills?: Record<string, SkillDataForBattle>,
+  /** 探索などで HP/MP を引き継ぐときの初期値。未指定または 0 の場合は最大値から開始。partyInput と同じ順番を想定。 */
+  initialPartyHpMp?: { currentHp: number; currentMp: number }[]
 ): BattleResultWithParty {
   if (partyInput.length === 0) {
     throw new Error("runBattleWithParty: party must have at least 1 member");
   }
 
-  const party: PartyFighter[] = partyInput.map((p) => {
+  const party: PartyFighter[] = partyInput.map((p, idx) => {
     const derived = computeDerivedStats(p.base);
+    const override = initialPartyHpMp?.[idx];
+    const startHp =
+      override && override.currentHp >= 0
+        ? Math.min(derived.HP, override.currentHp)
+        : derived.HP;
+    const startMp =
+      override && override.currentMp >= 0
+        ? Math.min(derived.MP, override.currentMp)
+        : derived.MP;
     return {
       displayName: p.displayName,
       base: p.base,
       derived,
-      currentHp: derived.HP,
-      currentMp: derived.MP,
+      currentHp: startHp,
+      currentMp: startMp,
       tacticSlots: p.tacticSlots,
       skills: p.skills,
     };
@@ -744,6 +755,13 @@ export function runBattleWithParty(
 
   const partyAlive = party.map(() => true);
   const enemyAlive = [true, true, true];
+
+  // 戦闘開始時点で HP が 0 以下の味方は戦闘不能扱いとし、行動・回復対象から除外する
+  for (let i = 0; i < party.length; i++) {
+    if (party[i].currentHp <= 0) {
+      partyAlive[i] = false;
+    }
+  }
   const log: BattleLogEntryWithParty[] = [];
   let totalCycles = 0;
   let winner: "player" | "enemy" | "draw" = "draw";
@@ -770,6 +788,24 @@ export function runBattleWithParty(
     { length: party.length },
     () => null
   );
+
+  /** 戦闘不能（瀕死）になった味方 1 体の状態を整理する（行動不可・ターゲット外・状態異常リセット） */
+  function handlePartyDeath(index: number): void {
+    if (index < 0 || index >= party.length) return;
+    partyAlive[index] = false;
+    chargeReservation[index] = null;
+    partyAttrStates[index] = [];
+    partyDebuffs[index] = [];
+    partyBuffs[index] = [];
+  }
+
+  /** 戦闘不能になった敵 1 体の状態を整理する（行動不可・ターゲット外・状態異常リセット） */
+  function handleEnemyDeath(index: number): void {
+    if (index < 0 || index >= ENEMY_COUNT) return;
+    enemyAlive[index] = false;
+    enemyAttrStates[index] = [];
+    enemyDebuffs[index] = [];
+  }
 
   /** docs/023 方式B: 味方ごとの残りクール。partyCooldowns[i][skillId] = 残りサイクル数 */
   const partyCooldowns: Record<string, number>[] = Array.from({ length: party.length }, () => ({}));
@@ -873,8 +909,7 @@ export function runBattleWithParty(
               enemyPositions: posSnap.enemyPositions,
             });
             if (unit.currentHp <= 0) {
-              partyAlive[idx] = false;
-              chargeReservation[idx] = null;
+              handlePartyDeath(idx);
             }
           }
         }
@@ -919,7 +954,7 @@ export function runBattleWithParty(
               partyPositions: posSnap.partyPositions,
               enemyPositions: posSnap.enemyPositions,
             });
-            if (unit.currentHp <= 0) enemyAlive[idx] = false;
+            if (unit.currentHp <= 0) handleEnemyDeath(idx);
           }
         }
       }
@@ -927,7 +962,7 @@ export function runBattleWithParty(
       if (slot.kind === "p") {
         const actorIndex = slot.index;
         if (actorIndex >= party.length || !partyAlive[actorIndex] || party[actorIndex].currentHp <= 0) {
-          chargeReservation[actorIndex] = null;
+          handlePartyDeath(actorIndex);
           applyCooldownEndOfTurn(actorIndex);
           continue;
         }
@@ -1151,10 +1186,10 @@ export function runBattleWithParty(
                 ? (() => {
                     const i = useLowestHpPct
                       ? pickAllyTargetSingle(party, partyAlive)
-                      : party.findIndex((_, idx) => partyAlive[idx]);
+                    : party.findIndex((_, idx) => partyAlive[idx] && party[idx].currentHp > 0);
                     return i >= 0 ? [i] : [];
                   })()
-                : party.map((_, i) => i).filter((i) => partyAlive[i]);
+              : party.map((_, i) => i).filter((i) => partyAlive[i] && party[i].currentHp > 0);
             let totalHealAmount = 0;
             let isHealAll = false;
             const hadHealEffect = effects.some(
@@ -1169,6 +1204,9 @@ export function runBattleWithParty(
                 const amount = resolveHealScale(p.scale ?? "", actor);
                 if (amount > 0) {
                   const m = party[targets[0]];
+                  if (!partyAlive[targets[0]] || m.currentHp <= 0) {
+                    continue;
+                  }
                   const prev = m.currentHp;
                   m.currentHp = Math.min(m.derived.HP, m.currentHp + Math.floor(amount));
                   totalHealAmount += m.currentHp - prev;
@@ -1190,7 +1228,7 @@ export function runBattleWithParty(
                   isHealAll = true;
                   const floorAmount = Math.floor(amount);
                   for (let i = 0; i < party.length; i++) {
-                    if (!partyAlive[i]) continue;
+                    if (!partyAlive[i] || party[i].currentHp <= 0) continue;
                     const m = party[i];
                     const prev = m.currentHp;
                     m.currentHp = Math.min(m.derived.HP, m.currentHp + floorAmount);
@@ -1668,7 +1706,7 @@ export function runBattleWithParty(
           const ctMain = skill.cooldownCycles ?? 0;
           if (ctMain > 0) skillUsedThisTurnByPartyIndex[actorIndex] = { skillId: action.skillId!, cooldownCycles: ctMain };
           for (let i = 0; i < ENEMY_COUNT; i++) {
-            if (enemies[i].currentHp <= 0) enemyAlive[i] = false;
+            if (enemies[i].currentHp <= 0) handleEnemyDeath(i);
           }
 
           // Phase 6: 出血デバフ — 物理スキルで与ダメ後、行動者が出血持ちなら合計与ダメの20%を自己に与え、出血を解除
@@ -1719,8 +1757,7 @@ export function runBattleWithParty(
             ...snapshotPositions(partyPositions, currentEnemyPositions),
           });
           if (actor.currentHp <= 0) {
-            partyAlive[actorIndex] = false;
-            chargeReservation[actorIndex] = null;
+            handlePartyDeath(actorIndex);
           }
           applyCooldownEndOfTurn(actorIndex);
         } else {
@@ -1892,11 +1929,10 @@ export function runBattleWithParty(
                 ...(enemyBleedingSelfDamage > 0 ? { bleedingSelfDamage: enemyBleedingSelfDamage } : {}),
                 ...snapshotPositions(partyPositions, currentEnemyPositions),
               });
-              if (party[targetPartyIdx].currentHp <= 0) {
-                partyAlive[targetPartyIdx] = false;
-                chargeReservation[targetPartyIdx] = null;
-              }
-              if (enemy.currentHp <= 0) enemyAlive[enemyIdx] = false;
+            if (party[targetPartyIdx].currentHp <= 0) {
+              handlePartyDeath(targetPartyIdx);
+            }
+            if (enemy.currentHp <= 0) handleEnemyDeath(enemyIdx);
               applyEnemyCooldownEndOfTurn(enemyIdx);
               continue;
             }
@@ -1945,8 +1981,7 @@ export function runBattleWithParty(
           ...snapshotPositions(partyPositions, currentEnemyPositions),
         });
         if (party[targetPartyIdx].currentHp <= 0) {
-          partyAlive[targetPartyIdx] = false;
-          chargeReservation[targetPartyIdx] = null;
+          handlePartyDeath(targetPartyIdx);
         }
         applyEnemyCooldownEndOfTurn(enemyIdx);
       }

@@ -12,16 +12,19 @@ export const TEST_ENEMY_NAME = "スライム";
 /** スライム用アイコン（public/icons/ に配置） */
 export const TEST_ENEMY_ICON_FILENAME = "6.gif";
 
-/** 仮戦闘の固定敵（スライム1～3）の基礎ステータス。CAP=560 を 7 種に均等配分（各 80）。 */
+/** 仮戦闘の固定敵（スライム1～3）の基礎ステータス。
+ *  元は CAP=560 を 7 種に均等配分（各 80）だったが、
+ *  探索テスト用にプレイヤー側より少し強めに感じられるよう「すべて 2 倍」にしている。
+ */
 export const TEST_ENEMY_BASE_STATS: BaseStats = {
-  STR: 80,
-  INT: 80,
-  VIT: 80,
-  WIS: 80,
-  DEX: 80,
-  AGI: 80,
-  LUK: 80,
-  CAP: 560,
+  STR: 160,
+  INT: 160,
+  VIT: 160,
+  WIS: 160,
+  DEX: 160,
+  AGI: 160,
+  LUK: 160,
+  CAP: 1120,
 };
 
 /** 1v3 用: 敵3体の配置（中列・後列のみ。前列は使わない） */

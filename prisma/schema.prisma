@@ -59,6 +59,7 @@ model User {
   partyPresets         PartyPreset[]
   equipmentInstances   EquipmentInstance[]
   mechaPartInstances   MechaPartInstance[]
+  expeditions          Expedition[]
   userFacilityTypeUnlocks UserFacilityTypeUnlock[]
 }
 
@@ -140,6 +141,8 @@ model PartyPreset {
   slot3BattleCol   Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  expeditions Expedition[]
 
   @@index([userId])
 }
@@ -596,3 +599,88 @@ model ChatMessage {
   @@index([createdAt])
   @@index([userId])
 }
+
+/// spec/049_exploration, docs/020: 探索テーマ（上位概念）。例：錆びれた森林地区。
+model ExplorationTheme {
+  id          String   @id @default(cuid())
+  code        String   @unique        // 安定参照用コード（rust_forest など）
+  name        String                 // 表示名
+  description String?                // 説明文（任意）
+  displayOrder Int    @default(0)    // 一覧表示順
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  areas ExplorationArea[]
+}
+
+/// spec/049_exploration, docs/020: 探索エリア（実際に選んで出撃する場所）。
+model ExplorationArea {
+  id          String   @id @default(cuid())
+  themeId     String
+  theme       ExplorationTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  code        String   @unique        // 安定参照用コード（yuran_paved_road など）
+  name        String                 // 表示名（遊覧舗装路跡 等）
+  description String?                // 説明
+
+  difficultyRank   Int      @default(1)  // 体感難易度ランク（1,2,3…）
+  recommendedLevel Int      @default(1)  // 推奨レベル
+
+  /// ドロップ・イベント頻度設定（docs/020）
+  baseDropMin       Int      @default(3)  // 標準ドロップ枠レンジ（下限）
+  baseDropMax       Int      @default(5)  // 標準ドロップ枠レンジ（上限）
+  baseSkillEventRate Int     @default(25) // 技能イベント基礎発生率（パーセント）
+  normalBattleCount Int      @default(5)  // 雑魚戦の想定回数（中ボス前）
+
+  /// 戦闘用の敵グループコード（実際の敵編成はバトル側マスタ/ロジックで解釈）
+  normalEnemyGroupCode   String?  // 通常戦闘用（必要に応じて配列マスタ側に持たせてもよい）
+  midBossEnemyGroupCode  String?  // 中ボス戦
+  lastBossEnemyGroupCode String?  // 大ボス戦
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  expeditions Expedition[]
+
+  @@index([themeId])
+}
+
+/// spec/049_exploration, docs/020: 1 回の探索出撃（Expedition）の進行・結果。
+model Expedition {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  areaId    String
+  area      ExplorationArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+
+  partyPresetId String
+  partyPreset   PartyPreset @relation(fields: [partyPresetId], references: [id], onDelete: Cascade)
+
+  state     String   @default("in_progress") // in_progress / ready_to_finish / finished / aborted
+
+  /// 進行状況（docs/020 に準拠）
+  remainingNormalBattles Int   @default(0)
+  midBossCleared         Boolean @default(false)
+  lastBossCleared        Boolean @default(false)
+  battleWinCount         Int     @default(0)
+  skillSuccessCount      Int     @default(0)
+
+  /// 探索中の HP/MP 状態（キャラごと）。{ characterId: { hp, mp } } のような形式を想定。
+  currentHpMp Json?
+
+  /// 探索用消耗品の残数・一時バフ状態など、探索レイヤーに属する状態。
+  explorationState Json?
+
+  /// この探索で獲得した経験値の合計（主人公・仲間に同量付与するためのメモ用）。
+  totalExpGained Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([areaId])
+  @@index([partyPresetId])
+  @@index([state])
+}
+

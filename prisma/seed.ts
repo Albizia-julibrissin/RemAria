@@ -132,6 +132,35 @@ const INDUSTRIAL_SKILLS = [
   { name: "鍛冶の才", description: "金属に関わる工業設備に配備時、作業時間が5%短縮。", targetTagCode: "metal", effectType: "time_reduction" as const, effectValue: 5 },
 ] as const;
 
+/** docs/020, spec/049: 探索テーマ・エリア（MVP 用）。 */
+const EXPLORATION_THEMES = [
+  {
+    code: "rust_forest",
+    name: "錆びれた森林地区",
+    description: "過去に環境保護区だった森林地帯。今は錆と霧が漂う探索エリア。",
+    displayOrder: 1,
+  },
+] as const;
+
+const EXPLORATION_AREAS = [
+  {
+    themeCode: "rust_forest",
+    code: "yuran_paved_road",
+    name: "遊覧舗装路跡",
+    description: "かつて観光用の遊覧路だった舗装路。今はひび割れと苔むした石畳が続く。",
+    difficultyRank: 1,
+    recommendedLevel: 1,
+    baseDropMin: 3,
+    baseDropMax: 5,
+    baseSkillEventRate: 10, // 資源多め・技能イベント少なめエリア
+    normalBattleCount: 5,
+    normalEnemyGroupCode: "rust_forest_easy_normal",
+    midBossEnemyGroupCode: "rust_forest_easy_mid_boss",
+    lastBossEnemyGroupCode: "rust_forest_easy_last_boss",
+  },
+  // 後続エリア（監視設備廃墟・森林奥地）は拡張時に追加
+] as const;
+
 /** docs/14_initial_skills.csv: 初期スキル 25 種（物理10・魔法10・補助5）。既存プロポーザル30種は廃止。 */
 const BATTLE_SKILLS: Array<{
   name: string;
@@ -1456,6 +1485,74 @@ async function ensureInitialFacilitiesForUser(userId: string) {
   }
 }
 
+/** spec/049_exploration: 探索テーマ・エリアのシード。 */
+async function seedExplorationThemesAndAreas() {
+  console.log("Seeding exploration themes and areas...");
+
+  // テーマ
+  for (const t of EXPLORATION_THEMES) {
+    await prisma.explorationTheme.upsert({
+      where: { code: t.code },
+      create: {
+        code: t.code,
+        name: t.name,
+        description: t.description,
+        displayOrder: t.displayOrder,
+      },
+      update: {
+        name: t.name,
+        description: t.description,
+        displayOrder: t.displayOrder,
+      },
+    });
+  }
+
+  // エリア
+  for (const a of EXPLORATION_AREAS) {
+    const theme = await prisma.explorationTheme.findUnique({
+      where: { code: a.themeCode },
+      select: { id: true },
+    });
+    if (!theme) {
+      console.warn(`ExplorationTheme not found for area seed: ${a.code} (themeCode=${a.themeCode})`);
+      continue;
+    }
+
+    await prisma.explorationArea.upsert({
+      where: { code: a.code },
+      create: {
+        themeId: theme.id,
+        code: a.code,
+        name: a.name,
+        description: a.description,
+        difficultyRank: a.difficultyRank,
+        recommendedLevel: a.recommendedLevel,
+        baseDropMin: a.baseDropMin,
+        baseDropMax: a.baseDropMax,
+        baseSkillEventRate: a.baseSkillEventRate,
+        normalBattleCount: a.normalBattleCount,
+        normalEnemyGroupCode: a.normalEnemyGroupCode,
+        midBossEnemyGroupCode: a.midBossEnemyGroupCode,
+        lastBossEnemyGroupCode: a.lastBossEnemyGroupCode,
+      },
+      update: {
+        themeId: theme.id,
+        name: a.name,
+        description: a.description,
+        difficultyRank: a.difficultyRank,
+        recommendedLevel: a.recommendedLevel,
+        baseDropMin: a.baseDropMin,
+        baseDropMax: a.baseDropMax,
+        baseSkillEventRate: a.baseSkillEventRate,
+        normalBattleCount: a.normalBattleCount,
+        normalEnemyGroupCode: a.normalEnemyGroupCode,
+        midBossEnemyGroupCode: a.midBossEnemyGroupCode,
+        lastBossEnemyGroupCode: a.lastBossEnemyGroupCode,
+      },
+    });
+  }
+}
+
 async function main() {
   for (const u of TEST_USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
@@ -1551,6 +1648,7 @@ async function main() {
   await seedEquipmentTypes();
   await seedCraftRecipes();
   await seedFacilityVariantsAndConstruction();
+  await seedExplorationThemesAndAreas();
 
   for (const u of TEST_USERS) {
     const user = await prisma.user.findUnique({ where: { email: u.email } });

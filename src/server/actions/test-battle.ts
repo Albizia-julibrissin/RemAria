@@ -34,6 +34,8 @@ export type RunTestBattleSuccess = {
   enemyPositions: BattlePosition[];
   log: BattleLogEntryWithParty[];
   summary: BattleSummaryWithParty;
+  /** 戦闘に参加したキャラクターID（partyDisplayNames と同じ順番） */
+  partyCharacterIds: string[];
 };
 
 export type RunTestBattleError = {
@@ -45,7 +47,10 @@ export type RunTestBattleError = {
 export type RunTestBattleResult = RunTestBattleSuccess | RunTestBattleError;
 
 /** 仮戦闘実行。指定プリセットの編成・作戦・スキルで戦闘。 */
-export async function runTestBattle(presetId: string): Promise<RunTestBattleResult> {
+export async function runTestBattle(
+  presetId: string,
+  initialHpMpByCharacterId?: Record<string, { hp: number; mp: number }>
+): Promise<RunTestBattleResult> {
   const session = await getSession();
   if (!session.userId || !session.isLoggedIn) {
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください" };
@@ -259,6 +264,8 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     col: colForSlot[i],
   }));
 
+  const initialPartyHpMp: { currentHp: number; currentMp: number }[] = [];
+
   for (const charId of order) {
     const c = characters.find((x) => x.id === charId);
     if (!c) continue;
@@ -322,6 +329,14 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
       skills,
     });
     partyIconFilenames.push(c.iconFilename);
+    const override = initialHpMpByCharacterId?.[c.id];
+    if (override) {
+      // 探索などで前回戦闘から HP/MP を引き継ぐ場合は、その値をそのまま渡す（0 も有効値）
+      initialPartyHpMp.push({ currentHp: override.hp, currentMp: override.mp });
+    } else {
+      // 引き継ぎ情報がない場合は「未指定扱い」にし、run-battle-with-party 側で最大値スタートとする
+      initialPartyHpMp.push({ currentHp: -1, currentMp: -1 });
+    }
   }
 
   const battle = runBattleWithParty(
@@ -331,7 +346,8 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     initialPartyPositions,
     undefined,
     TEST_ENEMY_TACTIC_SLOTS,
-    TEST_ENEMY_SKILLS
+    TEST_ENEMY_SKILLS,
+    initialPartyHpMp
   );
 
   return {
@@ -345,5 +361,6 @@ export async function runTestBattle(presetId: string): Promise<RunTestBattleResu
     enemyPositions: battle.enemyPositions,
     log: battle.log,
     summary: battle.summary,
+    partyCharacterIds: order,
   };
 }
