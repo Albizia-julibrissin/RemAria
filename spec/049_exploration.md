@@ -185,6 +185,8 @@
 - 出撃可能メンバーは主人公＋仲間＋メカの 1〜3 体。作戦スロットは `039` のパーティプリセットをそのまま利用する。
 - 探索開始時に、持ち込む探索用消耗品の種類・数量を指定し、**Expedition 内の専用ストック**として扱う（バッグからはあらかじめ消費）。
 - `continueExploration` の呼び出しごとに、「技能判定イベント」または「戦闘イベント」または「結果イベント」を 1 回進める。
+- **探索イベントの発生判定**：**各イベント（戦闘・技能など）が終了するたびに**、次に発生させるイベント種別を抽選する（事前にキューを積まない方式）。技能イベントの発生確率はエリアの `baseSkillEventRate` で制御する。
+- **イベント種別の拡張**：技能イベントに限らず、将来的に他の探索イベント（例：技能強制成功、ハイアンドローで連勝すると報酬枠が増え続ける等、射幸・ラッキー要素）を追加できるよう、イベント種別を汎用的に扱う設計とする。MVP では「戦闘」と「技能」のみ実装。
 - 戦闘は `run-battle-with-party`（仮称）で実行し、**戦闘結果の HP/MP を Expedition に書き戻す**。  
   - 次の戦闘は、この HP/MP を初期値として開始する。  
   - **戦闘中の一時的なバフ/デバフ状態は探索間で持ち越さない**（戦闘終了でリセット）。  
@@ -211,9 +213,9 @@
 1. Expedition を userId と expeditionId で取得し、`state` が in_progress であることを検証。
 2. 終了条件（残り戦闘回数 0 & 中ボス済 & 大ボス抽選済）を満たしていれば、`state=ready_to_finish` として result イベントを返す。
 3. 終了していない場合：
-   - 次に戦闘へ進む前に、エリアの `baseSkillEventRate` に基づき **技能イベント発生判定**。
-   - 発生した場合：技能判定イベントを生成し、成功/失敗に応じてドロップ枠カウンタを更新。
-   - 発生しなかった場合 or 技能後：戦闘イベント（雑魚 or 中ボス or 大ボス）を生成。
+   - **次イベントの抽選**：各イベント終了ごとに抽選する方式のため、ここで「次は技能イベントか戦闘イベントか」をエリアの `baseSkillEventRate` 等に基づき判定。
+   - 技能イベントにした場合：技能判定イベントを生成し、成功/失敗に応じてドロップ枠カウンタを更新。
+   - 戦闘イベントにした場合：雑魚 or 中ボス or 大ボスを生成。
 4. 戦闘イベントの場合：`run-battle-with-party` を呼び出し、ログと結果を取得。
 5. Expedition の進行状態（残り戦闘回数、ボスフラグ、HP/MP、ドロップ枠カウンタ）を更新。
 6. 次イベントの内容を `nextEvent` として返す。
@@ -286,6 +288,7 @@
   - 途中でページを離れ、あとから探索を再開する場合：
     - `/battle/exploration` では直近バトルの詳細ログは再現せず、
     - 下部の現在 HP/MP と「次へ」ボタンだけを表示する。
+- **復帰の実装**：`/battle/exploration` に `?step=next` なしでアクセスすると「復帰」画面（サマリ＋次へのみ）を表示。`?step=next` のときのみ次ステップを抽選・実行。ダッシュボードの「探索を続ける」は復帰用（step なし）。探索開始後のリダイレクトと、戦闘/技能後の「次へ」は `?step=next` で次を実行。
 
 ### 8.3 技能イベント表示（戦闘画面流用）
 
@@ -308,4 +311,99 @@
 - 進行中 Expedition がある状態で `/dashboard` を開くと、テーマ名・エリア名・状態・ラウンド数が正しく表示されること。
 - `/battle/exploration` で戦闘イベントが発生した場合、1 戦闘ぶんのログ・HP/MP 表示が行われ、終了後に Expedition.currentHpMp が更新されること（後続実装）。
 - 技能イベント時に敵側の表示が空であり、ログブロックとステータス選択 UI が表示されること（後続実装）。
+
+------------------------------------------------------------------------
+
+## 9. 実装フェーズ・進捗管理（一時）
+
+※ 探索は段階的に実装しているため、「何が済んで何が残りか」をここで管理する。  
+実装が一通り揃ったらこのセクションは縮約するか `manage/` 側に移す想定。  
+**仕様の正本は 1〜8 章。ここは進捗メモ。**
+
+### 9.1 フェーズ一覧
+
+| Phase | 内容 | 状態 |
+|-------|------|------|
+| **0** | 基盤（DB・メニュー・開始） | ✅ 済 |
+| **1** | 戦闘ループ（1戦闘実行・HP/MP 持ち回り・勝敗で状態遷移） | ✅ 済 |
+| **2** | 結果確定 UI（報酬受け取りボタン・サマリ表示・敗北時ログ表示） | ✅ 済 |
+| **3** | 技能イベント（発生判定・画面・判定ロジック） | ✅ 済 |
+| **4** | 消耗品（持ち込み選択・戦闘後使用・効果適用） | ✅ 済 |
+| **5** | 報酬実装（Exp 付与・ドロップ抽選・インベントリ付与） | ❌ 未 |
+| **6** | 中ボス・大ボス（イベント種別・専用枠・敵編成） | ❌ 未 |
+
+### 9.2 Phase 0：基盤
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| ExplorationTheme / ExplorationArea / Expedition スキーマ | ✅ | prisma/schema.prisma |
+| テーマ・エリアの seed（錆びれた森林・遊覧舗装路跡） | ✅ | prisma/seed.ts |
+| getExplorationMenu | ✅ | テーマ・エリア一覧取得 |
+| startExploration | ✅ | エリア・プリセット・消耗品パラメータで Expedition 作成 |
+| ダッシュボード：探索セクション・テーマ/エリア/プリセット選択・探索開始ボタン | ✅ | ExplorationStartClient |
+| 進行中探索サマリ表示（テーマ名・エリア名・state・ラウンド数） | ✅ | getCurrentExpeditionSummary |
+| 探索開始後 /battle/exploration へ遷移 | ✅ | router.push |
+
+### 9.3 Phase 1：戦闘ループ
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| runExplorationBattle（1戦闘実行・Expedition 更新） | ✅ | runTestBattle をプリセットで呼び、currentHpMp / remainingNormalBattles / state 更新 |
+| 初期 HP/MP：未指定時は最大値、Expedition から渡すときはその値（0 含む） | ✅ | test-battle で -1 を「未指定」、exploration で currentHpMp を渡す |
+| 勝敗で state 遷移（敗北 or 残り0 → ready_to_finish） | ✅ | shouldReadyToFinish → nextState |
+| /battle/exploration：戦闘ログ表示（BattleFullView）・残り戦闘数・「次の戦闘へ」 | ✅ | in_progress 時 |
+| 最後の戦闘ログの保存（ready_to_finish 時に explorationState.lastBattle） | ✅ | 敗北時・結果画面で再表示用 |
+
+### 9.4 Phase 2：結果確定 UI
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| ready_to_finish 時に結果画面（報酬受け取りボタン）を表示 | ✅ | getCurrentExpeditionSummary で分岐、ExplorationFinishClient |
+| 全勝で最後の戦闘後も同じ画面で報酬ボタンを表示 | ✅ | isNowReadyToFinish で戦闘直後から ExplorationFinishClient を表示 |
+| 敗北時：敗北した戦闘のログを結果画面で表示 | ✅ | getLastExplorationBattle で lastBattle を取得し BattleFullView |
+| finishExploration（state → finished、サマリ返却） | ✅ | 枠の由来一覧・totalExpGained 計算。Exp/アイテム付与は未実装 |
+| 報酬受け取り後のサマリ表示（結果・勝利数・枠内訳） | ✅ | ExplorationFinishClient 内で仮サマリ表示 |
+| 強制破棄（テスト用） | ✅ | abortCurrentExpedition・ExplorationAbortClient |
+
+### 9.5 Phase 3：技能イベント
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 戦闘の前に技能イベント発生判定（エリア baseSkillEventRate） | ✅ | getNextExplorationStep で各表示時に抽選 |
+| 技能イベント画面（STR/VIT 等選択・判定） | ✅ | ExplorationSkillEventBlock（戦闘ログ同様1ブロック＋ログにメッセージ・選択UI） |
+| 成功時ドロップ枠加算・explorationState.logs 追記 | ✅ | resolveExplorationSkillEvent で skillSuccessCount と logs 更新 |
+
+**Phase 3 実装の前提（決めごと）**  
+- **次ステップの抽選**：`/battle/exploration` で in_progress のとき、表示前に「今回のステップは戦闘か技能か」を `baseSkillEventRate` で抽選。戦闘なら現行どおり `runExplorationBattle`、技能なら技能イベント用 UI を表示し、ユーザーがステータス選択後に `resolveExplorationSkillEvent(stat)` で判定・更新してから同一ページへリダイレクト（次の抽選へ）。  
+- **判定ロジック（MVP）**：docs/020 の「エリア基準値×イベント補正」は MVP では簡略化し、**エリアごと1つの必要値（全ステ共通）** で判定する。パーティ内で選択したステが最高のキャラのその基礎ステを使い、必要値以上なら確定成功、未満なら成功率＝そのステ／必要値でランダム判定。必要値は `ExplorationArea.skillCheckRequiredValue`（default 80）で持つ（後でエリア別・ステ別に拡張可能）。  
+- **ログ**：技能イベントの結果（どのステで挑んだか・成功/失敗）を `explorationState.logs` に 1 行追記。
+
+### 9.6 Phase 4：消耗品
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 開始時の持ち込み選択 UI・在庫チェック | ✅ | ダッシュボードで一種類・個数選択。startExploration で在庫・持ち込み上限チェック＋開始時減算 |
+| 戦闘/技能後の消耗品使用 UI・効果適用（HP/MP 回復・次イベント STR 等） | ✅ | 戦闘後の使用UI・HP/MP回復は実装済み。技能イベント後の使用は未実装（要検討）。次イベントSTR等は 027#21 |
+
+### 9.7 Phase 5：報酬実装
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 参加キャラ（protagonist/companion）への経験値付与 | ✅ | finishExploration 内で grantCharacterExp を呼び出し。048・docs/048_experience_and_levelup に従う |
+| 枠ごとのドロップテーブルロール・UserInventory 加算 | ✅ | finishExploration で DropTable 重みロール→在庫加算。枠由来ごとにテーブル紐づけ |
+| 報酬内容の画面表示（取得アイテム名・数量・枠色分け） | ✅ | 基本=グレー、戦闘=銅、技能=銀、中ボス=金、大ボス=虹で枠ごとに色分け表示 |
+
+### 9.8 Phase 6：中ボス・大ボス
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 通常戦闘 N 回後の「中ボス」イベント・専用敵編成 | ❌ | 敵マスタ未実装のため test-enemy 流用 |
+| 中ボス撃破後の大ボス出現判定・専用枠 | ❌ | |
+| エリア別敵編成（normalEnemyGroupCode 等）とマスタ連携 | ❌ | docs/027 #14 |
+
+### 9.9 更新ルール（このセクション）
+
+- 実装したら該当 Phase の表で 状態 を ✅ にし、必要なら 備考 を追記。
+- 新しいフェーズができたら 9.1 と対応する 9.x を追加。
+- 探索が一通り揃ったら 9 章を「完了サマリ」に縮約するか、`manage/MVP_PROGRESS.md` の探索行に集約し、ここでは「進捗は manage 参照」に変更してよい。
 

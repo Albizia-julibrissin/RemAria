@@ -26,7 +26,7 @@ const DEFAULT_ROW: TacticSlotRow = {
   skillId: null,
 };
 
-const CYCLE_CONDITION_VALUES = new Set(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
+const CYCLE_CONDITION_VALUES = new Set<string>(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
 
 function buildSlotsFromRows(rows: TacticSlotRow[]): TacticSlotRow[] {
   return rows.map((r, i) => {

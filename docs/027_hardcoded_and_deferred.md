@@ -38,10 +38,14 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 12 | `prisma/seed.ts` | **test1 の設備枠・コスト上限**：industrialMaxSlots: 20, industrialMaxCost: 1000 を test1 だけ上書き。 | テスト用として明示的に「テスト用シード」であることをコメントで残す。本番は進行で解放する想定なので、この箇所は「テスト用」のままでよい。 |
 | 13 | `prisma/seed.ts` | **建設レシピ・クラフトレシピ・設備型・解放**：素材の種類・数量・設備名・レシピ名などはすべて seed 内の配列で定義。 | コンテンツが増えたら「マスタ CSV / 管理画面」から投入する運用を検討。現状は seed がマスタの役割。 |
 | 14 | `prisma/schema.prisma`, `src/server/actions/exploration.ts` | **探索エリアごとの敵編成**：`ExplorationArea.normalEnemyGroupCode` などは定義済みだが、本番用の敵マスタ（Enemy / Encounter）は未実装。探索戦闘は当面 `test-enemy.ts` のスライム固定編成を使う想定。 | 敵マスタ（EnemyType / EnemyGroup 等）と `ExplorationArea` の紐づけを設計し、探索戦闘でそのマスタから敵編成を構築する。スライム固定はテスト用として残すか、テスト専用マスタに移す。 |
-| 15 | `src/server/actions/exploration.ts`, `src/app/dashboard/exploration-log-client.tsx` | **探索イベント進行ロジック（仮）**：`continueExploration` は現時点で「技能/戦闘イベント（仮）」のテキストログとカウンタ更新のみ行い、実際の戦闘・技能判定ロジックには未接続。 | 戦闘イベント時は `run-battle-with-party` を呼び、技能イベント時は基礎ステ選択・判定を実装して Expedition とログに反映する。 |
-| 16 | `src/server/actions/exploration.ts`, `src/lib/battle/run-battle-with-party.ts` | **探索中の HP/MP 持ち回り**：仕様上は「戦闘結果の HP/MP を Expedition に書き戻し、次の戦闘はその値から開始」だが、現時点では `run-battle-with-party` が「毎回最大 HP/MP 開始」前提で、探索レイヤーとの連携は未実装。 | `run-battle-with-party` に初期 HP/MP を渡せる拡張、またはラッパー関数を用意し、Expedition.currentHpMp と双方向に同期する。 |
-| 17 | `src/server/actions/exploration.ts`, `src/app/battle/exploration-finish-client.tsx` | **探索終了時の経験値・ドロップ付与（簡易サマリのみ）**：`finishExploration` は現状、Expedition の `totalExpGained` と「ドロップ枠の由来一覧」だけを計算し、実際の UserInventory へのアイテム付与・キャラクターへの経験値配分は未実装。 | spec/049 の `finishExploration` 仕様に従い、Expedition のカウンタから具体的なドロップ内容をロールして UserInventory に加算し、参加キャラクターに経験値を付与する処理を追加する。 |
+| 15 | `src/server/actions/exploration.ts`, `src/app/dashboard/exploration-log-client.tsx` | **continueExploration（仮）**：探索本流は `getNextExplorationStep` + `runExplorationBattle` / `resolveExplorationSkillEvent` で実装済み。`continueExploration` はダッシュボードの exploration-log-client からのみ呼ばれ、ログ行とカウンタの更新だけを行う仮実装のまま。 | ダッシュボードの「探索ログ」用途を整理し、continueExploration を削除するか別用途に統合する。 |
+| 16 | （解消済み） | **探索中の HP/MP 持ち回り**：戦闘結果の HP/MP を Expedition に書き戻し次の戦闘に渡す処理は実装済み（runTestBattle の initialHpMpByCharacterId、runExplorationBattle での currentHpMp 更新）。 | — |
+| 17 | （解消済み） | **探索終了時の経験値・ドロップ付与**：UserInventory へのドロップ加算・参加キャラへの経験値付与（grantCharacterExp）は実装済み。 | — |
 | 18 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/page.tsx` | **最後の戦闘ログの永続化**：敗北時や最終戦闘時のログを結果画面で再表示するため、`Expedition.explorationState.lastBattle` に `RunTestBattleSuccess` をそのまま格納している。 | 将来的には「戦闘ログを永続化しない」という方針との整合を取りつつ、必要であれば簡易サマリだけを保持する形に改める。現状は MVP の UX 優先でフルログを JSON に保存している。 |
+| 19 | `src/server/actions/exploration.ts` | **技能イベントの発生時メッセージ**：`getNextExplorationStep` 内で `eventMessage` を "何かが起きた…。どう対処する？" と固定している。 | エリア別・イベント種別でマスタ（または explorationState の種別）にメッセージを持たせ、表示時に参照する。 |
+| 20 | `src/app/battle/exploration/page.tsx` | **探索戦闘画面の「戦闘後のパーティ状況（仮）」**：見出しおよび「持ち回り・次イベント抽選は後続で実装」の説明文が古い。HP/MP 持ち回りと次ステップ抽選は実装済み。 | 見出しの（仮）削除と説明文を実態（持ち回り・抽選済み）に合わせて修正する。 |
+| 21 | 探索消耗品（spec/049 Phase 4） | **ステータスブースト系アイテム**：docs/020 で想定している「次のイベント時にSTRアップ」等のバフ消耗品は未実装。現状は HP/MP 割合回復のみ。 | Item.consumableEffect にバフ種別（例：next_event_str_up）を追加し、探索ラウンド開始時や戦闘開始時に explorationState のバフを参照してステ補正する処理を実装する。 |
+| 22 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/page.tsx` | **技能イベント途中離脱時の扱い**：技能イベントが表示された状態でステータス未選択のままページを閉じた場合、そのイベントは「発生しなかったもの」として扱われ、復帰時には新たに次ステップ（技能 or 戦闘）をロールしている。 | 将来的に explorationState に pendingSkillEvent（未解決の技能イベント）を保持し、復帰時に同じイベントに戻れるようにするかを検討する。現状は実装簡易さ優先でスキップ扱い。 |
 
 ---
 

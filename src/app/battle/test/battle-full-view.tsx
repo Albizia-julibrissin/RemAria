@@ -4,6 +4,7 @@
  * フルモード: 1ターンごとに HP/MP バー・配置グリッド・戦闘ログを表示（1v3 対応）
  */
 
+import type { BattlePosition } from "@/lib/battle/battle-position";
 import type { RunTestBattleSuccess } from "@/server/actions/test-battle";
 import { TEST_ENEMY_NAME, TEST_ENEMY_ICON_FILENAME } from "@/lib/battle/test-enemy";
 import { AllyGridRow, EnemyGridRow } from "./battle-grid-view";
@@ -115,9 +116,9 @@ function TurnBlock({
   protagonistIconFilename: RunTestBattleSuccess["protagonistIconFilename"];
   partyIconFilenames: (string | null)[];
   /** このターン終了時点の味方の陣地位置 */
-  partyPositions: { row: number; col: number }[];
+  partyPositions: BattlePosition[];
   /** このターン終了時点の敵の陣地位置 */
-  enemyPositions: { row: number; col: number }[];
+  enemyPositions: BattlePosition[];
   summary: RunTestBattleSuccess["summary"];
 }) {
   const entry = entries[entries.length - 1]!;
@@ -240,7 +241,7 @@ export function BattleFullView({ data }: BattleFullViewProps) {
               protagonistPosition={data.protagonistPosition}
               protagonistIconFilename={data.protagonistIconFilename}
               partyIconFilenames={data.partyIconFilenames ?? []}
-              partyPositions={resolvedParty.map((p) => ({ row: p.row, col: p.col }))}
+              partyPositions={resolvedParty as BattlePosition[]}
               enemyPositions={resolvedEnemy}
               summary={data.summary}
             />

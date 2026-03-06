@@ -2,13 +2,56 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { finishExploration, type FinishExplorationSummary } from "@/server/actions/exploration";
+import {
+  finishExploration,
+  type FinishExplorationSummary,
+  type FinishExplorationDropSlot,
+  type FinishExplorationDropSlotOrigin,
+} from "@/server/actions/exploration";
 
 type Props = {
   themeName: string;
   areaName: string;
   isWiped: boolean;
 };
+
+/** 枠の由来ごとの表示用スタイル（銅・銀・金・虹） */
+function getSlotStyle(origin: FinishExplorationDropSlotOrigin): string {
+  switch (origin) {
+    case "base":
+      return "border-gray-500/60 bg-gray-800/40 text-gray-200";
+    case "battle":
+      return "border-amber-600/80 bg-amber-950/50 text-amber-100";
+    case "skill":
+      return "border-slate-400 bg-slate-700/50 text-slate-100";
+    case "mid_boss":
+      return "border-yellow-500/90 bg-yellow-900/40 text-yellow-100";
+    case "last_boss_special":
+      return "border-transparent bg-gradient-to-r from-purple-600/80 via-pink-500/80 to-amber-500/80 text-white shadow-md";
+    default:
+      return "border-base-border bg-base-elevated text-text-primary";
+  }
+}
+
+function SlotCard({ slot }: { slot: FinishExplorationDropSlot }) {
+  const style = getSlotStyle(slot.origin);
+  return (
+    <div className={`rounded-lg border-2 p-2 ${style}`}>
+      <p className="text-xs font-medium opacity-90">{slot.label}</p>
+      {slot.items.length === 0 ? (
+        <p className="mt-1 text-xs opacity-70">（なし）</p>
+      ) : (
+        <ul className="mt-1 space-y-0.5 text-xs">
+          {slot.items.map((it, i) => (
+            <li key={i}>
+              {it.itemName} × {it.quantity}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props) {
   const router = useRouter();
@@ -26,9 +69,13 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
         return;
       }
       setSummary(result.summary);
-      // ダッシュボードの状態も更新しておきたいのでリフレッシュ
-      router.refresh();
+      // 報酬内容を視認できるよう、ここではリフレッシュしない。「ダッシュボードへ戻る」で遷移する
     });
+  };
+
+  const handleBackToDashboard = () => {
+    router.push("/dashboard");
+    router.refresh();
   };
 
   return (
@@ -60,37 +107,28 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
       )}
 
       {summary && (
-        <div className="mt-3 space-y-2">
-          <h3 className="text-sm font-medium text-text-muted">今回の探索結果（仮サマリ）</h3>
+        <div className="mt-3 space-y-3">
+          <h3 className="text-sm font-medium text-text-muted">今回の探索結果</h3>
           <p className="text-xs text-text-muted">
             結果: {summary.result === "cleared" ? "クリア" : "敗北"} / 勝利数: {summary.battleWins} / 技能成功:
-            {summary.skillSuccessCount} / 獲得予定 Exp 合計: {summary.totalExpGained}
+            {summary.skillSuccessCount} / 獲得 Exp: {summary.totalExpGained}
           </p>
-          <div className="mt-2">
-            <p className="text-xs font-medium text-text-muted">ドロップ枠の内訳（由来ごと）</p>
-            <ul className="mt-1 space-y-1 text-xs text-text-primary">
+          <div>
+            <p className="mb-2 text-xs font-medium text-text-muted">報酬（枠ごとに色分け表示）</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {summary.dropSlots.map((slot, idx) => (
-                <li key={idx} className="flex items-center justify-between">
-                  <span>
-                    {slot.label}
-                    <span className="ml-1 text-[10px] text-text-muted">
-                      (
-                      {slot.origin === "base"
-                        ? "基本"
-                        : slot.origin === "battle"
-                        ? "戦闘"
-                        : slot.origin === "skill"
-                        ? "技能"
-                        : slot.origin === "mid_boss"
-                        ? "中ボス"
-                        : "大ボス専用"}
-                      )
-                    </span>
-                  </span>
-                  {/* 将来的にここに実際の item 名やアイコンを表示する */}
-                </li>
+                <SlotCard key={idx} slot={slot} />
               ))}
-            </ul>
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-base-border">
+            <button
+              type="button"
+              onClick={handleBackToDashboard}
+              className="rounded-md bg-base-border px-4 py-2 text-sm font-medium text-text-primary hover:bg-base hover:opacity-90"
+            >
+              ダッシュボードへ戻る
+            </button>
           </div>
         </div>
       )}

@@ -170,7 +170,7 @@ export async function dismissCompanion(characterId: string, userId: string, conf
   return { success: true as const };
 }
 
-/** 指定キャラの詳細＋習得スキル（工業スキル表示用）。userId 一致時のみ。spec/030 */
+/** 指定キャラの詳細＋習得スキル（戦闘/工業表示用）。userId 一致時のみ。spec/030 */
 export async function getCharacterWithSkillsForUser(characterId: string, userId: string) {
   const c = await prisma.character.findFirst({
     where: { id: characterId, userId },
@@ -179,6 +179,8 @@ export async function getCharacterWithSkillsForUser(characterId: string, userId:
       category: true,
       displayName: true,
       iconFilename: true,
+      level: true,
+      experiencePoints: true,
       STR: true,
       INT: true,
       VIT: true,
@@ -188,7 +190,18 @@ export async function getCharacterWithSkillsForUser(characterId: string, userId:
       LUK: true,
       CAP: true,
       characterSkills: {
-        select: { skill: { select: { id: true, name: true, description: true, effectType: true, effectValue: true } } },
+        select: {
+          skill: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              description: true,
+              effectType: true,
+              effectValue: true,
+            },
+          },
+        },
       },
     },
   });

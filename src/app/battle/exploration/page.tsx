@@ -1,23 +1,32 @@
-"use server";
-
-// 探索戦闘画面（MVP 版）: 進行中 Expedition のパーティで 1 回だけ戦闘を実行し、仮戦闘と同じ UI でログを表示する。
+// 探索戦闘画面（MVP 版）: 進行中 Expedition の「次ステップ」を抽選し、戦闘 or 技能イベントを表示する。
+// 他ページから戻ってきたときは ?step=next が無い限り「復帰」画面（サマリ＋次へ）のみ表示する。
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import {
   getCurrentExpeditionSummary,
+  getExplorationRoundConsumablesAndParty,
+  getExplorationResumeSummary,
   getLastExplorationBattle,
+  getNextExplorationStep,
   runExplorationBattle,
 } from "@/server/actions/exploration";
 import { BattleFullView } from "../test/battle-full-view";
 import { ExplorationFinishClient } from "../exploration-finish-client";
+import { ExplorationSkillEventBlock } from "./exploration-skill-event-block";
+import { ExplorationAfterBattleStatusClient } from "./exploration-after-battle-status-client";
 
-export default async function ExplorationBattlePage() {
+type PageProps = { searchParams?: Promise<{ step?: string }> };
+
+export default async function ExplorationBattlePage(props: PageProps) {
   const session = await getSession();
   if (!session.userId) {
     redirect("/login");
   }
+
+  const searchParams = (await (props.searchParams ?? Promise.resolve({}))) as { step?: string };
+  const doNextStep = searchParams.step === "next";
 
   const current = await getCurrentExpeditionSummary();
 
@@ -57,13 +66,108 @@ export default async function ExplorationBattlePage() {
           areaName={current.areaName}
           isWiped={isWiped}
         />
-        <p className="mt-6 text-xs text-text-muted">
-          ※ この画面ではまだアイテムの具体的な中身は表示していません。将来的に、由来ごとの枠に対応するドロップ内容をここに表示します。
+      </main>
+    );
+  }
+
+  // 進行中かつ step=next が無い: 復帰画面（直前ログは出さず、サマリ＋次へのみ）
+  if (current.state === "in_progress" && !doNextStep) {
+    const resume = await getExplorationResumeSummary();
+    if (!resume.success) {
+      return (
+        <main className="min-h-screen bg-base p-8">
+          <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
+          <p className="mt-2 text-text-muted">{resume.message}</p>
+          <p className="mt-4">
+            <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
+              ← ダッシュボードへ
+            </Link>
+          </p>
+        </main>
+      );
+    }
+    return (
+      <main className="min-h-screen bg-base p-8">
+        <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
+        <p className="mt-2 text-text-muted">
+          {resume.themeName} / {resume.areaName} — 進行中の探索に復帰しました
+        </p>
+        <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-4 space-y-2">
+          <ExplorationAfterBattleStatusClient
+            partyDisplayNames={resume.partyDisplayNames}
+            partyHp={resume.partyHp}
+            partyMp={resume.partyMp}
+            partyMaxHp={resume.partyMaxHp}
+            partyMaxMp={resume.partyMaxMp}
+            remainingAfter={resume.remainingNormalBattles}
+            consumables={resume.consumables}
+            partyMembers={resume.partyMembers}
+            sectionTitle="現在のパーティ状況"
+          />
+        </div>
+        <p className="mt-6">
+          <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
+            ← ダッシュボードへ
+          </Link>
         </p>
       </main>
     );
   }
 
+  // 進行中かつ step=next: 次ステップを抽選（戦闘 or 技能イベント）
+  const stepResult = await getNextExplorationStep();
+  if (!stepResult.success) {
+    return (
+      <main className="min-h-screen bg-base p-8">
+        <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
+        <p className="mt-2 text-text-muted">{stepResult.message}</p>
+        <p className="mt-4">
+          <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
+            ← ダッシュボードへ
+          </Link>
+        </p>
+      </main>
+    );
+  }
+
+  if (stepResult.step.kind === "skill_check") {
+    const roundData = await getExplorationRoundConsumablesAndParty();
+    const consumables = roundData.success ? roundData.consumables : [];
+    const partyMembers = roundData.success ? roundData.partyMembers : [];
+    const totalHp = stepResult.step.partyHp.reduce((sum, v) => sum + v, 0);
+    const totalMp = stepResult.step.partyMp.reduce((sum, v) => sum + v, 0);
+    return (
+      <main className="min-h-screen bg-base p-8">
+        <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
+        <p className="mt-2 text-text-muted">
+          {current.themeName} / {current.areaName} — 技能イベント
+        </p>
+        <div className="mt-4">
+          <ExplorationSkillEventBlock
+            eventMessage={stepResult.step.eventMessage}
+            partyDisplayNames={stepResult.step.partyDisplayNames}
+            partyIconFilenames={stepResult.step.partyIconFilenames}
+            partyPositions={stepResult.step.partyPositions}
+            partyHp={stepResult.step.partyHp}
+            partyMp={stepResult.step.partyMp}
+            partyMaxHp={stepResult.step.partyMaxHp}
+            partyMaxMp={stepResult.step.partyMaxMp}
+            consumables={consumables}
+            partyMembers={partyMembers}
+            totalHp={totalHp}
+            totalMp={totalMp}
+          />
+        </div>
+        <p className="mt-6">
+          <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
+            ← ダッシュボードへ
+          </Link>
+        </p>
+      </main>
+    );
+  }
+
+  // step.kind === "battle": 戦闘を1回実行
   const battleResult = await runExplorationBattle();
 
   if (!battleResult.success) {
@@ -94,6 +198,33 @@ export default async function ExplorationBattlePage() {
   const isPlayerWin = battleResult.result.result === "player";
   const isNowReadyToFinish = !isPlayerWin || remainingAfter <= 0;
 
+  const roundData = await getExplorationRoundConsumablesAndParty();
+  const consumables = roundData.success ? roundData.consumables : [];
+  const partyMembers = roundData.success ? roundData.partyMembers : [];
+  const partyNames = battleResult.result.summary.partyDisplayNames ?? ["味方"];
+  const partyHpArray = partyNames.map(
+    (_name, i) =>
+      battleResult.result.summary.partyHpFinals?.[i] ??
+      battleResult.result.summary.playerHpFinal
+  );
+  const partyMpArray = partyNames.map(
+    (_name, i) =>
+      battleResult.result.summary.partyMpFinals?.[i] ??
+      battleResult.result.summary.playerMpFinal
+  );
+  const partyMaxHpArray = partyNames.map(
+    (_name, i) =>
+      battleResult.result.summary.partyMaxHp?.[i] ??
+      battleResult.result.summary.playerMaxHp ??
+      1
+  );
+  const partyMaxMpArray = partyNames.map(
+    (_name, i) =>
+      battleResult.result.summary.partyMaxMp?.[i] ??
+      battleResult.result.summary.playerMaxMp ??
+      1
+  );
+
   return (
     <main className="min-h-screen bg-base p-8">
       <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
@@ -108,45 +239,16 @@ export default async function ExplorationBattlePage() {
       {/* 戦闘後の現在HP/MPサマリと次アクション */}
       <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-4 space-y-2">
         {!isNowReadyToFinish && (
-          <>
-            <h2 className="text-sm font-medium text-text-muted">戦闘後のパーティ状況（仮）</h2>
-            <p className="text-xs text-text-muted">
-              現在は仮戦闘の結果をそのまま表示しています。探索中の HP/MP 持ち回りや次イベント抽選との連携は後続で実装します。
-            </p>
-            <ul className="mt-2 space-y-1 text-sm text-text-primary">
-              {(battleResult.result.summary.partyDisplayNames ?? ["味方"]).map((name, i) => (
-                <li key={i} className="flex items-center justify-between">
-                  <span>{name}</span>
-                  <span className="text-xs text-text-muted tabular-nums">
-                    HP{" "}
-                    {battleResult.result.summary.partyHpFinals?.[i] ??
-                      battleResult.result.summary.playerHpFinal}
-                    /
-                    {battleResult.result.summary.partyMaxHp?.[i] ??
-                      battleResult.result.summary.playerMaxHp ??
-                      1}{" "}
-                    ・ MP{" "}
-                    {battleResult.result.summary.partyMpFinals?.[i] ??
-                      battleResult.result.summary.playerMpFinal}
-                    /
-                    {battleResult.result.summary.partyMaxMp?.[i] ??
-                      battleResult.result.summary.playerMaxMp ??
-                      1}
-                  </span>
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-4 flex items-center gap-4">
-              <span className="text-xs text-text-muted">残り戦闘数: {remainingAfter}</span>
-              <Link
-                href="/battle/exploration"
-                className="text-sm text-brass hover:text-brass-hover"
-              >
-                次の戦闘へ →
-              </Link>
-            </div>
-          </>
+          <ExplorationAfterBattleStatusClient
+            partyDisplayNames={partyNames}
+            partyHp={partyHpArray}
+            partyMp={partyMpArray}
+            partyMaxHp={partyMaxHpArray}
+            partyMaxMp={partyMaxMpArray}
+            remainingAfter={remainingAfter}
+            consumables={consumables}
+            partyMembers={partyMembers}
+          />
         )}
 
         {isNowReadyToFinish && (

@@ -9,7 +9,7 @@
  * 主人公の基礎ステータス（物理型A）: docs/10_battle_status.csv 14行目
  * タグ・設備種別・工業スキル: docs/15_facility_tags_and_industrial_skills.md
  */
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -20,19 +20,17 @@ const TEST_USERS = [
 ] as const;
 
 /**
- * テスト用：Lv50 時点・割り振り未使用状態の基礎ステータス。
- * docs/09: Lv1 CAP=560, 1レベルごとに CAP+60 → Lv50 で CAP=3,500。
- * 各ステは CAP の 5% を下限とするため、floor(3,500 * 0.05) = 175。
- * 7 ステすべて 175、CAP=3,500 の状態を「未割り振り」として Seed する。
+ * テスト用：Lv50 時点の基礎ステータス（spec/048: 各ステ 10〜30%、合計=CAP）。
+ * docs/09: Lv50 CAP=3,500。下限 10% = 350/ステ。自由分 30% を均等に振り 500/ステ。
  */
 const LEVEL_50_BASE_STATS = {
-  STR: 175,
-  INT: 175,
-  VIT: 175,
-  WIS: 175,
-  DEX: 175,
-  AGI: 175,
-  LUK: 175,
+  STR: 500,
+  INT: 500,
+  VIT: 500,
+  WIS: 500,
+  DEX: 500,
+  AGI: 500,
+  LUK: 500,
   CAP: 3500,
 } as const;
 
@@ -121,6 +119,29 @@ const ITEMS = [
   { code: "wheat", name: "小麦", category: "material" as const },
   { code: "flour", name: "小麦粉", category: "material" as const },
   { code: "portable_ration", name: "携帯食料", category: "material" as const },
+  // 探索報酬用の素材・部品・設計図・遺物グループトークン（遺物本体は鑑定で別途生成）
+  { code: "iron_equip_part", name: "鉄の装備部品", category: "material" as const },
+  { code: "cloth_equip_part", name: "布の装備部品", category: "material" as const },
+  { code: "blueprint_water_search_alpha", name: "水資源探索α型設計図", category: "blueprint" as const },
+  { code: "relic_group_a_token", name: "遺物グループAの原石", category: "material" as const },
+] as const;
+
+/** spec/049: 探索用消耗品。HP/MP 割合回復・持ち込み上限2個。 */
+const CONSUMABLE_ITEMS = [
+  {
+    code: "consumable_hp_10",
+    name: "簡易HP回復薬",
+    category: "consumable" as const,
+    consumableEffect: { type: "hp_percent", value: 10 } as const,
+    maxCarryPerExpedition: 2,
+  },
+  {
+    code: "consumable_mp_10",
+    name: "簡易MP回復薬",
+    category: "consumable" as const,
+    consumableEffect: { type: "mp_percent", value: 10 } as const,
+    maxCarryPerExpedition: 2,
+  },
 ] as const;
 
 /** spec/030, docs/15: 工業スキル 5 種。対象タグの設備に配備時のみ効果。 */
@@ -1055,7 +1076,7 @@ async function seedBattleSkills() {
         weightAddBack: s.weightAddBack,
         logMessage: s.logMessage ?? null,
         logMessageOnCondition: s.logMessageOnCondition ?? null,
-        displayTags: (s.displayTags ?? null) as Prisma.InputJsonValue | null,
+        displayTags: (s.displayTags ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       },
     });
 
@@ -1142,7 +1163,7 @@ async function seedOnboroPartTypes() {
     const data = {
       slot: p.slot,
       name: p.name,
-      statRates: p.statRates ? (p.statRates as object) : null,
+      statRates: (p.statRates ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       strAdd: p.strAdd ?? 0,
       intAdd: p.intAdd ?? 0,
       vitAdd: p.vitAdd ?? 0,
@@ -1251,11 +1272,66 @@ async function seedItems() {
   for (const i of ITEMS) {
     await prisma.item.upsert({
       where: { code: i.code },
-      create: { code: i.code, name: i.name, category: i.category },
-      update: { name: i.name, category: i.category },
+      create: {
+        code: i.code,
+        name: i.name,
+        category: i.category,
+        consumableEffect: Prisma.JsonNull,
+        maxCarryPerExpedition: null,
+      },
+      update: {
+        name: i.name,
+        category: i.category,
+        consumableEffect: Prisma.JsonNull,
+        maxCarryPerExpedition: null,
+      },
     });
   }
-  console.log(`Items: ${ITEMS.length} 件 upsert`);
+  for (const i of CONSUMABLE_ITEMS) {
+    await prisma.item.upsert({
+      where: { code: i.code },
+      create: {
+        code: i.code,
+        name: i.name,
+        category: i.category,
+        consumableEffect: i.consumableEffect as object,
+        maxCarryPerExpedition: i.maxCarryPerExpedition,
+      },
+      update: {
+        name: i.name,
+        category: i.category,
+        consumableEffect: i.consumableEffect as object,
+        maxCarryPerExpedition: i.maxCarryPerExpedition,
+      },
+    });
+  }
+  console.log(`Items: ${ITEMS.length + CONSUMABLE_ITEMS.length} 件 upsert`);
+}
+
+/** spec/049: テストユーザー test1 に探索用消耗品を各10個所持させる。 */
+async function seedTest1Consumables() {
+  const test1 = await prisma.user.findUnique({
+    where: { email: "test1@example.com" },
+    select: { id: true },
+  });
+  if (!test1) return;
+
+  const consumableCodes = CONSUMABLE_ITEMS.map((i) => i.code);
+  const items = await prisma.item.findMany({
+    where: { code: { in: consumableCodes } },
+    select: { id: true, code: true },
+  });
+
+  for (const item of items) {
+    await prisma.userInventory.upsert({
+      where: {
+        userId_itemId: { userId: test1.id, itemId: item.id },
+      },
+      create: { userId: test1.id, itemId: item.id, quantity: 10 },
+      update: { quantity: 10 },
+    });
+  }
+  console.log("test1: 探索用消耗品（HP/MP回復薬）を各10個所持");
 }
 
 /** spec/035, docs/018: 初期 5 設備のレシピ（周期・入出力）。1時間で携帯食料100個。 */
@@ -1530,6 +1606,7 @@ async function seedExplorationThemesAndAreas() {
         baseDropMin: a.baseDropMin,
         baseDropMax: a.baseDropMax,
         baseSkillEventRate: a.baseSkillEventRate,
+        skillCheckRequiredValue: 80, // Phase 3 技能判定の必要値（MVP: 全ステ共通）
         normalBattleCount: a.normalBattleCount,
         normalEnemyGroupCode: a.normalEnemyGroupCode,
         midBossEnemyGroupCode: a.midBossEnemyGroupCode,
@@ -1544,6 +1621,7 @@ async function seedExplorationThemesAndAreas() {
         baseDropMin: a.baseDropMin,
         baseDropMax: a.baseDropMax,
         baseSkillEventRate: a.baseSkillEventRate,
+        skillCheckRequiredValue: 80,
         normalBattleCount: a.normalBattleCount,
         normalEnemyGroupCode: a.normalEnemyGroupCode,
         midBossEnemyGroupCode: a.midBossEnemyGroupCode,
@@ -1551,6 +1629,155 @@ async function seedExplorationThemesAndAreas() {
       },
     });
   }
+
+  // 遊覧舗装路跡用のドロップテーブル（MVP: 1 エリアのみ）
+  const area = await prisma.explorationArea.findUnique({
+    where: { code: "yuran_paved_road" },
+    select: { id: true },
+  });
+  if (!area) {
+    console.warn("ExplorationArea yuran_paved_road not found for DropTable seed");
+    return;
+  }
+
+  // アイテム ID 解決
+  const itemCodes = [
+    "water",
+    "wheat",
+    "iron_equip_part",
+    "cloth_equip_part",
+    "blueprint_water_search_alpha",
+    "relic_group_a_token",
+  ];
+  const items = await prisma.item.findMany({
+    where: { code: { in: itemCodes } },
+    select: { id: true, code: true },
+  });
+  const itemByCode = new Map(items.map((i) => [i.code, i.id]));
+
+  const baseTable = await prisma.dropTable.upsert({
+    where: { code: "yuran_paved_road_base" },
+    create: {
+      code: "yuran_paved_road_base",
+      name: "遊覧舗装路跡・基本ドロップ",
+      kind: "base",
+      areaId: area.id,
+    },
+    update: {
+      name: "遊覧舗装路跡・基本ドロップ",
+      kind: "base",
+      areaId: area.id,
+    },
+  });
+
+  const battleTable = await prisma.dropTable.upsert({
+    where: { code: "yuran_paved_road_battle" },
+    create: {
+      code: "yuran_paved_road_battle",
+      name: "遊覧舗装路跡・戦闘ボーナス",
+      kind: "battle_bonus",
+      areaId: area.id,
+    },
+    update: {
+      name: "遊覧舗装路跡・戦闘ボーナス",
+      kind: "battle_bonus",
+      areaId: area.id,
+    },
+  });
+
+  const skillTable = await prisma.dropTable.upsert({
+    where: { code: "yuran_paved_road_skill" },
+    create: {
+      code: "yuran_paved_road_skill",
+      name: "遊覧舗装路跡・技能イベント枠",
+      kind: "skill",
+      areaId: area.id,
+    },
+    update: {
+      name: "遊覧舗装路跡・技能イベント枠",
+      kind: "skill",
+      areaId: area.id,
+    },
+  });
+
+  const lastBossTable = await prisma.dropTable.upsert({
+    where: { code: "yuran_paved_road_last_boss" },
+    create: {
+      code: "yuran_paved_road_last_boss",
+      name: "遊覧舗装路跡・大ボス専用枠",
+      kind: "last_boss_special",
+      areaId: area.id,
+    },
+    update: {
+      name: "遊覧舗装路跡・大ボス専用枠",
+      kind: "last_boss_special",
+      areaId: area.id,
+    },
+  });
+
+  // DropTableEntry を簡易に upsert（既存は削除してから入れ直す）
+  await prisma.dropTableEntry.deleteMany({
+    where: {
+      dropTableId: { in: [baseTable.id, battleTable.id, skillTable.id, lastBossTable.id] },
+    },
+  });
+
+  const entries: Array<{
+    tableId: string;
+    code: string;
+    min: number;
+    max: number;
+    weight: number;
+  }> = [
+    // 基本枠: 資源多め
+    { tableId: baseTable.id, code: "water", min: 20, max: 40, weight: 50 },
+    { tableId: baseTable.id, code: "wheat", min: 10, max: 20, weight: 40 },
+    { tableId: baseTable.id, code: "iron_equip_part", min: 1, max: 2, weight: 5 },
+    { tableId: baseTable.id, code: "cloth_equip_part", min: 1, max: 2, weight: 5 },
+
+    // 戦闘ボーナス枠: 部品・設計図
+    { tableId: battleTable.id, code: "iron_equip_part", min: 1, max: 3, weight: 40 },
+    { tableId: battleTable.id, code: "cloth_equip_part", min: 1, max: 3, weight: 40 },
+    { tableId: battleTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 20 },
+
+    // 技能枠: 設計図や部品寄り
+    { tableId: skillTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 50 },
+    { tableId: skillTable.id, code: "iron_equip_part", min: 1, max: 2, weight: 25 },
+    { tableId: skillTable.id, code: "cloth_equip_part", min: 1, max: 2, weight: 25 },
+
+    // 大ボス専用枠: 遺物グループAトークンを中心に
+    { tableId: lastBossTable.id, code: "relic_group_a_token", min: 1, max: 1, weight: 60 },
+    { tableId: lastBossTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 30 },
+    { tableId: lastBossTable.id, code: "iron_equip_part", min: 2, max: 4, weight: 10 },
+  ];
+
+  for (const e of entries) {
+    const itemId = itemByCode.get(e.code);
+    if (!itemId) {
+      console.warn(`DropTableEntry seed: Item not found for code=${e.code}`);
+      continue;
+    }
+    await prisma.dropTableEntry.create({
+      data: {
+        dropTableId: e.tableId,
+        itemId,
+        minQuantity: e.min,
+        maxQuantity: e.max,
+        weight: e.weight,
+      },
+    });
+  }
+
+  // ExplorationArea にテーブル紐づけを反映
+  await prisma.explorationArea.update({
+    where: { id: area.id },
+    data: {
+      baseDropTableId: baseTable.id,
+      battleDropTableId: battleTable.id,
+      skillDropTableId: skillTable.id,
+      lastBossDropTableId: lastBossTable.id,
+    },
+  });
 }
 
 async function main() {
@@ -1644,6 +1871,7 @@ async function main() {
   await seedMechaSkills();
   await seedOnboroPartTypes();
   await seedItems();
+  await seedTest1Consumables();
   await seedRecipes();
   await seedEquipmentTypes();
   await seedCraftRecipes();

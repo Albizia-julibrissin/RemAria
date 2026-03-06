@@ -11,6 +11,8 @@ export type StackableItem = {
   name: string;
   category: string;
   quantity: number;
+  /** 探索1回あたりの持ち込み上限。null は対象外。spec/049 */
+  maxCarryPerExpedition: number | null;
 };
 
 export type EquipmentInstanceSummary = {
@@ -55,7 +57,7 @@ export async function getInventory(
           ...(categoryFilter ? { item: { category: categoryFilter } } : {}),
           quantity: { gt: 0 },
         },
-        include: { item: { select: { code: true, name: true, category: true } } },
+        include: { item: { select: { code: true, name: true, category: true, maxCarryPerExpedition: true } } },
         orderBy: { item: { code: "asc" } },
       }),
       prisma.equipmentInstance.findMany({
@@ -80,6 +82,7 @@ export async function getInventory(
     name: row.item.name,
     category: row.item.category,
     quantity: row.quantity,
+    maxCarryPerExpedition: row.item.maxCarryPerExpedition ?? null,
   }));
 
   const equipmentSummaries: EquipmentInstanceSummary[] =

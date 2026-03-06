@@ -19,7 +19,7 @@ import {
   TEST_ENEMY_TACTIC_SLOTS,
   TEST_ENEMY_SKILLS,
 } from "@/lib/battle/test-enemy";
-import type { BattlePosition } from "@/lib/battle/battle-position";
+import type { BattleCol, BattlePosition, BattleRow } from "@/lib/battle/battle-position";
 import { prisma } from "@/lib/db/prisma";
 
 export type RunTestBattleSuccess = {
@@ -260,8 +260,8 @@ export async function runTestBattle(
     Math.max(1, Math.min(3, preset.slot3BattleCol ?? 1)),
   ] as const;
   const initialPartyPositions: BattlePosition[] = order.map((_, i) => ({
-    row: (i + 1) as 1 | 2 | 3,
-    col: colForSlot[i],
+    row: (i + 1) as BattleRow,
+    col: (colForSlot[i] ?? 1) as BattleCol,
   }));
 
   const initialPartyHpMp: { currentHp: number; currentMp: number }[] = [];
@@ -353,7 +353,7 @@ export async function runTestBattle(
   return {
     success: true,
     result: battle.result,
-    protagonistPosition: { row: 1, col: colForSlot[0] },
+    protagonistPosition: { row: 1 as BattleRow, col: (colForSlot[0] ?? 1) as BattleCol },
     protagonistIconFilename: partyIconFilenames[0] ?? null,
     partyDisplayNames: battle.summary.partyDisplayNames,
     partyIconFilenames,

@@ -142,9 +142,15 @@ export default async function DashboardPage() {
 
         {currentExpedition && (
           <div className="mt-4 rounded-lg border border-base-border bg-base-elevated p-4 space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-medium text-text-muted">進行中の探索</h3>
               <ExplorationAbortClient />
+              <Link
+                href="/battle/exploration"
+                className="text-sm text-brass hover:text-brass-hover"
+              >
+                探索を続ける →
+              </Link>
             </div>
             <p className="mt-1 text-sm text-text-primary">
               {currentExpedition.themeName} / {currentExpedition.areaName}
@@ -251,6 +257,7 @@ export default async function DashboardPage() {
             <ExplorationStartClient
               themes={explorationThemes}
               partyPresets={partyPresets}
+              consumableStacks={consumableStacks}
             />
           </div>
         </div>

@@ -432,8 +432,8 @@ function resolveDamage(
   /** Phase 4: true なら命中時に直撃を強制。致命は通常確率で判定。 */
   forceDirect?: boolean
 ): { hit: boolean; direct: boolean; fatal: boolean; damage: number } {
-  const aDerived = attacker.derived as Record<string, number>;
-  const dDerived = defender.derived as Record<string, number>;
+  const aDerived = attacker.derived as unknown as Record<string, number>;
+  const dDerived = defender.derived as unknown as Record<string, number>;
   let hitStat = (attackerBuffs?.length ? getBuffedStat(aDerived, attackerBuffs, "HIT") : attacker.derived.HIT) as number;
   hitStat *= attackerDebuffs?.length ? getDebuffStatMult(attackerDebuffs, "HIT") : 1;
   let evaStat = (defenderBuffs?.length ? getBuffedStat(dDerived, defenderBuffs, "EVA") : defender.derived.EVA) as number;
@@ -487,7 +487,7 @@ function resolveSplashDamage(
   attribute?: string,
   defenderResistances?: AttributeResistances
 ): number {
-  const dDerived = defender.derived as Record<string, number>;
+  const dDerived = defender.derived as unknown as Record<string, number>;
   const defStatName = attackType === "physical" ? "PDEF" : "MDEF";
   const defRaw = defenderBuffs?.length
     ? getBuffedStat(dDerived, defenderBuffs, defStatName)
@@ -1360,7 +1360,7 @@ export function runBattleWithParty(
 
           const hitsMin = skill.hitsMin ?? 1;
           const hitsMax = skill.hitsMax ?? 1;
-          let hitCount = randomInt(Math.max(1, hitsMin), Math.max(1, hitsMax));
+          const hitCount = randomInt(Math.max(1, hitsMin), Math.max(1, hitsMax));
           const resampleTargetPerHit = skill.resampleTargetPerHit ?? false;
           const weightAdd: SkillColumnWeightAdd | undefined =
             skill.weightAddFront != null || skill.weightAddMid != null || skill.weightAddBack != null
@@ -1376,7 +1376,17 @@ export function runBattleWithParty(
           let conditionMet = false;
           let triggeredAttr: string | undefined;
           const hitResults: { hit: boolean; direct: boolean; fatal: boolean }[] = [];
-          const hitDetails: { damage: number; hit: boolean; direct: boolean; fatal: boolean; targetEnemyIndex: number; attrApplied?: string }[] = [];
+          const hitDetails: {
+            damage: number;
+            hit: boolean;
+            direct: boolean;
+            fatal: boolean;
+            targetEnemyIndex: number;
+            attrApplied?: string;
+            splashDamagePerEnemy?: number[];
+            triggeredAttr?: string;
+            debuffApplied?: string;
+          }[] = [];
           const attackType = skill.battleSkillType === "magic" ? "magic" : "physical";
           // Phase 8: 毒霧・萎縮など apply_debuff のみのスキルはダメージ 0
           const powerMult = skill.powerMultiplier ?? 1.0;
@@ -1554,7 +1564,13 @@ export function runBattleWithParty(
             // Phase 4: attr_state_chance_debuff — 対象が指定属性状態なら確率でデバフ付与（属性消費）
             for (const e of effects) {
               if (e.effectType !== "attr_state_chance_debuff" || !e.param || typeof e.param !== "object") continue;
-              const p = e.param as { triggerAttr?: string; chance?: number; debuffCode?: string; durationCycles?: number };
+              const p = e.param as {
+                triggerAttr?: string;
+                chance?: number;
+                debuffCode?: string;
+                durationCycles?: number;
+                recordDamagePct?: number;
+              };
               const triggerAttr = p.triggerAttr as string | undefined;
               if (!triggerAttr || !hasAttrState(enemyAttrStates[targetIdx], triggerAttr)) continue;
               const chance = Number(p.chance) ?? 0;

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { startExploration } from "@/server/actions/exploration";
+import type { StackableItem } from "@/server/actions/inventory";
 
 type AreaOption = {
   id: string;
@@ -28,13 +29,19 @@ type Props = {
     slot2?: { displayName: string } | null;
     slot3?: { displayName: string } | null;
   }[];
+  consumableStacks: StackableItem[];
 };
 
-export function ExplorationStartClient({ themes, partyPresets }: Props) {
+export function ExplorationStartClient({ themes, partyPresets, consumableStacks }: Props) {
   const router = useRouter();
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined>(
     themes[0]?.themeId
   );
+
+  /** 持ち込む消耗品の種類（一種類のみ選択。未選択は ''） */
+  const [selectedConsumableItemId, setSelectedConsumableItemId] = useState<string>("");
+  /** 選択した種類の持ち込み個数（0 ～ その種類の上限） */
+  const [carryQuantity, setCarryQuantity] = useState<number>(0);
 
   const areaOptions: AreaOption[] = useMemo(() => {
     const theme = themes.find((t) => t.themeId === selectedThemeId) ?? themes[0];
@@ -83,20 +90,41 @@ export function ExplorationStartClient({ themes, partyPresets }: Props) {
   const canStart =
     !isPending && selectedAreaId && selectedPresetId && areaOptions.length > 0 && presetOptions.length > 0;
 
+  /** 所持ありかつ持ち込み可能な消耗品のみ。上限 = min(所持数, maxCarryPerExpedition) */
+  const consumablesWithLimit = useMemo(
+    () =>
+      consumableStacks
+        .filter((s) => s.quantity > 0 && (s.maxCarryPerExpedition ?? 0) > 0)
+        .map((s) => ({
+          ...s,
+          maxCarry: Math.min(s.quantity, s.maxCarryPerExpedition ?? 0),
+        })),
+    [consumableStacks]
+  );
+
+  const selectedConsumable = useMemo(
+    () => (selectedConsumableItemId ? consumablesWithLimit.find((s) => s.itemId === selectedConsumableItemId) : null),
+    [consumablesWithLimit, selectedConsumableItemId]
+  );
+
   const handleStart = () => {
     if (!canStart || !selectedAreaId || !selectedPresetId) return;
+    const consumables =
+      selectedConsumableItemId && carryQuantity > 0 && selectedConsumable
+        ? [{ itemId: selectedConsumableItemId, quantity: carryQuantity }]
+        : [];
     startTransition(async () => {
       const result = await startExploration({
         areaId: selectedAreaId,
         partyPresetId: selectedPresetId,
-        consumables: [],
+        consumables,
       });
       if (!result.success) {
         // TODO: エラー表示用のトーストや UI を後で用意する
         alert(`探索開始に失敗しました: ${result.message}`);
         return;
       }
-      router.push("/battle/exploration");
+      router.push("/battle/exploration?step=next");
     });
   };
 
@@ -104,7 +132,7 @@ export function ExplorationStartClient({ themes, partyPresets }: Props) {
     <div className="rounded-lg border border-dashed border-base-border bg-base-elevated/60 p-4">
       <h3 className="text-sm font-medium text-text-muted">探索開始</h3>
       <p className="mt-2 text-sm text-text-muted">
-        テーマ・エリアとパーティプリセットを選んで、探索を開始します。（消耗品の持ち込みは後で実装）
+        テーマ・エリアとパーティプリセットを選び、持ち込む消耗品の個数を指定して探索を開始します。
       </p>
 
       <div className="mt-3 space-y-2 text-sm">
@@ -167,6 +195,47 @@ export function ExplorationStartClient({ themes, partyPresets }: Props) {
             )}
           </select>
         </div>
+
+        {consumablesWithLimit.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-text-muted">持ち込む消耗品（一種類まで）</label>
+            <select
+              className="rounded-md border border-base-border bg-base px-2 py-1 text-sm text-text-primary"
+              value={selectedConsumableItemId}
+              onChange={(e) => {
+                const id = e.target.value || "";
+                setSelectedConsumableItemId(id);
+                setCarryQuantity(0);
+              }}
+              disabled={isPending}
+            >
+              <option value="">持たない</option>
+              {consumablesWithLimit.map((s) => (
+                <option key={s.itemId} value={s.itemId}>
+                  {s.name}（所持: {s.quantity}、上限: {s.maxCarry}個）
+                </option>
+              ))}
+            </select>
+            {selectedConsumable && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-text-muted">個数</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={selectedConsumable.maxCarry}
+                  value={carryQuantity}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setCarryQuantity(Number.isNaN(v) ? 0 : Math.max(0, Math.min(selectedConsumable.maxCarry, v)));
+                  }}
+                  className="w-14 rounded border border-base-border bg-base px-2 py-1 text-right text-sm tabular-nums text-text-primary"
+                  disabled={isPending}
+                />
+                <span className="text-xs text-text-muted">個（最大{selectedConsumable.maxCarry}個）</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <button

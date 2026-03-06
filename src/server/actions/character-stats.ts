@@ -57,15 +57,15 @@ export async function allocateCharacterStats(input: {
   };
 
   const sum = BASE_STAT_KEYS.reduce((acc, key) => acc + values[key], 0);
-  if (sum > cap) {
+  if (sum !== cap) {
     return {
       success: false,
       error: "VALIDATION",
-      message: `合計値が CAP を超えています（現在の合計: ${sum}, CAP: ${cap}）。`,
+      message: `合計が CAP と一致してください（現在の合計: ${sum}, CAP: ${cap}）。`,
     };
   }
 
-  const minPerStat = Math.floor(cap * 0.05);
+  const minPerStat = Math.floor(cap * 0.1);
   const maxPerStat = Math.floor(cap * 0.3);
 
   for (const key of BASE_STAT_KEYS) {
@@ -81,7 +81,7 @@ export async function allocateCharacterStats(input: {
       return {
         success: false,
         error: "VALIDATION",
-        message: `各ステータスは CAP の 5〜30% の範囲で入力してください。（${key}: ${v}, 許容範囲: ${minPerStat}〜${maxPerStat}）`,
+        message: `各ステータスは CAP の 10〜30% の範囲で入力してください。（${key}: ${v}, 許容範囲: ${minPerStat}〜${maxPerStat}）`,
       };
     }
   }

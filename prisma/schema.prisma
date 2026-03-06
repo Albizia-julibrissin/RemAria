@@ -81,6 +81,8 @@ model Character {
 
   /// キャラレベル。docs/09: レベル＋CAP採用。LvN の CAP は 560 + 60 * (N - 1) を基本とする。
   level Int @default(1)
+  /// 累計経験値。docs/048_experience_and_levelup: Lv N に達する累計 = 10*(N-1)*N/2。経験値付与時に level/CAP を更新。
+  experiencePoints Int @default(0)
 
   STR Int @default(10)
   INT Int @default(10)
@@ -283,11 +285,16 @@ model UserInventory {
 }
 
 /// spec/035, 045: 素材・製品マスタ。category で種別（material / consumable / blueprint / skill_book / paid）。
+/// spec/049: 探索消耗品は consumableEffect と maxCarryPerExpedition で効果・持ち込み上限を定義。
 model Item {
   id          String   @id @default(cuid())
   code        String   @unique // water, drinkable_water, wheat, flour, portable_ration
   name        String
   category    String   @default("material") // spec/045: material | consumable | blueprint | skill_book | paid
+  /// category=consumable のとき: { "type": "hp_percent" | "mp_percent", "value": number } 等。docs/027 で拡張一覧化可。
+  consumableEffect      Json?
+  /// 探索1回あたりの持ち込み上限（個数）。null は対象外または無制限。
+  maxCarryPerExpedition  Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -297,6 +304,45 @@ model Item {
   facilityConstructionRecipeInputs FacilityConstructionRecipeInput[]
   craftRecipesAsOutput CraftRecipe[]
   craftRecipeInputs    CraftRecipeInput[]
+
+  dropTableEntries DropTableEntry[]
+}
+
+/// spec/049: 探索・報酬用ドロップテーブル（エリア別・枠由来別のアイテム候補）。
+model DropTable {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  /// base / battle_bonus / skill / mid_boss / last_boss_special など、枠の由来。
+  kind      String
+  areaId    String?
+  area      ExplorationArea? @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries DropTableEntry[]
+
+  baseForAreas    ExplorationArea[] @relation("BaseDropTable")
+  battleForAreas  ExplorationArea[] @relation("BattleDropTable")
+  skillForAreas   ExplorationArea[] @relation("SkillDropTable")
+  midBossForAreas ExplorationArea[] @relation("MidBossDropTable")
+  lastBossForAreas ExplorationArea[] @relation("LastBossDropTable")
+}
+
+model DropTableEntry {
+  id          String    @id @default(cuid())
+  dropTableId String
+  dropTable   DropTable @relation(fields: [dropTableId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// 1ロールあたりの最小・最大数量。
+  minQuantity Int       @default(1)
+  maxQuantity Int       @default(1)
+  /// ドロップ候補としての重み（整数）。テーブル内での相対確率を表す。
+  weight      Int       @default(1)
+
+  @@index([dropTableId])
+  @@index([itemId])
 }
 
 /// spec/045, 046: 装備種別マスタ。クラフトの出力として参照。slot は EQUIPMENT_SLOTS のいずれか。
@@ -630,6 +676,7 @@ model ExplorationArea {
   baseDropMin       Int      @default(3)  // 標準ドロップ枠レンジ（下限）
   baseDropMax       Int      @default(5)  // 標準ドロップ枠レンジ（上限）
   baseSkillEventRate Int     @default(25) // 技能イベント基礎発生率（パーセント）
+  skillCheckRequiredValue Int @default(80) // 技能判定の必要値（MVP: 全ステ共通。docs/020 の基準値は将来拡張）
   normalBattleCount Int      @default(5)  // 雑魚戦の想定回数（中ボス前）
 
   /// 戦闘用の敵グループコード（実際の敵編成はバトル側マスタ/ロジックで解釈）
@@ -637,10 +684,24 @@ model ExplorationArea {
   midBossEnemyGroupCode  String?  // 中ボス戦
   lastBossEnemyGroupCode String?  // 大ボス戦
 
+  /// 枠由来ごとのドロップテーブル紐づけ（報酬 Phase5）
+  baseDropTableId        String?
+  baseDropTable          DropTable? @relation("BaseDropTable", fields: [baseDropTableId], references: [id], onDelete: SetNull)
+  battleDropTableId      String?
+  battleDropTable        DropTable? @relation("BattleDropTable", fields: [battleDropTableId], references: [id], onDelete: SetNull)
+  skillDropTableId       String?
+  skillDropTable         DropTable? @relation("SkillDropTable", fields: [skillDropTableId], references: [id], onDelete: SetNull)
+  midBossDropTableId     String?
+  midBossDropTable       DropTable? @relation("MidBossDropTable", fields: [midBossDropTableId], references: [id], onDelete: SetNull)
+  lastBossDropTableId    String?
+  lastBossDropTable      DropTable? @relation("LastBossDropTable", fields: [lastBossDropTableId], references: [id], onDelete: SetNull)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   expeditions Expedition[]
+
+  dropTables DropTable[]
 
   @@index([themeId])
 }
