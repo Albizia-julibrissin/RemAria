@@ -8,11 +8,13 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentExpeditionSummary, getExplorationMenu } from "@/server/actions/exploration";
 import { getPartyPresets } from "@/server/actions/tactics";
 import { getInventory } from "@/server/actions/inventory";
+import { isTestUser1 } from "@/server/lib/admin";
 import { ExplorationStartClient } from "./exploration-start-client";
 import { ExplorationAbortClient } from "./exploration-abort-client";
 
 export default async function DashboardPage() {
   const session = await getSession();
+  const showAdminContent = await isTestUser1();
   let balances: { game: number; premiumFree: number; premiumPaid: number } | null = null;
   if (session?.userId) {
     const user = await prisma.user.findUnique({
@@ -96,6 +98,13 @@ export default async function DashboardPage() {
           <span className="mt-1 text-sm text-text-muted">初期エリア・設備配置（spec/035）</span>
         </Link>
         <Link
+          href="/dashboard/research"
+          className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          <span className="text-lg font-medium">研究</span>
+          <span className="mt-1 text-sm text-text-muted">研究グループで設備・レシピを解放（docs/054）</span>
+        </Link>
+        <Link
           href="/dashboard/craft"
           className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
         >
@@ -117,6 +126,13 @@ export default async function DashboardPage() {
           <span className="mt-1 text-sm text-text-muted">所持数一覧（簡易）</span>
         </Link>
         <Link
+          href="/dashboard/quests"
+          className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          <span className="text-lg font-medium">クエスト</span>
+          <span className="mt-1 text-sm text-text-muted">ストーリー・研究クエストの進捗（docs/054）</span>
+        </Link>
+        <Link
           href="/dashboard/tactics"
           className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
         >
@@ -124,12 +140,21 @@ export default async function DashboardPage() {
           <span className="mt-1 text-sm text-text-muted">パーティプリセットと作戦スロットの設定</span>
         </Link>
         <Link
-          href="/battle/test"
+          href="/battle/practice"
           className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
         >
           <span className="text-lg font-medium">仮戦闘</span>
           <span className="mt-1 text-sm text-text-muted">テスト戦闘を実行</span>
         </Link>
+        {showAdminContent && (
+          <Link
+            href="/dashboard/admin/content"
+            className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+          >
+            <span className="text-lg font-medium">コンテンツ管理</span>
+            <span className="mt-1 text-sm text-text-muted">実装済み一覧・ドロップ・アイテム・レシピ等（管理者用）</span>
+          </Link>
+        )}
       </div>
 
       {/* 探索（MVP プレビュー用） */}

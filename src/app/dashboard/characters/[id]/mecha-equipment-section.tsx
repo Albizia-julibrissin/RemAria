@@ -1,13 +1,15 @@
 "use client";
 
-// spec/046 - メカ詳細でのメカパーツ着脱
+// spec/046 - メカ詳細でのメカパーツ着脱。装着はモーダルで候補をステータス一覧表示（装備・遺物と同様の案D）
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { equipMechaPart, unequipMechaPart } from "@/server/actions/mecha-equipment";
 import { MECHA_SLOT_LABELS } from "@/lib/constants/mecha-slots";
 import type { MechaEquipmentSlotRow } from "@/server/actions/mecha-equipment";
 import type { MechaPartInstanceWithEquipped } from "@/server/actions/mecha-equipment";
+import { EquipMechaPartModal } from "./equip-mecha-part-modal";
 
 type Props = {
   characterId: string;
@@ -22,6 +24,7 @@ export function MechaEquipmentSection({
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [modalSlot, setModalSlot] = useState<string | null>(null);
 
   function handleUnequip(slot: string) {
     startTransition(async () => {
@@ -38,12 +41,27 @@ export function MechaEquipmentSection({
     startTransition(async () => {
       const result = await equipMechaPart(characterId, slot, mechaPartInstanceId);
       if (result.success) {
+        setModalSlot(null);
         router.refresh();
       } else {
         alert(result.message);
       }
     });
   }
+
+  const modalSlotRow = modalSlot ? slots.find((s) => s.slot === modalSlot) : null;
+  const slotLabel =
+    modalSlotRow &&
+    (MECHA_SLOT_LABELS[modalSlotRow.slot as keyof typeof MECHA_SLOT_LABELS] ?? modalSlotRow.slot);
+  const availableForModal =
+    modalSlot != null
+      ? allParts.filter(
+          (p) =>
+            p.slot === modalSlot &&
+            (p.equippedCharacterId === null || p.equippedCharacterId === characterId) &&
+            (modalSlotRow?.mechaPartInstanceId == null || p.id !== modalSlotRow.mechaPartInstanceId)
+        )
+      : [];
 
   return (
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
@@ -81,30 +99,29 @@ export function MechaEquipmentSection({
                 </button>
               )}
               {available.length > 0 && (
-                <select
-                  className="rounded border border-base-border bg-base px-2 py-1 text-text-primary focus:border-brass focus:outline-none"
-                  defaultValue=""
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    if (id) {
-                      handleEquip(row.slot, id);
-                      e.target.value = "";
-                    }
-                  }}
+                <button
+                  type="button"
+                  onClick={() => setModalSlot(row.slot)}
                   disabled={isPending}
+                  className="rounded border border-brass bg-brass px-2 py-1 text-xs font-medium text-white hover:bg-brass-hover disabled:opacity-50"
                 >
-                  <option value="">装着する</option>
-                  {available.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.mechaPartTypeName}
-                    </option>
-                  ))}
-                </select>
+                  装着する
+                </button>
               )}
             </li>
           );
         })}
       </ul>
+
+      <EquipMechaPartModal
+        isOpen={modalSlot != null}
+        onClose={() => setModalSlot(null)}
+        slotLabel={slotLabel ?? ""}
+        slotCode={modalSlot ?? ""}
+        availableParts={availableForModal}
+        onEquip={handleEquip}
+        isPending={isPending}
+      />
     </div>
   );
 }

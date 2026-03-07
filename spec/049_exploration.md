@@ -160,8 +160,8 @@
     "areaId": "cuidAreaYuranPavedRoad",
     "result": "cleared", // cleared / wiped
     "battleWins": 5,
-    "midBossCleared": true,
-    "lastBossCleared": false,
+    "strongEnemyCleared": true,
+    "areaLordCleared": false,
     "skillSuccessCount": 2,
     "expGained": 9
   },
@@ -169,8 +169,8 @@
     { "origin": "base", "itemId": "wood_basic", "quantity": 3 },
     { "origin": "battle", "itemId": "stone_basic", "quantity": 2 },
     { "origin": "skill", "itemId": "skillbook_firebolt", "quantity": 1 },
-    { "origin": "mid_boss", "itemId": "relic_series_A", "quantity": 1 }
-    // last_boss_special origin の虹枠は lastBossCleared 時のみ
+    { "origin": "strong_enemy", "itemId": "relic_series_A", "quantity": 1 }
+    // area_lord_special origin の虹枠は areaLordCleared 時のみ
   ]
 }
 ```
@@ -191,9 +191,9 @@
   - 次の戦闘は、この HP/MP を初期値として開始する。  
   - **戦闘中の一時的なバフ/デバフ状態は探索間で持ち越さない**（戦闘終了でリセット）。  
   - ただし、**探索用消耗品によるバフ/強化は探索レイヤーの状態として扱い、次の戦闘・技能イベントに反映できるようにする**（例：次のイベント時 STR アップ）。
-- 経験値は、`020` のルールに従い、「雑魚勝利×1 / 中ボス+2 / 大ボス+5」を合計し、  
+- 経験値は、`020` のルールに従い、「雑魚勝利×1 / 強敵+2 / 領域主+5」を合計し、  
   **参加したキャラクター（`Character.category` が protagonist / companion のみ）それぞれに同量を付与する**（`category=mech` には経験値を付与しない）。
-- ドロップは、エリアごとの標準枠数＋行動由来の加算枠＋大ボス専用枠からロールする。枠ごとに origin 種別を保持する。
+- ドロップは、エリアごとの標準枠数＋行動由来の加算枠＋領域主専用枠からロールする。枠ごとに origin 種別を保持する。
 
 ------------------------------------------------------------------------
 
@@ -211,11 +211,11 @@
 ### 6.2 `continueExploration`
 
 1. Expedition を userId と expeditionId で取得し、`state` が in_progress であることを検証。
-2. 終了条件（残り戦闘回数 0 & 中ボス済 & 大ボス抽選済）を満たしていれば、`state=ready_to_finish` として result イベントを返す。
+2. 終了条件（残り戦闘回数 0 & 強敵済 & 領域主抽選済）を満たしていれば、`state=ready_to_finish` として result イベントを返す。
 3. 終了していない場合：
    - **次イベントの抽選**：各イベント終了ごとに抽選する方式のため、ここで「次は技能イベントか戦闘イベントか」をエリアの `baseSkillEventRate` 等に基づき判定。
    - 技能イベントにした場合：技能判定イベントを生成し、成功/失敗に応じてドロップ枠カウンタを更新。
-   - 戦闘イベントにした場合：雑魚 or 中ボス or 大ボスを生成。
+   - 戦闘イベントにした場合：雑魚 or 強敵 or 領域主を生成。
 4. 戦闘イベントの場合：`run-battle-with-party` を呼び出し、ログと結果を取得。
 5. Expedition の進行状態（残り戦闘回数、ボスフラグ、HP/MP、ドロップ枠カウンタ）を更新。
 6. 次イベントの内容を `nextEvent` として返す。
@@ -223,8 +223,8 @@
 ### 6.3 `finishExploration`
 
 1. Expedition が userId の所有物かつ `state` が `in_progress` または `ready_to_finish` であることを検証。
-2. Expedition 内のカウンタ（雑魚勝利数・中ボス/大ボスクリア・技能成功数）から、経験値とドロップ枠数を計算。
-3. 枠ごとにエリアドロップテーブル／大ボステーブルをロールし、具体的な `itemId / quantity` を決定。
+2. Expedition 内のカウンタ（雑魚勝利数・強敵/領域主クリア・技能成功数）から、経験値とドロップ枠数を計算。
+3. 枠ごとにエリアドロップテーブル／領域主テーブルをロールし、具体的な `itemId / quantity` を決定。
 4. UserInventory にアイテムを加算し、参加キャラに経験値を付与（`048` のレベリングルールに従う）。
 5. Expedition の state を `finished` に更新し、summary ＋ dropSlots を返す。
 
@@ -238,9 +238,26 @@
 
 - `ExplorationTheme`：id, name, displayOrder, unlockRequirements など。
 - `ExplorationArea`：id, themeId, name, difficultyRank, baseDropMin, baseDropMax, baseSkillEventRate, enemyGroupIds, bossIds など。
-- `Expedition`：id, userId, areaId, partySnapshot, state, remainingNormalBattles, midBossDone, lastBossDone, battleWinCount, skillSuccessCount, expGained, createdAt, finishedAt など。
+- `Expedition`：id, userId, areaId, partySnapshot, state, remainingNormalBattles, strongEnemyCleared, areaLordCleared, battleWinCount, skillSuccessCount, expGained, createdAt, finishedAt など。
 
-### 7.2 保存しないデータ
+### 7.2 ドロップテーブル（報酬 Phase5 の正本）
+
+探索報酬は **枠（スロット）** ごとにロールする。枠の由来（origin）とエリアに紐づく `DropTable` の対応は以下。
+
+| 枠種別（origin） | ExplorationArea の FK | DropTable.kind | 枠数の決まり方 |
+|------------------|------------------------|----------------|----------------|
+| base | baseDropTableId | base | エリアの baseDropMin 〜 baseDropMax の範囲で決定 |
+| battle | battleDropTableId | battle_bonus | 雑魚戦勝利数（battleWinCount） |
+| skill | skillDropTableId | skill | 技能イベント成功数（skillSuccessCount） |
+| strong_enemy | strongEnemyDropTableId | strong_enemy | 強敵撃破時 2 枠（strongEnemyCleared ? 2 : 0） |
+| area_lord_special | areaLordDropTableId | area_lord_special | 領域主撃破時 1 枠（areaLordCleared ? 1 : 0） |
+
+- **DropTable**：id, code（ユニーク）, name, kind, areaId（任意）。1 エリアに 5 種まで紐づく。
+- **DropTableEntry**：dropTableId, itemId, minQuantity, maxQuantity, weight。テーブル内で重み付き抽選し、当選アイテムの数量は minQuantity 〜 maxQuantity の範囲でロール。
+
+管理者がエリアごとのドロップ内容を編集する機能は **manage/admin_area_drop_edit.md** に手順・API・データ構造を記載する。
+
+### 7.3 保存しないデータ
 
 - 戦闘中の詳細コンテキスト（行動ログ・ターン単位の中間状態）は `020/038/040` の方針通り、一時データとして扱い、Expedition にはまとめたログと結果だけを保存する。
 
@@ -329,8 +346,8 @@
 | **2** | 結果確定 UI（報酬受け取りボタン・サマリ表示・敗北時ログ表示） | ✅ 済 |
 | **3** | 技能イベント（発生判定・画面・判定ロジック） | ✅ 済 |
 | **4** | 消耗品（持ち込み選択・戦闘後使用・効果適用） | ✅ 済 |
-| **5** | 報酬実装（Exp 付与・ドロップ抽選・インベントリ付与） | ❌ 未 |
-| **6** | 中ボス・大ボス（イベント種別・専用枠・敵編成） | ❌ 未 |
+| **5** | 報酬実装（Exp 付与・ドロップ抽選・インベントリ付与） | ✅ 済 |
+| **6** | 強敵・領域主（規定戦闘後「強敵へ挑む」・領域主抽選・「領域主へ挑む」・専用枠） | ✅ 済 |
 
 ### 9.2 Phase 0：基盤
 
@@ -348,8 +365,8 @@
 
 | 項目 | 状態 | 備考 |
 |------|------|------|
-| runExplorationBattle（1戦闘実行・Expedition 更新） | ✅ | runTestBattle をプリセットで呼び、currentHpMp / remainingNormalBattles / state 更新 |
-| 初期 HP/MP：未指定時は最大値、Expedition から渡すときはその値（0 含む） | ✅ | test-battle で -1 を「未指定」、exploration で currentHpMp を渡す |
+| runExplorationBattle（1戦闘実行・Expedition 更新） | ✅ | runBattle をプリセットで呼び、currentHpMp / remainingNormalBattles / state 更新 |
+| 初期 HP/MP：未指定時は最大値、Expedition から渡すときはその値（0 含む） | ✅ | battle で -1 を「未指定」、exploration で currentHpMp を渡す |
 | 勝敗で state 遷移（敗北 or 残り0 → ready_to_finish） | ✅ | shouldReadyToFinish → nextState |
 | /battle/exploration：戦闘ログ表示（BattleFullView）・残り戦闘数・「次の戦闘へ」 | ✅ | in_progress 時 |
 | 最後の戦闘ログの保存（ready_to_finish 時に explorationState.lastBattle） | ✅ | 敗北時・結果画面で再表示用 |
@@ -361,7 +378,7 @@
 | ready_to_finish 時に結果画面（報酬受け取りボタン）を表示 | ✅ | getCurrentExpeditionSummary で分岐、ExplorationFinishClient |
 | 全勝で最後の戦闘後も同じ画面で報酬ボタンを表示 | ✅ | isNowReadyToFinish で戦闘直後から ExplorationFinishClient を表示 |
 | 敗北時：敗北した戦闘のログを結果画面で表示 | ✅ | getLastExplorationBattle で lastBattle を取得し BattleFullView |
-| finishExploration（state → finished、サマリ返却） | ✅ | 枠の由来一覧・totalExpGained 計算。Exp/アイテム付与は未実装 |
+| finishExploration（state → finished、サマリ返却） | ✅ | 枠の由来一覧・totalExpGained・Exp/ドロップ付与（Phase 5 で実装済み） |
 | 報酬受け取り後のサマリ表示（結果・勝利数・枠内訳） | ✅ | ExplorationFinishClient 内で仮サマリ表示 |
 | 強制破棄（テスト用） | ✅ | abortCurrentExpedition・ExplorationAbortClient |
 
@@ -391,15 +408,15 @@
 |------|------|------|
 | 参加キャラ（protagonist/companion）への経験値付与 | ✅ | finishExploration 内で grantCharacterExp を呼び出し。048・docs/048_experience_and_levelup に従う |
 | 枠ごとのドロップテーブルロール・UserInventory 加算 | ✅ | finishExploration で DropTable 重みロール→在庫加算。枠由来ごとにテーブル紐づけ |
-| 報酬内容の画面表示（取得アイテム名・数量・枠色分け） | ✅ | 基本=グレー、戦闘=銅、技能=銀、中ボス=金、大ボス=虹で枠ごとに色分け表示 |
+| 報酬内容の画面表示（取得アイテム名・数量・枠色分け） | ✅ | 基本=グレー、戦闘=銅、技能=銀、強敵=金、領域主=虹で枠ごとに色分け表示 |
 
-### 9.8 Phase 6：中ボス・大ボス
+### 9.8 Phase 6：強敵・領域主
 
 | 項目 | 状態 | 備考 |
 |------|------|------|
-| 通常戦闘 N 回後の「中ボス」イベント・専用敵編成 | ❌ | 敵マスタ未実装のため test-enemy 流用 |
-| 中ボス撃破後の大ボス出現判定・専用枠 | ❌ | |
-| エリア別敵編成（normalEnemyGroupCode 等）とマスタ連携 | ❌ | docs/027 #14 |
+| 規定の通常戦闘後の「強敵へ挑む」表示・強敵戦 1 回実行 | ✅ | getNextExplorationStep で strong_enemy_challenge 返却。戦闘ログ直下に「強敵へ挑む」ボタン。step=strong_enemy_battle で runExplorationBattle |
+| 強敵撃破後の領域主出現抽選・「領域主へ挑む」表示・領域主戦 | ✅ | 強敵勝利時 50% で areaLordAvailable。area_lord_challenge / step=area_lord_battle で領域主戦。専用枠は finishExploration で付与 |
+| エリア別敵編成（normalEnemyGroupCode 等）とマスタ連携 | 🔶 | spec/050・resolve-exploration-enemies で normal/strong_enemy/area_lord を取得。**敵の配置**は 050 §4.3：探索では**選出順で上から固定**（1体目＝上段、2体目＝中段、3体目＝下段）。050 マスタ拡張で差し替え可能 |
 
 ### 9.9 更新ルール（このセクション）
 

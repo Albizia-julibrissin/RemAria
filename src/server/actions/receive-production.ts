@@ -5,8 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-
-const PRODUCTION_CAP_MINUTES = 1440;
+import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 
 export type ReceiveProductionResult =
   | { success: true; received: { itemName: string; amount: number }[] }
@@ -80,6 +79,8 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
       const elapsedMs = Math.max(0, now.getTime() - effectiveStart.getTime());
       const elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
       const cappedMinutes = Math.min(elapsedMinutes, PRODUCTION_CAP_MINUTES);
+      /** 経過を24hでキャップしたか。キャップした場合は貯まりを今回で使い切り、次回は now から積み上がるようにする（3日放置で3回受け取りにならないため） */
+      const wasCapped = elapsedMinutes > PRODUCTION_CAP_MINUTES;
       let cyclesByTime = Math.floor(cappedMinutes / recipe.cycleMinutes);
       if (cyclesByTime < 0) cyclesByTime = 0;
 
@@ -92,8 +93,9 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
       }
 
       const timeBasedCycles = cyclesByTime;
-      const nextLastProducedAt =
-        cyclesToRun < timeBasedCycles
+      const nextLastProducedAt = wasCapped
+        ? now
+        : cyclesToRun < timeBasedCycles
           ? now
           : new Date(effectiveStart.getTime() + cyclesToRun * recipe.cycleMinutes * 60 * 1000);
 
@@ -160,7 +162,7 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
       success: false,
       error: "NOTHING_TO_RECEIVE",
       message:
-        "受け取り可能な生産がありません。（経過が足りないか、入力素材が不足しています。最大24時間分まで）",
+        "受け取り可能な生産がありません。（経過が足りないか、入力素材が不足しています。貯められるのは最大24時間分まで）",
     };
   }
 

@@ -26,22 +26,17 @@ export type MechaPartStatGenConfig = {
   weights: MechaPartStatWeightConfig[];
 };
 
-/** メカパーツ種別（name または id ではなく、種別識別用）ごとの設定。MVP では未使用でも null を返す。 */
-export const MECHA_PART_STAT_GEN_BY_NAME: Record<string, MechaPartStatGenConfig> = {
-  // おんぼろ等、クラフト出力する種別を追加する場合はここに
-};
-
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 /**
- * メカパーツ種別名に応じてランダムな基礎ステ補正を生成する。
- * 設定が無い場合は null（固定値パーツ用）。
+ * config に従ってランダムな基礎ステ補正を生成する。docs/053: マスタから渡された config のみ使用。
  */
-export function generateMechaPartStats(mechaPartTypeName: string): Record<string, number> | null {
-  const config = MECHA_PART_STAT_GEN_BY_NAME[mechaPartTypeName];
-  if (!config || config.weights.length === 0) return null;
+export function generateMechaPartStatsFromConfig(
+  config: MechaPartStatGenConfig
+): Record<string, number> | null {
+  if (!config.weights.length) return null;
 
   const cap = randomInt(config.capMin, config.capMax);
   const weightValues: { key: MechaPartBaseStatKey; weight: number }[] = config.weights.map(

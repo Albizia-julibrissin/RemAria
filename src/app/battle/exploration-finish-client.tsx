@@ -24,9 +24,9 @@ function getSlotStyle(origin: FinishExplorationDropSlotOrigin): string {
       return "border-amber-600/80 bg-amber-950/50 text-amber-100";
     case "skill":
       return "border-slate-400 bg-slate-700/50 text-slate-100";
-    case "mid_boss":
+    case "strong_enemy":
       return "border-yellow-500/90 bg-yellow-900/40 text-yellow-100";
-    case "last_boss_special":
+    case "area_lord_special":
       return "border-transparent bg-gradient-to-r from-purple-600/80 via-pink-500/80 to-amber-500/80 text-white shadow-md";
     default:
       return "border-base-border bg-base-elevated text-text-primary";

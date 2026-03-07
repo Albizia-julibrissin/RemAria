@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { addIconSelectors } from "@iconify/tailwind";
 
 const config: Config = {
   content: [
@@ -27,7 +28,10 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // ファンタジー/RPG 向けアイコン（Iconify Game Icons, CC BY 3.0）
+    addIconSelectors(["game-icons"]),
+  ],
 };
 
 export default config;

@@ -6,8 +6,18 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { isEquipmentSlot } from "@/lib/constants/equipment-slots";
-import { generateEquipmentStats } from "@/lib/craft/equipment-stat-gen";
-import { generateMechaPartStats } from "@/lib/craft/mecha-part-stat-gen";
+import {
+  type EquipmentStatGenConfig,
+  generateEquipmentStatsFromConfig,
+} from "@/lib/craft/equipment-stat-gen";
+import {
+  type MechaPartStatGenConfig,
+  generateMechaPartStatsFromConfig,
+} from "@/lib/craft/mecha-part-stat-gen";
+import {
+  parseEquipmentStatGenConfig,
+  parseMechaPartStatGenConfig,
+} from "@/lib/craft/parse-stat-gen-config";
 
 export type CraftRecipeInputRow = {
   itemId: string;
@@ -59,7 +69,14 @@ export async function getCraftRecipes(): Promise<CraftRecipeRow[] | null> {
   const session = await getSession();
   if (!session?.userId) return null;
 
+  const unlockedIds = await prisma.userCraftRecipeUnlock.findMany({
+    where: { userId: session.userId },
+    select: { craftRecipeId: true },
+  });
+  const unlockedSet = new Set(unlockedIds.map((u) => u.craftRecipeId));
+
   const recipes = await prisma.craftRecipe.findMany({
+    where: { id: { in: [...unlockedSet] } },
     orderBy: { code: "asc" },
     include: {
       inputs: { include: { item: { select: { id: true, code: true, name: true } } } },
@@ -122,13 +139,37 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
     where: { id: craftRecipeId },
     include: {
       inputs: { include: { item: true } },
-      outputEquipmentType: true,
-      outputMechaPartType: true,
+      outputEquipmentType: { select: { id: true, code: true, name: true, statGenConfig: true } },
+      outputMechaPartType: { select: { id: true, name: true, slot: true, statGenConfig: true } },
       outputItem: true,
     },
   });
   if (!recipe) {
     return { success: false, error: "NOT_FOUND", message: "レシピが見つかりません。" };
+  }
+
+  // docs/053: マスタに statGenConfig がなければクラフト失敗（素材は消費しない）
+  let equipmentStatConfig: EquipmentStatGenConfig | null = null;
+  let mechaPartStatConfig: MechaPartStatGenConfig | null = null;
+  if (recipe.outputKind === "equipment" && recipe.outputEquipmentType) {
+    equipmentStatConfig = parseEquipmentStatGenConfig(recipe.outputEquipmentType.statGenConfig);
+    if (!equipmentStatConfig) {
+      return {
+        success: false,
+        error: "STAT_GEN_CONFIG_MISSING",
+        message: "この装備はステータス生成設定がありません。クラフトできません。",
+      };
+    }
+  }
+  if (recipe.outputKind === "mecha_part" && recipe.outputMechaPartType) {
+    mechaPartStatConfig = parseMechaPartStatGenConfig(recipe.outputMechaPartType.statGenConfig);
+    if (!mechaPartStatConfig) {
+      return {
+        success: false,
+        error: "STAT_GEN_CONFIG_MISSING",
+        message: "このメカパーツはステータス生成設定がありません。クラフトできません。",
+      };
+    }
   }
 
   const inventories = await prisma.userInventory.findMany({
@@ -163,9 +204,8 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
         });
       }
 
-      if (recipe!.outputKind === "equipment" && recipe!.outputEquipmentType) {
-        const typeCode = recipe!.outputEquipmentType.code;
-        const stats = generateEquipmentStats(typeCode);
+      if (recipe!.outputKind === "equipment" && recipe!.outputEquipmentType && equipmentStatConfig) {
+        const stats = generateEquipmentStatsFromConfig(equipmentStatConfig);
         const inst = await tx.equipmentInstance.create({
           data: {
             userId,
@@ -181,9 +221,8 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
         };
       }
 
-      if (recipe!.outputKind === "mecha_part" && recipe!.outputMechaPartType) {
-        const typeName = recipe!.outputMechaPartType.name;
-        const stats = generateMechaPartStats(typeName);
+      if (recipe!.outputKind === "mecha_part" && recipe!.outputMechaPartType && mechaPartStatConfig) {
+        const stats = generateMechaPartStatsFromConfig(mechaPartStatConfig);
         const inst = await tx.mechaPartInstance.create({
           data: {
             userId,
@@ -367,7 +406,8 @@ export type EquipmentInstanceWithEquipped = {
   id: string;
   equipmentTypeName: string;
   slot: string;
-  statsSummary: string | null;
+  /** 戦闘用ステ補正。PATK, PDEF 等。装着モーダルで一覧表示用 */
+  stats: Record<string, number> | null;
   equippedCharacterId: string | null;
 };
 
@@ -393,7 +433,10 @@ export async function getEquipmentInstancesWithEquipped(): Promise<
     id: inst.id,
     equipmentTypeName: inst.equipmentType.name,
     slot: inst.equipmentType.slot,
-    statsSummary: inst.stats ? JSON.stringify(inst.stats).slice(0, 60) : null,
+    stats:
+      inst.stats && typeof inst.stats === "object" && !Array.isArray(inst.stats)
+        ? (inst.stats as Record<string, number>)
+        : null,
     equippedCharacterId: inst.characterEquipments[0]?.characterId ?? null,
   }));
 }

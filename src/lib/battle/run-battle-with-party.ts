@@ -117,6 +117,8 @@ export interface EnemyInput {
   displayName?: string;
   iconFilename?: string | null;
   position: BattlePosition;
+  /** docs/054: クエスト進捗用。探索戦闘で渡すと撃破時に defeatedEnemyIds に含まれる。 */
+  enemyId?: string;
 }
 
 export interface BattleLogEntryWithParty {
@@ -1408,6 +1410,7 @@ export function runBattleWithParty(
           const useEqualTargetWeight = effects.some((e) => e.effectType === "target_select_equal_weight");
 
           // 列指定攻撃（damage_target_columns）: 指定列にいる敵全員にダメージ。targetColumns=[1,2,3] で全体攻撃
+          // targetScope: enemy_all のみのときも敵全体を対象にする（027 #23）
           let columnTargetIndices: number[] | null = null;
           const colEffect = effects.find(
             (e) => e.effectType === "damage_target_columns" && e.param && typeof e.param === "object"
@@ -1463,6 +1466,12 @@ export function runBattleWithParty(
                 continue;
               }
               // enemy_all + 列指定: hitCount はそのまま（範囲全体に hitCount 回）。enemy_single + 列指定: 列内ウェイト抽選で hitCount 回
+            }
+          }
+          if (targetScope === "enemy_all" && columnTargetIndices === null) {
+            columnTargetIndices = [];
+            for (let i = 0; i < enemyCount; i++) {
+              if (enemyAlive[i]) columnTargetIndices.push(i);
             }
           }
 

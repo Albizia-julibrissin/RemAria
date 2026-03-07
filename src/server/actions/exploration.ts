@@ -5,8 +5,8 @@
 import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import type { RunTestBattleSuccess } from "@/server/actions/test-battle";
-import { runTestBattle } from "@/server/actions/test-battle";
+import type { RunBattleSuccess } from "@/server/actions/battle";
+import { runBattle } from "@/server/actions/battle";
 import { userRepository } from "@/server/repositories/user-repository";
 import {
   resolveEnemiesForExplorationBattle,
@@ -229,8 +229,8 @@ export async function startExploration(
       partyPresetId: preset.id,
       state: "in_progress",
       remainingNormalBattles: area.normalBattleCount,
-      midBossCleared: false,
-      lastBossCleared: false,
+      strongEnemyCleared: false,
+      areaLordCleared: false,
       battleWinCount: 0,
       skillSuccessCount: 0,
       currentHpMp: Prisma.JsonNull,
@@ -438,6 +438,8 @@ export async function getExplorationResumeSummary(): Promise<GetExplorationResum
 
 export type NextExplorationStep =
   | { kind: "battle" }
+  | { kind: "strong_enemy_challenge"; themeName: string; areaName: string }
+  | { kind: "area_lord_challenge"; themeName: string; areaName: string }
   | {
       kind: "skill_check";
       themeName: string;
@@ -468,7 +470,12 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
 
   const expedition = await prisma.expedition.findFirst({
     where: { userId: session.userId, state: "in_progress" },
-    include: {
+    select: {
+      currentHpMp: true,
+      remainingNormalBattles: true,
+      strongEnemyCleared: true,
+      areaLordCleared: true,
+      explorationState: true,
       area: {
         select: {
           name: true,
@@ -497,8 +504,27 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
     };
   }
 
-  const currentHpMp = (expedition.currentHpMp ?? {}) as Record<string, { hp: number; mp: number }>;
   const area = expedition.area as { name: string; baseSkillEventRate: number; theme: { name: string } };
+  const themeName = area.theme.name;
+  const areaName = area.name;
+
+  // 規定の通常戦闘が残り0 → 強敵へ挑む（戦闘抽選は行わない）
+  if (expedition.remainingNormalBattles === 0 && !expedition.strongEnemyCleared) {
+    return { success: true, step: { kind: "strong_enemy_challenge", themeName, areaName } };
+  }
+  // 強敵クリア済みで領域主が出現済み → 領域主へ挑む
+  const explorationState = (expedition.explorationState ?? {}) as { areaLordAvailable?: boolean };
+  if (
+    expedition.remainingNormalBattles === 0 &&
+    expedition.strongEnemyCleared &&
+    explorationState.areaLordAvailable &&
+    !expedition.areaLordCleared
+  ) {
+    return { success: true, step: { kind: "area_lord_challenge", themeName, areaName } };
+  }
+
+  // 通常戦闘が残っているときのみ「戦闘 vs 技能」を抽選
+  const currentHpMp = (expedition.currentHpMp ?? {}) as Record<string, { hp: number; mp: number }>;
   const preset = expedition.partyPreset;
 
   const roll = Math.random() * 100;
@@ -811,7 +837,12 @@ export type RunExplorationBattleResult =
       themeName: string;
       areaName: string;
       remainingNormalBattlesBefore: number;
-      result: RunTestBattleSuccess;
+      result: RunBattleSuccess;
+      battleType: ExplorationBattleType;
+      /** 強敵勝利時に領域主が出現した場合 true（UI で「領域主へ挑む」表示に利用） */
+      areaLordAppeared?: boolean;
+      /** 戦闘後の Expedition.state（報酬確定 vs 領域主へ挑む の表示判定に利用） */
+      stateAfter: "in_progress" | "ready_to_finish";
     }
   | { success: false; error: string; message: string };
 
@@ -839,7 +870,7 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
       partyPresetId: true,
       areaId: true,
       remainingNormalBattles: true,
-      midBossCleared: true,
+      strongEnemyCleared: true,
       battleWinCount: true,
       currentHpMp: true,
       explorationState: true,
@@ -868,11 +899,11 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
   const battleType: ExplorationBattleType =
     expedition.remainingNormalBattles > 0
       ? "normal"
-      : !expedition.midBossCleared
-        ? "mid_boss"
-        : "last_boss";
+      : !expedition.strongEnemyCleared
+        ? "strong_enemy"
+        : "area_lord";
   const enemyInputs = await resolveEnemiesForExplorationBattle(expedition.areaId, battleType);
-  const baseResult = await runTestBattle(
+  const baseResult = await runBattle(
     expedition.partyPresetId,
     initialHpMpByCharacterId,
     enemyInputs.length > 0 ? enemyInputs : undefined
@@ -882,7 +913,7 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     return baseResult;
   }
 
-  const result = baseResult as RunTestBattleSuccess;
+  const result = baseResult as RunBattleSuccess;
 
   const hpMpByCharId: Record<
     string,
@@ -908,20 +939,44 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
   const nextRemaining =
     expedition.remainingNormalBattles > 0 ? expedition.remainingNormalBattles - 1 : 0;
   const isPlayerWin = result.result === "player";
-  // 勝利していても「残り戦闘 0」になったら、または敗北した時点で探索は終了候補（報酬確定待ち）にする
-  const shouldReadyToFinish = !isPlayerWin || nextRemaining <= 0;
-  const nextState = shouldReadyToFinish ? ("ready_to_finish" as const) : ("in_progress" as const);
 
   const rawState = (expedition.explorationState ?? {}) as unknown as {
     logs?: unknown;
     lastBattle?: unknown;
+    areaLordAvailable?: boolean;
   };
-  const explorationState = shouldReadyToFinish
-    ? {
-        ...rawState,
-        lastBattle: result,
-      }
-    : rawState;
+
+  /** 戦闘ログは永続化しない（027 #18）。lastBattle はコピーしない */
+  const { lastBattle: _dropped, ...stateWithoutLastBattle } = rawState;
+  const baseState = stateWithoutLastBattle as { logs?: unknown; areaLordAvailable?: boolean };
+
+  let shouldReadyToFinish: boolean;
+  let nextExplorationState: typeof baseState & { areaLordAvailable?: boolean };
+  let areaLordAppeared: boolean | undefined;
+
+  if (!isPlayerWin) {
+    shouldReadyToFinish = true;
+    nextExplorationState = { ...baseState };
+  } else if (battleType === "area_lord") {
+    shouldReadyToFinish = true;
+    nextExplorationState = { ...baseState };
+  } else if (battleType === "strong_enemy") {
+    areaLordAppeared = Math.random() < 0.5;
+    if (areaLordAppeared) {
+      shouldReadyToFinish = false;
+      nextExplorationState = { ...baseState, areaLordAvailable: true };
+    } else {
+      shouldReadyToFinish = true;
+      nextExplorationState = { ...baseState };
+    }
+  } else {
+    // 通常戦闘：残り0でも強敵待ちのため in_progress のまま
+    shouldReadyToFinish = false;
+    nextExplorationState = baseState;
+  }
+
+  const nextState = shouldReadyToFinish ? ("ready_to_finish" as const) : ("in_progress" as const);
+  const explorationState = nextExplorationState;
 
   const updateData: {
     currentHpMp: Record<string, { hp: number; mp: number }>;
@@ -929,8 +984,8 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     battleWinCount: number;
     state: string;
     explorationState: Prisma.InputJsonValue;
-    midBossCleared?: boolean;
-    lastBossCleared?: boolean;
+    strongEnemyCleared?: boolean;
+    areaLordCleared?: boolean;
   } = {
     currentHpMp: hpMpByCharId,
     remainingNormalBattles: nextRemaining,
@@ -938,13 +993,18 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     state: nextState,
     explorationState: explorationState as Prisma.InputJsonValue,
   };
-  if (battleType === "mid_boss" && isPlayerWin) updateData.midBossCleared = true;
-  if (battleType === "last_boss" && isPlayerWin) updateData.lastBossCleared = true;
+  if (battleType === "strong_enemy" && isPlayerWin) updateData.strongEnemyCleared = true;
+  if (battleType === "area_lord" && isPlayerWin) updateData.areaLordCleared = true;
 
   await prisma.expedition.update({
     where: { id: expedition.id },
     data: updateData,
   });
+
+  if (isPlayerWin && result.defeatedEnemyIds && result.defeatedEnemyIds.length > 0) {
+    const { addQuestProgressEnemyDefeat } = await import("@/server/actions/quest");
+    await addQuestProgressEnemyDefeat(session.userId!, result.defeatedEnemyIds);
+  }
 
   return {
     success: true,
@@ -952,38 +1012,10 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     areaName: expedition.area.name,
     remainingNormalBattlesBefore: expedition.remainingNormalBattles,
     result,
+    battleType,
+    areaLordAppeared,
+    stateAfter: nextState,
   };
-}
-
-// --- 直近の探索戦闘結果（最後の 1 戦）の取得 ---
-
-export async function getLastExplorationBattle(): Promise<RunTestBattleSuccess | null> {
-  const session = await getSession();
-  if (!session.userId) return null;
-
-  const expedition = await prisma.expedition.findFirst({
-    where: {
-      userId: session.userId,
-      state: { in: ["in_progress", "ready_to_finish"] },
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      explorationState: true,
-    },
-  });
-
-  if (!expedition) return null;
-
-  const rawState = (expedition.explorationState ?? {}) as unknown as {
-    lastBattle?: unknown;
-  };
-
-  if (!rawState.lastBattle) return null;
-
-  const lastBattle = rawState.lastBattle as RunTestBattleSuccess;
-  if (!lastBattle.success) return null;
-
-  return lastBattle;
 }
 
 // --- ラウンド後の消耗品使用用：持ち込み消耗品一覧とパーティメンバー ---
@@ -1249,8 +1281,8 @@ export type FinishExplorationDropSlotOrigin =
   | "base"
   | "battle"
   | "skill"
-  | "mid_boss"
-  | "last_boss_special";
+  | "strong_enemy"
+  | "area_lord_special";
 
 export type FinishExplorationDroppedItem = {
   itemName: string;
@@ -1299,6 +1331,8 @@ export type FinishExplorationSummary = {
   skillSuccessCount: number;
   totalExpGained: number;
   dropSlots: FinishExplorationDropSlot[];
+  /** docs/054: この探索終了で達成したクエスト ID（クリア報告メッセージ表示用） */
+  completedQuestIds: string[];
 };
 
 export type FinishExplorationResult =
@@ -1339,8 +1373,8 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
           baseDropTableId: true,
           battleDropTableId: true,
           skillDropTableId: true,
-          midBossDropTableId: true,
-          lastBossDropTableId: true,
+          strongEnemyDropTableId: true,
+          areaLordDropTableId: true,
           baseDropTable: {
             select: {
               entries: {
@@ -1362,14 +1396,14 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
               },
             },
           },
-          midBossDropTable: {
+          strongEnemyDropTable: {
             select: {
               entries: {
                 include: { item: { select: { id: true, name: true } } },
               },
             },
           },
-          lastBossDropTable: {
+          areaLordDropTable: {
             select: {
               entries: {
                 include: { item: { select: { id: true, name: true } } },
@@ -1392,25 +1426,25 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
   const isCleared = expedition.remainingNormalBattles <= 0;
 
   // docs/020, spec/049 に基づく仮実装:
-  // - Exp は雑魚勝利×1 / 中ボス+2 / 大ボス+5 の合計
+  // - Exp は雑魚勝利×1 / 強敵+2 / 領域主+5 の合計
   const expFromBattles = expedition.battleWinCount;
-  const expFromMidBoss = expedition.midBossCleared ? 2 : 0;
-  const expFromLastBoss = expedition.lastBossCleared ? 5 : 0;
-  const totalExpGained = expFromBattles + expFromMidBoss + expFromLastBoss;
+  const expFromStrongEnemy = expedition.strongEnemyCleared ? 2 : 0;
+  const expFromAreaLord = expedition.areaLordCleared ? 5 : 0;
+  const totalExpGained = expFromBattles + expFromStrongEnemy + expFromAreaLord;
 
   // ドロップ枠の内訳：枠ごとにドロップテーブルをロールし、在庫に加算する
   const baseSlots = expedition.area.baseDropMin;
   const battleSlots = expedition.battleWinCount;
   const skillSlots = expedition.skillSuccessCount;
-  const midBossSlots = expedition.midBossCleared ? 2 : 0;
-  const lastBossSlots = expedition.lastBossCleared ? 1 : 0;
+  const strongEnemySlots = expedition.strongEnemyCleared ? 2 : 0;
+  const areaLordSlots = expedition.areaLordCleared ? 1 : 0;
 
   const area = expedition.area as {
     baseDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
     battleDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
     skillDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
-    midBossDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
-    lastBossDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
+    strongEnemyDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
+    areaLordDropTable: { entries: Array<{ itemId: string; minQuantity: number; maxQuantity: number; weight: number; item: { name: string } }> } | null;
   };
 
   const getEntries = (origin: FinishExplorationDropSlotOrigin) => {
@@ -1418,8 +1452,8 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
       case "base": return area.baseDropTable?.entries ?? [];
       case "battle": return area.battleDropTable?.entries ?? [];
       case "skill": return area.skillDropTable?.entries ?? [];
-      case "mid_boss": return area.midBossDropTable?.entries ?? [];
-      case "last_boss_special": return area.lastBossDropTable?.entries ?? [];
+      case "strong_enemy": return area.strongEnemyDropTable?.entries ?? [];
+      case "area_lord_special": return area.areaLordDropTable?.entries ?? [];
     }
   };
 
@@ -1430,8 +1464,8 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
   for (let i = 0; i < baseSlots; i += 1) slotConfigs.push({ origin: "base", label: `基本ドロップ枠 ${i + 1}` });
   for (let i = 0; i < battleSlots; i += 1) slotConfigs.push({ origin: "battle", label: `戦闘ボーナス枠 ${i + 1}` });
   for (let i = 0; i < skillSlots; i += 1) slotConfigs.push({ origin: "skill", label: `技能イベント枠 ${i + 1}` });
-  for (let i = 0; i < midBossSlots; i += 1) slotConfigs.push({ origin: "mid_boss", label: `中ボスボーナス枠 ${i + 1}` });
-  for (let i = 0; i < lastBossSlots; i += 1) slotConfigs.push({ origin: "last_boss_special", label: `大ボス専用枠 ${i + 1}` });
+  for (let i = 0; i < strongEnemySlots; i += 1) slotConfigs.push({ origin: "strong_enemy", label: `強敵ボーナス枠 ${i + 1}` });
+  for (let i = 0; i < areaLordSlots; i += 1) slotConfigs.push({ origin: "area_lord_special", label: `領域主専用枠 ${i + 1}` });
 
   for (const { origin, label } of slotConfigs) {
     const entries = getEntries(origin);
@@ -1469,6 +1503,12 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
     }
   });
 
+  const { addQuestProgressAreaClear } = await import("@/server/actions/quest");
+  const { completedQuestIds: areaClearCompleted } = await addQuestProgressAreaClear(
+    session.userId!,
+    expedition.area.id
+  );
+
   return {
     success: true,
     summary: {
@@ -1479,6 +1519,7 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
       skillSuccessCount: expedition.skillSuccessCount,
       totalExpGained,
       dropSlots,
+      completedQuestIds: areaClearCompleted,
     },
   };
 }

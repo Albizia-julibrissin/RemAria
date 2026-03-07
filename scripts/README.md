@@ -1,5 +1,13 @@
 # スクリプト
 
+## fix-test-mech-stats.ts（一時・1回のみ）
+
+テストユーザー(test1)のメカの基礎ステを CAP560・オール80 に揃える。過去のテストでずれた場合の修正用。
+
+```bash
+npx tsx scripts/fix-test-mech-stats.ts
+```
+
 ## git-init-commit.ps1
 
 初回の Git コミットを実行するスクリプト。

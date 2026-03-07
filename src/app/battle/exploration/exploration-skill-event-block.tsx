@@ -8,7 +8,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { AllyGridRow } from "../test/battle-grid-view";
+import { AllyGridRow } from "../practice/battle-grid-view";
 import { resolveExplorationSkillEvent } from "@/server/actions/exploration";
 import type { CarriedConsumableChoice, ExplorationPartyMemberChoice } from "@/server/actions/exploration";
 import { ExplorationConsumableUseClient } from "./exploration-consumable-use-client";

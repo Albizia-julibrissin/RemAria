@@ -151,9 +151,10 @@
 
 ------------------------------------------------------------------------
 
-## 8. エラー条件
+## 8. エラー条件・定数
 
-- facilityType が seed に無い（川探索拠点等の名前不一致）：seed の FACILITY_TYPES と一致させる。
+- **強制配置 5 設備名の正本**：`src/lib/constants/initial-area.ts` の `INITIAL_FACILITY_NAMES`。ensureInitialFacilities・getIndustrial・seed はこの定数を参照する。
+- facilityType が seed に無い（川探索拠点等の名前不一致）：seed の FACILITY_TYPES の先頭 5 件は INITIAL_FACILITY_NAMES と一致させる。
 
 ------------------------------------------------------------------------
 

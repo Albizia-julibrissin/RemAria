@@ -24,28 +24,26 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 
 | # | ファイル（パス） | 内容 | 本来どうあるべきか / 解消方針 |
 |---|------------------|------|------------------------------|
-| 1 | `src/lib/craft/equipment-stat-gen.ts` | **EQUIPMENT_STAT_GEN_BY_CODE**：装備種別 code（iron_sword, cloth_armor）ごとの CAP 範囲・重み範囲を定数で保持。021 準拠の乱数生成に使用。 | 装備種別マスタ（EquipmentType または別テーブル）に statCapMin/Max・重み設定を持たせる。クラフト実行時にマスタから読む。 |
-| 2 | `src/lib/craft/mecha-part-stat-gen.ts` | **MECHA_PART_STAT_GEN_BY_NAME**：メカパーツ種別名ごとの CAP・重み。現状は空で、常に null を返す。 | メカパーツ種別マスタ（MechaPartType または別テーブル）に同様の設定を持たせる。クラフト実行時にマスタから読む。 |
 | 3 | `src/lib/battle/run-battle-with-party.ts` | **DEBUFF_STAT_MULT_BY_CODE**：デバフコード（paralysis, accuracy_down）ごとの statMult（EVA 0.5 等）を定数で保持。 | デバフ効果のマスタまたは 042 の effectType 定義に「デフォルト statMult」を持たせる。 |
 | 4 | `src/lib/battle/run-battle-with-party.ts` | **POISON_DOT_PCT**：毒デバフの DoT 割合（0.05）。 | バランス用パラメータとしてマスタまたは 042 の effectType 定義に持たせる。 |
-| 5 | `src/lib/battle/test-enemy.ts` | **スライム 1～3 の基礎ステ**：DB に持たず定数で定義。仮戦闘用。 | 本番敵は敵マスタ（Enemy / Encounter）で管理。仮戦闘用は「テスト用」として残すか、テスト専用マスタに移す。 |
-| 6 | `src/server/actions/initial-area.ts` | **INITIAL_FACILITY_NAMES**：強制配置する 5 設備の名前を配列で保持。ensureInitialFacilities で参照。 | 初期設備は「初期化設定」マスタまたは spec/035 で定義した定数一覧を 1 箇所（例: constants または seed の export）にまとめ、名前の重複を防ぐ。 |
-| 7 | `src/server/actions/initial-area.ts` | **PRODUCTION_CAP_MINUTES**（1440 = 24h）：生産受け取りのキャップ。receive-production.ts にも同値が重複。 | docs/019 の 24 時間と一致。定数は 1 箇所に集約（例: `lib/constants/production.ts`）。マスタ化は将来検討。 |
-| 8 | `src/server/actions/receive-production.ts` | **PRODUCTION_CAP_MINUTES**（1440）：上記と同じ数値の重複定義。 | 上記と統合し 1 箇所参照にする。 |
+| 5 | `src/lib/battle/default-enemy.ts` | **仮戦闘用の敵**：DB に持たず定数で定義。練習戦闘（/battle/practice）で使用。 | 本番敵は敵マスタ（Enemy / EnemyGroup）で管理済み。仮戦闘用は「テスト用」として残すか、テスト専用マスタに移す。 |
 | 9 | `src/server/actions/facilities-placement.ts` | **getResearchState**：MVP では「解放済み設備種別一覧」のみ返す。未解放の条件要約は未実装。 | 047 の研究仕様に合わせ、未解放設備と解放条件の要約を返す。 |
-| 10 | `src/server/actions/craft.ts` | **getCraftRecipes**：MVP では「全レシピ」を返す。解放条件（設計図消費等）は未実装。 | UserCraftRecipeUnlock 等で「解放済みレシピ」だけ返す。 |
-| 11 | `src/app/dashboard/characters/[id]/page.tsx` | **ステータス再配分**：allocateCharacterStats 失敗時、コンソールにだけエラー出力。UI には成功/失敗メッセージを出していない。 | サーバから返却したエラーメッセージを画面に表示する。 |
+| 10 | （解消済み） | **getCraftRecipes**：UserCraftRecipeUnlock で解放済みレシピのみ返すように変更済み。研究画面（/dashboard/research）でアイテム消費解放。 | — |
 | 12 | `prisma/seed.ts` | **test1 の設備枠・コスト上限**：industrialMaxSlots: 20, industrialMaxCost: 1000 を test1 だけ上書き。 | テスト用として明示的に「テスト用シード」であることをコメントで残す。本番は進行で解放する想定なので、この箇所は「テスト用」のままでよい。 |
 | 13 | `prisma/seed.ts` | **建設レシピ・クラフトレシピ・設備型・解放**：素材の種類・数量・設備名・レシピ名などはすべて seed 内の配列で定義。 | コンテンツが増えたら「マスタ CSV / 管理画面」から投入する運用を検討。現状は seed がマスタの役割。 |
-| 14 | `prisma/schema.prisma`, `src/server/actions/exploration.ts` | **探索エリアごとの敵編成**：`ExplorationArea.normalEnemyGroupCode` などは定義済みだが、本番用の敵マスタ（Enemy / Encounter）は未実装。探索戦闘は当面 `test-enemy.ts` のスライム固定編成を使う想定。 | 敵マスタ（EnemyType / EnemyGroup 等）と `ExplorationArea` の紐づけを設計し、探索戦闘でそのマスタから敵編成を構築する。スライム固定はテスト用として残すか、テスト専用マスタに移す。 |
+| 14 | `src/server/lib/resolve-exploration-enemies.ts` | **探索エリアごとの敵編成**：敵マスタ（Enemy / EnemyGroup）と ExplorationArea の紐づけは実装済み。敵の作戦・スキルは run-battle と resolve で対応済み（#24 解消）。 | 敵マスタにスキル・作戦を登録すれば探索戦闘で使用される。未登録の敵は従来どおり通常攻撃のみ。 |
 | 15 | `src/server/actions/exploration.ts`, `src/app/dashboard/exploration-log-client.tsx` | **continueExploration（仮）**：探索本流は `getNextExplorationStep` + `runExplorationBattle` / `resolveExplorationSkillEvent` で実装済み。`continueExploration` はダッシュボードの exploration-log-client からのみ呼ばれ、ログ行とカウンタの更新だけを行う仮実装のまま。 | ダッシュボードの「探索ログ」用途を整理し、continueExploration を削除するか別用途に統合する。 |
 | 16 | （解消済み） | **探索中の HP/MP 持ち回り**：戦闘結果の HP/MP を Expedition に書き戻し次の戦闘に渡す処理は実装済み（runTestBattle の initialHpMpByCharacterId、runExplorationBattle での currentHpMp 更新）。 | — |
 | 17 | （解消済み） | **探索終了時の経験値・ドロップ付与**：UserInventory へのドロップ加算・参加キャラへの経験値付与（grantCharacterExp）は実装済み。 | — |
-| 18 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/page.tsx` | **最後の戦闘ログの永続化**：敗北時や最終戦闘時のログを結果画面で再表示するため、`Expedition.explorationState.lastBattle` に `RunTestBattleSuccess` をそのまま格納している。 | 将来的には「戦闘ログを永続化しない」という方針との整合を取りつつ、必要であれば簡易サマリだけを保持する形に改める。現状は MVP の UX 優先でフルログを JSON に保存している。 |
 | 19 | `src/server/actions/exploration.ts` | **技能イベントの発生時メッセージ**：`getNextExplorationStep` 内で `eventMessage` を "何かが起きた…。どう対処する？" と固定している。 | エリア別・イベント種別でマスタ（または explorationState の種別）にメッセージを持たせ、表示時に参照する。 |
 | 20 | `src/app/battle/exploration/page.tsx` | **探索戦闘画面の「戦闘後のパーティ状況（仮）」**：見出しおよび「持ち回り・次イベント抽選は後続で実装」の説明文が古い。HP/MP 持ち回りと次ステップ抽選は実装済み。 | 見出しの（仮）削除と説明文を実態（持ち回り・抽選済み）に合わせて修正する。 |
 | 21 | 探索消耗品（spec/049 Phase 4） | **ステータスブースト系アイテム**：docs/020 で想定している「次のイベント時にSTRアップ」等のバフ消耗品は未実装。現状は HP/MP 割合回復のみ。 | Item.consumableEffect にバフ種別（例：next_event_str_up）を追加し、探索ラウンド開始時や戦闘開始時に explorationState のバフを参照してステ補正する処理を実装する。 |
 | 22 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/page.tsx` | **技能イベント途中離脱時の扱い**：技能イベントが表示された状態でステータス未選択のままページを閉じた場合、そのイベントは「発生しなかったもの」として扱われ、復帰時には新たに次ステップ（技能 or 戦闘）をロールしている。 | 将来的に explorationState に pendingSkillEvent（未解決の技能イベント）を保持し、復帰時に同じイベントに戻れるようにするかを検討する。現状は実装簡易さ優先でスキップ扱い。 |
+| 25 | `src/lib/battle/run-battle-with-party.ts` | **includeCurrent: false**：持続効果の param で「付与サイクルを含めない」を指定されても未参照。常に includeCurrent: true 扱い。 | remainingCycles の初期値を「durationCycles + 1」にする等、param.includeCurrent に応じた分岐を実装する。 |
+| 26 | `src/lib/battle/attribute-resistances.ts`, 戦闘入力 | **装備（EquipmentInstance）からの属性耐性**：遺物からの attributeResistances 集約・戦闘への受け渡しは実装済み。装備個体の耐性は未集約。 | EquipmentInstance に耐性フィールド（または種別マスタから導出）を定義し、集約関数で遺物と合わせて partyInput.attributeResistances に渡す。 |
+| 27 | `docs/041_skill_effects_implementation_prep.md` §9 | **logMessageOnCondition の表示**：条件達成時の追加メッセージをログにどう出すか要検討。現状は「決壊」等のインライン表示のみの可能性。 | spec/038 や 042 で表示仕様を決め、必要なら別行で条件達成メッセージを出す。 |
+| 28 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/` | **技能イベント後の消耗品使用**：戦闘後の消耗品使用 UI・HP/MP 回復は実装済み。技能イベントの**後**に消耗品を使う UI・効果適用は未実装（spec/049）。 | 技能イベント結果表示後に「消耗品を使う」ボタンと選択 UIを出し、使用後に次ステップへ進むフローを追加する。 |
+| 29 | `src/lib/constants/relic.ts` | **RELIC_GROUP_APPRAISAL_CONFIG**：遺物鑑定のステ・耐性・パッシブ抽選の既定値。 | 鑑定時は DB の RelicGroupConfig を優先し、該当 groupCode の設定が無い場合のみこの定数をフォールバックとして参照。管理画面で遺物グループ編集可能。 |
 
 ---
 
@@ -60,6 +58,14 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 ## 4. 更新履歴（要約）
 
 - 初版：装備/メカパーツのステータス生成、戦闘デバフ定数、初期設備名、生産キャップ、API の MVP 限定挙動、キャラ詳細のエラー表示、seed のテスト用・マスタ的定義を一覧化。
+- #5 パスを test-enemy.ts → default-enemy.ts に修正。#14 を「探索は敵マスタ連携済み・敵スキル/AI は未実装」に更新。#23～#28 を追加：enemy_all、敵スキル・AI、includeCurrent: false、装備からの耐性、logMessageOnCondition 表示、技能イベント後の消耗品使用。
+- **#7・#8 解消**：PRODUCTION_CAP_MINUTES を `src/lib/constants/production.ts` に一元化。initial-area.ts と receive-production.ts は同定数を参照。docs/019 で「貯められるのは最大24時間分まで」と明文化。
+- **#6 解消**：INITIAL_FACILITY_NAMES を `src/lib/constants/initial-area.ts` に一元化。initial-area.ts は同定数を import。seed は同定数を import し INITIAL_AREA_FACILITY_NAMES を削除。
+- **#11 解消**：ステータス再配分をクライアントコンポーネント（CharacterStatAllocationForm）に切り出し、allocateCharacterStats の成功/失敗メッセージを画面に表示。送信中はボタン無効化と「送信中…」表示。
+- **#18 解消**：戦闘ログを永続化しない方針に変更。runExplorationBattle の戻り値を同一リクエストで表示し、ready_to_finish 時は getLastExplorationBattle を廃止。explorationState に lastBattle を書かず、報酬受け取りまで探索終了にしない現行フローで戦闘結果はメモリ上のみ。
+- **#23 解消**：targetScope: enemy_all を対応。列指定（damage_target_columns）がない場合も敵生存者全員を対象にする分岐を追加。
+- **#24 解消**：敵のスキル・AI は実装済み。run-battle-with-party で敵ターンに evaluateTacticsFromSpec・スキル実行・CT 管理を実装。探索敵は resolve-exploration-enemies で tacticSlots・enemySkills を渡す。
+- **#1・#2 解消**：装備・メカパーツのステ生成をマスタに移行（docs/053）。EquipmentType.statGenConfig / MechaPartType.statGenConfig を追加。クラフト実行時はマスタの config のみ参照し、未設定ならエラー。seed で鉄の剣・布の鎧・おんぼろシリーズに statGenConfig を投入し、おんぼろ 6 種のクラフトレシピを追加。
 
 ---
 

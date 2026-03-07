@@ -59,8 +59,55 @@ model User {
   partyPresets         PartyPreset[]
   equipmentInstances   EquipmentInstance[]
   mechaPartInstances   MechaPartInstance[]
+  relicInstances       RelicInstance[]
   expeditions          Expedition[]
   userFacilityTypeUnlocks UserFacilityTypeUnlock[]
+  userCraftRecipeUnlocks UserCraftRecipeUnlock[]
+  userQuests UserQuest[]
+}
+
+/// docs/054, spec/054_quests: クエストマスタ。ストーリー・研究・一般。
+model Quest {
+  id                  String   @id @default(cuid())
+  code                String   @unique
+  questType           String   // story | research | general
+  name                String
+  description         String?  // 経緯・状況がわかる説明文
+  clearReportMessage  String?  // クリア報告時に表示するメッセージ（ストーリー演出用）
+  prerequisiteQuestId String?
+  prerequisiteQuest    Quest?   @relation("QuestPrerequisite", fields: [prerequisiteQuestId], references: [id], onDelete: SetNull)
+  /// 達成条件タイプ: area_clear | enemy_defeat | skill_success_count | equipment_craft 等
+  achievementType     String
+  /// 達成条件パラメータ。例: { "areaId": "cuid", "count": 1 } | { "enemyId": "cuid", "count": 10 }
+  achievementParam    Json
+  /// 報酬: 研究ポイント（研究クエストで使用）
+  rewardResearchPoint Int      @default(0)
+  rewardTitleId       String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  nextQuests Quest[]  @relation("QuestPrerequisite")
+  userQuests UserQuest[]
+}
+
+/// docs/054: ユーザーごとのクエスト進行。出現＝受注扱い（オート）。
+model UserQuest {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questId     String
+  quest       Quest     @relation(fields: [questId], references: [id], onDelete: Cascade)
+  state       String    // in_progress | completed
+  progress    Int       @default(0)  // 達成条件の現在値（例: エリアクリア回数、撃破数）
+  completedAt DateTime?
+  /// クリア報告をクエスト画面で確認した日時。null の間は「報告する」でメッセージ表示可能。
+  reportAcknowledgedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, questId])
+  @@index([userId])
+  @@index([questId])
 }
 
 /// docs/02_domain_model.md, 08: 主人公・仲間・メカを 1 テーブルで統一。category で判別
@@ -101,6 +148,7 @@ model Character {
   partyPresetsSlot3 PartyPreset[] @relation("PresetSlot3")
   mechaEquipments   MechaEquipment[]
   characterEquipments CharacterEquipment[]
+  characterRelics   CharacterRelic[]
 
   @@index([userId])
   @@index([userId, category])
@@ -286,11 +334,15 @@ model UserInventory {
 
 /// spec/035, 045: 素材・製品マスタ。category で種別（material / consumable / blueprint / skill_book / paid）。
 /// spec/049: 探索消耗品は consumableEffect と maxCarryPerExpedition で効果・持ち込み上限を定義。
+/// spec/052: category=skill_book のとき skillId で紐づくスキルに対して習得/レベルアップに使用。
 model Item {
   id          String   @id @default(cuid())
   code        String   @unique // water, drinkable_water, wheat, flour, portable_ration
   name        String
   category    String   @default("material") // spec/045: material | consumable | blueprint | skill_book | paid
+  /// category=skill_book のとき: この分析書で習得/レベルアップできるスキル。spec/052。
+  skillId     String?
+  skill       Skill?   @relation(fields: [skillId], references: [id], onDelete: SetNull)
   /// category=consumable のとき: { "type": "hp_percent" | "mp_percent", "value": number } 等。docs/027 で拡張一覧化可。
   consumableEffect      Json?
   /// 探索1回あたりの持ち込み上限（個数）。null は対象外または無制限。
@@ -306,6 +358,9 @@ model Item {
   craftRecipeInputs    CraftRecipeInput[]
 
   dropTableEntries DropTableEntry[]
+  researchUnlockCosts ResearchUnlockCost[]
+
+  @@index([skillId])
 }
 
 /// spec/049: 探索・報酬用ドロップテーブル（エリア別・枠由来別のアイテム候補）。
@@ -313,7 +368,7 @@ model DropTable {
   id        String   @id @default(cuid())
   code      String   @unique
   name      String
-  /// base / battle_bonus / skill / mid_boss / last_boss_special など、枠の由来。
+  /// base / battle_bonus / skill / strong_enemy（強敵）/ area_lord_special（領域主）など、枠の由来。
   kind      String
   areaId    String?
   area      ExplorationArea? @relation(fields: [areaId], references: [id], onDelete: Cascade)
@@ -322,11 +377,11 @@ model DropTable {
 
   entries DropTableEntry[]
 
-  baseForAreas    ExplorationArea[] @relation("BaseDropTable")
-  battleForAreas  ExplorationArea[] @relation("BattleDropTable")
-  skillForAreas   ExplorationArea[] @relation("SkillDropTable")
-  midBossForAreas ExplorationArea[] @relation("MidBossDropTable")
-  lastBossForAreas ExplorationArea[] @relation("LastBossDropTable")
+  baseForAreas      ExplorationArea[] @relation("BaseDropTable")
+  battleForAreas    ExplorationArea[] @relation("BattleDropTable")
+  skillForAreas     ExplorationArea[] @relation("SkillDropTable")
+  strongEnemyForAreas ExplorationArea[] @relation("StrongEnemyDropTable")
+  areaLordForAreas  ExplorationArea[] @relation("AreaLordDropTable")
 }
 
 model DropTableEntry {
@@ -345,12 +400,14 @@ model DropTableEntry {
   @@index([itemId])
 }
 
-/// spec/045, 046: 装備種別マスタ。クラフトの出力として参照。slot は EQUIPMENT_SLOTS のいずれか。
+/// spec/045, 046, docs/053: 装備種別マスタ。クラフトの出力として参照。slot は EQUIPMENT_SLOTS のいずれか。
 model EquipmentType {
   id        String   @id @default(cuid())
   code      String   @unique
   name      String
   slot      String   // main_weapon | sub_weapon | head | body | arm | leg
+  /// クラフト時のランダムステ生成用。NULL または不正の場合はクラフト失敗。docs/053。
+  statGenConfig Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -374,8 +431,69 @@ model CraftRecipe {
   updatedAt               DateTime @updatedAt
 
   inputs CraftRecipeInput[]
+  userCraftRecipeUnlocks UserCraftRecipeUnlock[]
 
   @@index([outputKind])
+}
+
+/// docs/054: 研究グループ。第一弾は「錆びれた森林研究」。次のグループは前提グループの派生型以外を全クリアで解放。
+model ResearchGroup {
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  name                 String
+  displayOrder         Int      @default(0)
+  prerequisiteGroupId  String?
+  prerequisiteGroup    ResearchGroup?  @relation("ResearchGroupPrerequisite", fields: [prerequisiteGroupId], references: [id], onDelete: SetNull)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  nextGroups ResearchGroup[] @relation("ResearchGroupPrerequisite")
+  items      ResearchGroupItem[]
+}
+
+/// docs/054: グループに属する解放対象。targetType + targetId で設備種別 or クラフトレシピを参照。
+model ResearchGroupItem {
+  id              String   @id @default(cuid())
+  researchGroupId String
+  researchGroup   ResearchGroup @relation(fields: [researchGroupId], references: [id], onDelete: Cascade)
+  targetType      String   // facility_type | craft_recipe
+  targetId        String   // FacilityType.id or CraftRecipe.id
+  isVariant       Boolean  @default(false)  // 派生型なら true。グループクリアは「派生型以外」で判定
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([researchGroupId, targetType, targetId])
+  @@index([researchGroupId])
+}
+
+/// docs/054: 解放時の消費コスト（アイテム）。targetType + targetId で対象を指定。同一対象に複数アイテム可。
+model ResearchUnlockCost {
+  id         String @id @default(cuid())
+  targetType String // facility_type | craft_recipe
+  targetId   String // FacilityType.id or CraftRecipe.id
+  itemId     String
+  item       Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  amount     Int    // 1 回の解放で消費する個数
+  createdAt  DateTime @default(now())
+
+  @@unique([targetType, targetId, itemId])
+  @@index([targetType, targetId])
+  @@index([itemId])
+}
+
+/// docs/054, 046: 研究で解放済みのクラフトレシピ。解放済みのみクラフト一覧に表示する。
+model UserCraftRecipeUnlock {
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  craftRecipeId  String
+  craftRecipe    CraftRecipe @relation(fields: [craftRecipeId], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+
+  @@unique([userId, craftRecipeId])
+  @@index([userId])
+  @@index([craftRecipeId])
 }
 
 /// spec/046: クラフトレシピの入力（消費資源）。
@@ -425,6 +543,104 @@ model CharacterEquipment {
   @@unique([characterId, slot])
   @@index([characterId])
   @@index([equipmentInstanceId])
+}
+
+/// spec/051: 遺物型マスタ。鑑定時のグループ（groupCode）で抽選対象を分ける。
+model RelicType {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  groupCode   String?  // 鑑定トークンと対応（例: group_a）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  relicInstances RelicInstance[]
+}
+
+/// spec/051: 遺物用パッシブ効果マスタ。表示・戦闘効果は Next で拡張可。
+model RelicPassiveEffect {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  relicInstances         RelicInstance[]
+  relicGroupPassiveEffects RelicGroupPassiveEffect[]
+}
+
+/// spec/051: 遺物グループごとの鑑定設定。groupCode は RelicType.groupCode およびトークン→グループ対応と一致。
+model RelicGroupConfig {
+  id                  String   @id @default(cuid())
+  groupCode           String   @unique // 例: group_a（RelicType.groupCode と一致）
+  name                String?  // 表示名（例: グループA）
+  statBonus1Min       Int      // ステ補正1 percent の最小
+  statBonus1Max       Int      // ステ補正1 percent の最大
+  statBonus2Min       Int
+  statBonus2Max       Int
+  attributeResistMin  Float    // 耐性倍率の最小（0.85 等）
+  attributeResistMax  Float
+  includeNoEffect     Boolean  @default(true) // 効果なしを抽選プールに含めるか
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  passiveEffects RelicGroupPassiveEffect[]
+}
+
+/// spec/051: 遺物グループで抽選対象になるパッシブ効果（多対多）。
+model RelicGroupPassiveEffect {
+  id                    String   @id @default(cuid())
+  relicGroupConfigId    String
+  relicGroupConfig      RelicGroupConfig @relation(fields: [relicGroupConfigId], references: [id], onDelete: Cascade)
+  relicPassiveEffectId  String
+  relicPassiveEffect    RelicPassiveEffect @relation(fields: [relicPassiveEffectId], references: [id], onDelete: Cascade)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([relicGroupConfigId, relicPassiveEffectId])
+  @@index([relicGroupConfigId])
+  @@index([relicPassiveEffectId])
+}
+
+/// spec/051: 遺物個体。ユーザーが所持する1個1行。鑑定で生成。
+model RelicInstance {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relicTypeId            String
+  relicType              RelicType @relation(fields: [relicTypeId], references: [id], onDelete: Cascade)
+  relicPassiveEffectId   String?
+  relicPassiveEffect    RelicPassiveEffect? @relation(fields: [relicPassiveEffectId], references: [id], onDelete: SetNull)
+  /// 基礎ステ％補正。例: { "stat": "STR", "percent": 5 }
+  statBonus1             Json?
+  statBonus2             Json?
+  /// Phase 10 用。キー=属性コード、値=受けるダメージ倍率。
+  attributeResistances   Json?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  characterRelics CharacterRelic[]
+
+  @@index([userId])
+  @@index([relicTypeId])
+  @@index([relicPassiveEffectId])
+}
+
+/// spec/051: キャラの遺物装着。1キャラあたりスロット1～4を1つずつ。
+model CharacterRelic {
+  id                String         @id @default(cuid())
+  characterId       String
+  character         Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  slot              Int            // 1～4
+  relicInstanceId   String?
+  relicInstance     RelicInstance? @relation(fields: [relicInstanceId], references: [id], onDelete: SetNull)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([characterId, slot])
+  @@index([characterId])
+  @@index([relicInstanceId])
 }
 
 /// spec/045, 046: メカパーツ個体。クラフトで 1 個ずつ作成。ステータスは 021・044 に従い JSON で保持。
@@ -491,7 +707,7 @@ model FacilityTypeTag {
   @@index([tagId])
 }
 
-/// spec/044: メカパーツ種別マスタ。部位ごとの基礎ステ加算とフレーム倍率、紐づくメカスキルを定義。
+/// spec/044, docs/053: メカパーツ種別マスタ。部位ごとの基礎ステ加算とフレーム倍率、紐づくメカスキルを定義。
 model MechaPartType {
   id        String   @id @default(cuid())
   slot      String   // frame | core | head | rightArm | leftArm | legs
@@ -500,6 +716,9 @@ model MechaPartType {
   /// フレーム用の基礎ステ倍率（JSON オブジェクト）。slot=frame のときのみ使用。
   /// 例: { "STR": 1.2, "DEX": 0.8 }。キーが無い基礎ステは 1.0 扱い。
   statRates Json?
+
+  /// クラフト時のランダム基礎ステ生成用。NULL または不正の場合はクラフト失敗。docs/053。
+  statGenConfig Json?
 
   /// フレーム以外の部位用のフラット加算値。NULL は 0 扱い。
   strAdd   Int? @default(0)
@@ -575,6 +794,8 @@ model Skill {
   mechaPartTypeSkills MechaPartTypeSkill[]
   enemySkills     EnemySkill[]
   enemyTacticSlots EnemyTacticSlot[]
+  /// spec/052: このスキル用のスキル分析書アイテム（Item.category=skill_book）
+  skillBookItems  Item[]
 
   @@unique([name, category])
   @@index([category])
@@ -605,8 +826,8 @@ model Enemy {
   enemySkills EnemySkill[]
   groupEntries EnemyGroupEntry[]
 
-  midBossAreas ExplorationArea[] @relation("MidBossEnemy")
-  lastBossAreas ExplorationArea[] @relation("LastBossEnemy")
+  strongEnemyAreas ExplorationArea[] @relation("StrongEnemyEnemy")
+  areaLordAreas    ExplorationArea[] @relation("AreaLordEnemy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -674,13 +895,15 @@ model SkillEffect {
   @@index([skillId])
 }
 
-/// spec/030, docs/08: キャラの習得スキル。仲間は雇用時に工業スキルを1つランダム付与。
+/// spec/030, 052: キャラの習得スキル。仲間は雇用時に工業スキルを1つランダム付与。level はスキル分析書で強化。spec/052。
 model CharacterSkill {
   id         String   @id @default(cuid())
   characterId String
   character  Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
   skillId    String
   skill      Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  /// スキルレベル。0=習得直後。Lv N→N+1 に (N+1) 冊の分析書で上昇。spec/052。
+  level      Int       @default(0)
   createdAt  DateTime @default(now())
 
   @@unique([characterId, skillId])
@@ -760,33 +983,33 @@ model ExplorationArea {
   baseDropMax       Int      @default(5)  // 標準ドロップ枠レンジ（上限）
   baseSkillEventRate Int     @default(25) // 技能イベント基礎発生率（パーセント）
   skillCheckRequiredValue Int @default(80) // 技能判定の必要値（MVP: 全ステ共通。docs/020 の基準値は将来拡張）
-  normalBattleCount Int      @default(5)  // 雑魚戦の想定回数（中ボス前）
+  normalBattleCount Int      @default(5)  // 雑魚戦の想定回数（強敵前）
 
   /// spec/050: 通常戦の雑魚グループ（EnemyGroup.code で参照）
-  normalEnemyGroupCode   String?
+  normalEnemyGroupCode     String?
   /// spec/050: 体数 1/2/3 の出現率（0-100、合計100）
-  enemyCount1Rate        Int      @default(34)
-  enemyCount2Rate        Int      @default(33)
-  enemyCount3Rate        Int      @default(33)
-  /// spec/050: 中ボス・大ボスはエリアに1体ずつ直接紐づけ（優先）。以下は互換用に残す。
-  midBossEnemyId         String?
-  midBossEnemy           Enemy?   @relation("MidBossEnemy", fields: [midBossEnemyId], references: [id], onDelete: SetNull)
-  lastBossEnemyId        String?
-  lastBossEnemy          Enemy?   @relation("LastBossEnemy", fields: [lastBossEnemyId], references: [id], onDelete: SetNull)
-  midBossEnemyGroupCode  String?  // 非推奨。midBossEnemyId を優先
-  lastBossEnemyGroupCode String?  // 非推奨。lastBossEnemyId を優先
+  enemyCount1Rate          Int      @default(34)
+  enemyCount2Rate          Int      @default(33)
+  enemyCount3Rate          Int      @default(33)
+  /// spec/050: 強敵・領域主はエリアに1体ずつ直接紐づけ（優先）。以下は互換用に残す。
+  strongEnemyEnemyId       String?
+  strongEnemyEnemy         Enemy?   @relation("StrongEnemyEnemy", fields: [strongEnemyEnemyId], references: [id], onDelete: SetNull)
+  areaLordEnemyId          String?
+  areaLordEnemy            Enemy?   @relation("AreaLordEnemy", fields: [areaLordEnemyId], references: [id], onDelete: SetNull)
+  strongEnemyEnemyGroupCode String?  // 非推奨。strongEnemyEnemyId を優先
+  areaLordEnemyGroupCode   String?  // 非推奨。areaLordEnemyId を優先
 
   /// 枠由来ごとのドロップテーブル紐づけ（報酬 Phase5）
-  baseDropTableId        String?
-  baseDropTable          DropTable? @relation("BaseDropTable", fields: [baseDropTableId], references: [id], onDelete: SetNull)
-  battleDropTableId      String?
-  battleDropTable        DropTable? @relation("BattleDropTable", fields: [battleDropTableId], references: [id], onDelete: SetNull)
-  skillDropTableId       String?
-  skillDropTable         DropTable? @relation("SkillDropTable", fields: [skillDropTableId], references: [id], onDelete: SetNull)
-  midBossDropTableId     String?
-  midBossDropTable       DropTable? @relation("MidBossDropTable", fields: [midBossDropTableId], references: [id], onDelete: SetNull)
-  lastBossDropTableId    String?
-  lastBossDropTable      DropTable? @relation("LastBossDropTable", fields: [lastBossDropTableId], references: [id], onDelete: SetNull)
+  baseDropTableId          String?
+  baseDropTable            DropTable? @relation("BaseDropTable", fields: [baseDropTableId], references: [id], onDelete: SetNull)
+  battleDropTableId        String?
+  battleDropTable          DropTable? @relation("BattleDropTable", fields: [battleDropTableId], references: [id], onDelete: SetNull)
+  skillDropTableId         String?
+  skillDropTable           DropTable? @relation("SkillDropTable", fields: [skillDropTableId], references: [id], onDelete: SetNull)
+  strongEnemyDropTableId   String?
+  strongEnemyDropTable     DropTable? @relation("StrongEnemyDropTable", fields: [strongEnemyDropTableId], references: [id], onDelete: SetNull)
+  areaLordDropTableId      String?
+  areaLordDropTable        DropTable? @relation("AreaLordDropTable", fields: [areaLordDropTableId], references: [id], onDelete: SetNull)
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -812,10 +1035,10 @@ model Expedition {
 
   state     String   @default("in_progress") // in_progress / ready_to_finish / finished / aborted
 
-  /// 進行状況（docs/020 に準拠）
+  /// 進行状況（docs/020 に準拠。強敵＝旧中ボス、領域主＝旧大ボス）
   remainingNormalBattles Int   @default(0)
-  midBossCleared         Boolean @default(false)
-  lastBossCleared        Boolean @default(false)
+  strongEnemyCleared     Boolean @default(false)
+  areaLordCleared        Boolean @default(false)
   battleWinCount         Int     @default(0)
   skillSuccessCount      Int     @default(0)
 

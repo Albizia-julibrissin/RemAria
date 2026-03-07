@@ -13,12 +13,16 @@ import {
   getMechaEquipment,
   getMechaPartInstancesWithEquipped,
 } from "@/server/actions/mecha-equipment";
+import { getCharacterRelics, getRelicInstances } from "@/server/actions/relic";
 import { getRequiredExpForLevel } from "@/lib/level";
 import { DismissCompanionButton } from "./dismiss-companion-button";
 import { CharacterEquipmentSection } from "./character-equipment-section";
 import { MechaEquipmentSection } from "./mecha-equipment-section";
+import { CharacterRelicSection } from "./character-relic-section";
 import { CharacterSkillTabs } from "./character-skill-tabs";
-import { allocateCharacterStats } from "@/server/actions/character-stats";
+import { CharacterStatAllocationForm } from "./character-stat-allocation-form";
+import { CharacterIconChange } from "./character-icon-change";
+import { getProtagonistIconFilenames } from "@/server/lib/protagonist-icons";
 
 const CATEGORY_LABEL: Record<string, string> = {
   protagonist: "主人公",
@@ -27,7 +31,41 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 const BASE_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK", "CAP"] as const;
-const ALLOCATABLE_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"] as const;
+const BASE_STAT_KEYS_7 = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"] as const;
+
+/** 遺物スロットから基礎ステへの加算（statBonus1/2 の % を床で適用）を集計 */
+function computeRelicBonusFromSlots(
+  relicSlots: { slot: number; relicInstance: { statBonus1: { stat: string; percent: number } | null; statBonus2: { stat: string; percent: number } | null } | null }[],
+  baseStats: Record<string, number>
+): Record<string, number> {
+  const out: Record<string, number> = { STR: 0, INT: 0, VIT: 0, WIS: 0, DEX: 0, AGI: 0, LUK: 0 };
+  for (const row of relicSlots) {
+    const r = row.relicInstance;
+    if (!r) continue;
+    for (const b of [r.statBonus1, r.statBonus2]) {
+      if (!b || !(b.stat in out)) continue;
+      const base = baseStats[b.stat];
+      if (typeof base === "number") out[b.stat] += Math.floor((base * b.percent) / 100);
+    }
+  }
+  return out;
+}
+
+/** メカ装着スロットから基礎ステ加算を集計 */
+function computeMechaEquipmentBonus(
+  slots: { stats: Record<string, number> | null }[]
+): Record<string, number> {
+  const out: Record<string, number> = { STR: 0, INT: 0, VIT: 0, WIS: 0, DEX: 0, AGI: 0, LUK: 0 };
+  for (const row of slots) {
+    const s = row.stats;
+    if (!s) continue;
+    for (const key of BASE_STAT_KEYS_7) {
+      const v = s[key];
+      if (typeof v === "number") out[key] += v;
+    }
+  }
+  return out;
+}
 
 export default async function CharacterDetailPage({
   params,
@@ -44,18 +82,44 @@ export default async function CharacterDetailPage({
   const character = await characterRepository.getCharacterWithSkillsForUser(id, session.userId);
   if (!character) notFound();
 
-  const allSkills = character.characterSkills?.map((cs) => cs.skill).filter(Boolean) ?? [];
-  const battleSkills = allSkills.filter((s) => s.category?.startsWith("battle_"));
-  const industrialSkills = allSkills.filter((s) => s.category === "industrial");
+  const characterSkillsWithLevel =
+    character.characterSkills?.map((cs) => ({ skill: cs.skill, level: cs.level })).filter((x) => x.skill) ?? [];
+  const battleSkills = characterSkillsWithLevel
+    .filter((x) => x.skill.category?.startsWith("battle_"))
+    .map((x) => ({ ...x.skill, level: x.level }));
+  const industrialSkills = characterSkillsWithLevel
+    .filter((x) => x.skill.category === "industrial")
+    .map((x) => ({ ...x.skill, level: x.level }));
 
   const canEquip = character.category === "protagonist" || character.category === "companion";
   const isMech = character.category === "mech";
-  const [characterEquipment, allEquipment, mechaEquipment, allMechaParts] = await Promise.all([
+  const [characterEquipment, allEquipment, mechaEquipment, allMechaParts, characterRelics, allRelics] = await Promise.all([
     canEquip ? getCharacterEquipment(character.id) : null,
     canEquip ? getEquipmentInstancesWithEquipped() : null,
     isMech ? getMechaEquipment(character.id) : null,
     isMech ? getMechaPartInstancesWithEquipped() : null,
+    getCharacterRelics(character.id),
+    getRelicInstances(),
   ]);
+  const relicSlots = characterRelics.success ? characterRelics.slots : [];
+  const allRelicList = allRelics.success ? allRelics.relics : [];
+
+  const baseStatsForBonus = {
+    STR: character.STR,
+    INT: character.INT,
+    VIT: character.VIT,
+    WIS: character.WIS,
+    DEX: character.DEX,
+    AGI: character.AGI,
+    LUK: character.LUK,
+  };
+  const relicBonus = computeRelicBonusFromSlots(relicSlots, baseStatsForBonus);
+  const mechaEquipmentBonus =
+    isMech && mechaEquipment
+      ? computeMechaEquipmentBonus(mechaEquipment.slots)
+      : null;
+
+  const iconFilenames = getProtagonistIconFilenames();
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -91,81 +155,69 @@ export default async function CharacterDetailPage({
         )}
 
         <div className="mt-6 flex items-start gap-6 rounded-lg border border-base-border bg-base-elevated p-6">
-          <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded border border-base-border bg-base">
-            {character.iconFilename ? (
-              <img
-                src={`/icons/${character.iconFilename}`}
-                alt=""
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <div className="h-full w-full bg-base-border" aria-hidden />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
+          <CharacterIconChange
+            characterId={character.id}
+            currentIconFilename={character.iconFilename}
+            iconFilenames={iconFilenames}
+          />
+          <div className="min-w-0 flex-1 overflow-x-auto">
             <h2 className="text-lg font-medium text-text-primary">基礎ステータス</h2>
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {BASE_STAT_KEYS.map((key) => (
-                <div key={key} className="flex justify-between gap-2">
-                  <dt className="text-text-muted">{key}</dt>
-                  <dd className="font-medium text-text-primary tabular-nums">{character[key]}</dd>
-                </div>
-              ))}
-            </dl>
+            <p className="mt-1 text-xs text-text-muted">列は 基礎・装備・遺物 の加算です。</p>
+            <table className="mt-3 w-full min-w-[200px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-base-border text-left text-text-muted">
+                  <th className="py-1 pr-4 font-medium"></th>
+                  <th className="w-14 py-1 text-right font-medium tabular-nums">基礎</th>
+                  <th className="w-14 py-1 text-right font-medium tabular-nums">装備</th>
+                  <th className="w-14 py-1 text-right font-medium tabular-nums">遺物</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BASE_STAT_KEYS.map((key) => {
+                  const baseVal = character[key];
+                  const relAdd = key === "CAP" ? 0 : (relicBonus[key as keyof typeof relicBonus] ?? 0);
+                  const equipAdd = key === "CAP" ? 0 : (mechaEquipmentBonus?.[key as keyof typeof mechaEquipmentBonus] ?? 0);
+                  if (key === "CAP") {
+                    return (
+                      <tr key={key} className="border-b border-base-border/70">
+                        <td className="py-1 pr-4 text-text-muted">{key}</td>
+                        <td className="py-1 text-right font-medium tabular-nums text-text-primary">{baseVal}</td>
+                        <td className="py-1 text-right tabular-nums text-text-muted">—</td>
+                        <td className="py-1 text-right tabular-nums text-text-muted">—</td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={key} className="border-b border-base-border/70">
+                      <td className="py-1 pr-4 text-text-muted">{key}</td>
+                      <td className="py-1 text-right font-medium tabular-nums text-text-primary">{baseVal}</td>
+                      <td className="py-1 text-right tabular-nums text-text-primary">
+                        {equipAdd > 0 ? <span className="text-green-600 dark:text-green-400">+{equipAdd}</span> : "+0"}
+                      </td>
+                      <td className="py-1 text-right tabular-nums text-text-primary">
+                        {relAdd > 0 ? <span className="text-amber-600 dark:text-amber-400">+{relAdd}</span> : "+0"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 
         {!isMech && (
-          <form
-            className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6 space-y-4"
-            action={async (formData) => {
-              "use server";
-              const values: Record<string, number> = {};
-              for (const key of ALLOCATABLE_STAT_KEYS) {
-                const raw = formData.get(key);
-                values[key] = raw != null ? Number(raw) || 0 : 0;
-              }
-              const result = await allocateCharacterStats({
-                characterId: character.id,
-                STR: values.STR,
-                INT: values.INT,
-                VIT: values.VIT,
-                WIS: values.WIS,
-                DEX: values.DEX,
-                AGI: values.AGI,
-                LUK: values.LUK,
-              });
-              if (!result.success) {
-                // 暫定実装: サーバ側にだけエラーを出しておく（UI 表示は後で拡張）。
-                // eslint-disable-next-line no-console
-                console.error("allocateCharacterStats error", result);
-              }
+          <CharacterStatAllocationForm
+            characterId={character.id}
+            initialValues={{
+              STR: character.STR,
+              INT: character.INT,
+              VIT: character.VIT,
+              WIS: character.WIS,
+              DEX: character.DEX,
+              AGI: character.AGI,
+              LUK: character.LUK,
             }}
-          >
-            <h2 className="text-lg font-medium text-text-primary">ステータス再配分（簡易版）</h2>
-            <p className="mt-1 text-xs text-text-muted">
-              合計が CAP と一致し、各ステータスが CAP の 10〜30% の範囲になるように入力してください。
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {ALLOCATABLE_STAT_KEYS.map((key) => (
-                <label key={key} className="flex items-center justify-between gap-2">
-                  <span className="text-text-muted">{key}</span>
-                  <input
-                    type="number"
-                    name={key}
-                    defaultValue={character[key]}
-                    className="w-20 rounded border border-base-border bg-base px-2 py-1 text-right text-sm text-text-primary"
-                  />
-                </label>
-              ))}
-            </div>
-            <button
-              type="submit"
-              className="mt-4 inline-flex items-center rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover"
-            >
-              この配分で確定
-            </button>
-          </form>
+          />
         )}
 
         {(battleSkills.length > 0 || industrialSkills.length > 0) && (
@@ -187,6 +239,12 @@ export default async function CharacterDetailPage({
             allParts={allMechaParts}
           />
         )}
+
+        <CharacterRelicSection
+          characterId={character.id}
+          slots={relicSlots}
+          allRelics={allRelicList}
+        />
 
         {character.category === "companion" && (
           <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">

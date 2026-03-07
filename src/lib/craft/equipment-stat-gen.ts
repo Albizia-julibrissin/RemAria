@@ -15,6 +15,16 @@ export const EQUIPMENT_STAT_KEYS = [
 
 export type EquipmentStatKey = (typeof EQUIPMENT_STAT_KEYS)[number];
 
+/** 装備ステータスの表示名（UI 一覧・モーダル用） */
+export const EQUIPMENT_STAT_LABELS: Record<EquipmentStatKey, string> = {
+  PATK: "物理攻撃",
+  MATK: "魔法攻撃",
+  PDEF: "物理防御",
+  MDEF: "魔法防御",
+  HIT: "命中",
+  EVA: "回避",
+};
+
 export type EquipmentStatWeightConfig = {
   key: EquipmentStatKey;
   weightMin: number;
@@ -52,12 +62,13 @@ function randomInt(min: number, max: number): number {
 }
 
 /**
- * 装備種別 code に応じてランダムな戦闘用ステ補正を生成する。
+ * config に従ってランダムな戦闘用ステ補正を生成する。docs/053: マスタから渡された config のみ使用。
  * CAP を範囲内で乱数し、各採用ステの重みを乱数して按分配分。
  */
-export function generateEquipmentStats(equipmentTypeCode: string): Record<string, number> | null {
-  const config = EQUIPMENT_STAT_GEN_BY_CODE[equipmentTypeCode];
-  if (!config || config.weights.length === 0) return null;
+export function generateEquipmentStatsFromConfig(
+  config: EquipmentStatGenConfig
+): Record<string, number> | null {
+  if (!config.weights.length) return null;
 
   const cap = randomInt(config.capMin, config.capMax);
   const weightValues: { key: EquipmentStatKey; weight: number }[] = config.weights.map((w) => ({
@@ -78,4 +89,14 @@ export function generateEquipmentStats(equipmentTypeCode: string): Record<string
     assigned += result[weightValues[i].key];
   }
   return result;
+}
+
+/**
+ * 装備種別 code に応じてランダムな戦闘用ステ補正を生成する。
+ * 053 移行後は craft では使用しない。seed で statGenConfig を組み立てる参考用。
+ */
+export function generateEquipmentStats(equipmentTypeCode: string): Record<string, number> | null {
+  const config = EQUIPMENT_STAT_GEN_BY_CODE[equipmentTypeCode];
+  if (!config) return null;
+  return generateEquipmentStatsFromConfig(config);
 }

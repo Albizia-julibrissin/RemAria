@@ -1,7 +1,11 @@
-// spec/045 - バッグ（所持一覧・種別タブ）
+// spec/045, 051 - バッグ（所持一覧・種別タブ・遺物）
 
 import Link from "next/link";
-import { getInventory } from "@/server/actions/inventory";
+import {
+  getInventory,
+  getCharactersForSkillBook,
+} from "@/server/actions/inventory";
+import { getRelicInstances } from "@/server/actions/relic";
 import { BagTabs } from "./bag-tabs";
 
 const ALL_TAB_IDS = [
@@ -12,10 +16,15 @@ const ALL_TAB_IDS = [
   "paid",
   "equipment",
   "mecha_parts",
+  "relic",
 ];
 
 export default async function BagPage() {
-  const data = await getInventory();
+  const [data, relicResult, charactersForSkillBook] = await Promise.all([
+    getInventory(),
+    getRelicInstances(),
+    getCharactersForSkillBook(),
+  ]);
 
   if (!data) {
     return (
@@ -30,6 +39,8 @@ export default async function BagPage() {
   }
 
   const { stackable, equipmentInstances, mechaPartInstances } = data;
+  const relics = relicResult.success ? relicResult.relics : [];
+  const relicTokenQuantity = stackable.find((s) => s.code === "relic_group_a_token")?.quantity ?? 0;
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -50,7 +61,10 @@ export default async function BagPage() {
         stackable={stackable}
         equipmentInstances={equipmentInstances}
         mechaPartInstances={mechaPartInstances}
+        relicInstances={relics}
+        relicTokenQuantity={relicTokenQuantity}
         allTabIds={ALL_TAB_IDS}
+        charactersForSkillBook={charactersForSkillBook ?? []}
       />
     </main>
   );

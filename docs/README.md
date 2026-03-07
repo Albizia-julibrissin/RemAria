@@ -42,6 +42,7 @@
 | 14_battle_attributes_tactics.md | 属性・耐性・属性状態・作戦 |
 | 14_battle_skill_design_draft.md | スキル設計の草案・必要項目（設計メモ） |
 | 14_battle_tactics_impl_draft.md | 作戦実装のたたき台 |
+| **14_tactics_slot_shared.md** | **作戦スロットは味方(039)・敵(050)で共有**。主語・条件・行動の定数・評価は共通。アップデート時は作戦室と敵マスタ編集の両方に影響しうる。 |
 | **042_battle_effect_types_reference.md** | **effectType 定義一覧（param・適用タイミング）** ← 効果追加時はここ |
 | 041_skill_effects_implementation_prep.md | 効果実装の Phase とデータフロー |
 | **043_tactics_room_skill_info_ux_proposal.md** | **作戦室でのスキル情報表示 UX 提案**（一覧項目・非開示方針） |
@@ -53,7 +54,7 @@
 | 10_battle_status.csv | ステータス例 |
 | 11_test_battle_plan.md | テスト戦闘の流れ |
 
-→ 正式仕様: **spec/038_battle_skills_and_effects.md**, spec/039, spec/040
+→ 正式仕様: **spec/038_battle_skills_and_effects.md**, spec/039, spec/040。**作戦スロット**は spec/039（味方・作戦室）と spec/050（敵・敵マスタ編集）の両方で同一仕様。詳細は 14_tactics_slot_shared.md。
 
 ---
 
@@ -67,8 +68,9 @@
 | 16_base_stats_alignment.md | 基礎ステータス整合 |
 | **024_mecha_design.md** | **メカ設計（パーツ部位・スキル方針・ステ計算）** |
 | **026_user_inventory_and_items.md** | **ユーザーアイテム所持（資源・装備・メカパーツ・遺物・スキル分析書・課金）** |
+| **053_equipment_craft_stat_gen_master.md** | **装備・クラフトのステ生成（CAP/ウェイト）をマスタに持つ設計**（021 のマスタ化） |
 
-→ spec/015, 025, 030
+→ spec/015, 025, 030, 045, 046
 
 ---
 
@@ -93,8 +95,9 @@
 |----------|------|
 | 020_exploration_design.md | 探索設計 |
 | 022_chat_ui_design.md | チャット UI 設計 |
+| **054_quest_and_research_design.md** | **クエストと研究の設計**（定義・前提・作業分解。ストーリー/研究/一般クエスト・研究ポイント・解放コスト・称号。実装前の設計メモ。正式仕様は spec/054_quests 等で未作成） |
 
-→ spec/037
+→ spec/037。クエストは spec 未作成。
 
 ---
 
@@ -104,6 +107,22 @@
 |----------|------|
 | **content-guides/README.md** | コンテンツ追加ガイド全体の説明・索引 |
 | content-guides/skill_addition_guide.md | スキル追加時の手順（ドラフト） |
+
+---
+
+## 管理・運用（manage/）
+
+管理者用画面・手順・チェックリストは **`manage/`** に置く。
+
+| 場所 | 内容 |
+|------|------|
+| **manage/README.md** | manage 配下のファイル一覧 |
+| manage/admin_area_drop_edit.md | エリア別ドロップ編集（手順・API・強敵枠の追加） |
+| manage/admin_item_master_edit.md | アイテムマスタ編集（手順・API） |
+| manage/MVP_PROGRESS.md | MVP 進捗 |
+| manage/SECURITY_READINESS.md | セキュリティ・運用チェックリスト |
+
+→ 探索のドロップテーブル仕様は spec/049 の 7.2 を参照。
 
 ---
 

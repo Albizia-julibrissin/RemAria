@@ -12,6 +12,8 @@ export type MechaEquipmentSlotRow = {
   slot: string;
   mechaPartInstanceId: string | null;
   mechaPartTypeName: string | null;
+  /** この部位のパーツ個体の基礎ステ補正。キャラ詳細の「装備分」表示用。 */
+  stats: Record<string, number> | null;
   statsSummary: string | null;
 };
 
@@ -24,7 +26,11 @@ export type MechaPartInstanceWithEquipped = {
   id: string;
   mechaPartTypeName: string;
   slot: string;
+  /** 基礎ステ補正（STR, INT, VIT, WIS, DEX, AGI, LUK）。装着モーダルのテーブル表示用。 */
+  stats: Record<string, number> | null;
   statsSummary: string | null;
+  /** このパーツ装着で習得できるスキル名の一覧。 */
+  skillNames: string[];
   equippedCharacterId: string | null;
 };
 
@@ -59,10 +65,16 @@ export async function getMechaEquipment(
     const inst = row?.mechaPartInstance;
     const typeFromInstance = inst?.mechaPartType?.name;
     const typeFromLegacy = row?.mechaPartType?.name;
+    const rawStats = inst?.stats;
+    const stats =
+      rawStats != null && typeof rawStats === "object" && !Array.isArray(rawStats)
+        ? (rawStats as Record<string, number>)
+        : null;
     return {
       slot,
       mechaPartInstanceId: inst?.id ?? null,
       mechaPartTypeName: typeFromInstance ?? typeFromLegacy ?? null,
+      stats,
       statsSummary: inst?.stats ? JSON.stringify(inst.stats).slice(0, 60) : null,
     };
   });
@@ -82,7 +94,13 @@ export async function getMechaPartInstancesWithEquipped(): Promise<
   const instances = await prisma.mechaPartInstance.findMany({
     where: { userId: session.userId },
     include: {
-      mechaPartType: { select: { name: true, slot: true } },
+      mechaPartType: {
+        select: {
+          name: true,
+          slot: true,
+          mechaPartTypeSkills: { orderBy: { orderIndex: "asc" }, include: { skill: { select: { name: true } } } },
+        },
+      },
       mechaEquipments: { take: 1, select: { characterId: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -92,7 +110,11 @@ export async function getMechaPartInstancesWithEquipped(): Promise<
     id: inst.id,
     mechaPartTypeName: inst.mechaPartType.name,
     slot: inst.mechaPartType.slot,
+    stats: inst.stats != null && typeof inst.stats === "object" && !Array.isArray(inst.stats)
+      ? (inst.stats as Record<string, number>)
+      : null,
     statsSummary: inst.stats ? JSON.stringify(inst.stats).slice(0, 60) : null,
+    skillNames: inst.mechaPartType.mechaPartTypeSkills.map((pts) => pts.skill.name),
     equippedCharacterId: inst.mechaEquipments[0]?.characterId ?? null,
   }));
 }

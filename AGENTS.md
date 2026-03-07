@@ -40,7 +40,7 @@
 |--------|------|----------------|
 | 認証・セッション | spec/010_auth | `src/server/actions/auth.ts`, `src/lib/auth/session.ts`, `src/middleware.ts` |
 | 主人公作成 | spec/015_protagonist_creation | `src/server/actions/protagonist.ts`, `src/app/character/create/`, `src/server/lib/protagonist-icons.ts` |
-| 仮戦闘 | spec/020_test_battle | `src/server/actions/test-battle.ts`, `src/lib/battle/run-test-battle.ts`, `src/lib/battle/run-battle-with-party.ts`, `src/lib/battle/test-enemy.ts` |
+| 練習戦闘・戦闘実行 | spec/020_test_battle | `src/server/actions/battle.ts`, `src/lib/battle/run-simple-battle.ts`, `src/lib/battle/run-battle-with-party.ts`, `src/lib/battle/default-enemy.ts` |
 | キャラ一覧 | spec/025_character_list | `src/app/dashboard/characters/`, `src/server/repositories/character-repository.ts` |
 | 仲間雇用・解雇 | spec/030_companion_employment | `src/server/actions/recruit.ts`, `src/app/dashboard/recruit/`, `src/lib/constants/companion.ts` |
 | 初期設備・生産 | spec/035, 036 | `src/server/actions/initial-area.ts`, `src/server/actions/receive-production.ts`, `src/app/dashboard/facilities/` |
@@ -51,7 +51,12 @@
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |
 | アイテム・所持・バッグ | spec/045_inventory_and_items | `src/server/actions/inventory.ts`（または bag.ts）, `src/app/dashboard/bag/`, schema: Item.category, EquipmentType, EquipmentInstance, CharacterEquipment, MechaPartInstance |
 | アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
-| 研究・解放・建設 | spec/047_research_unlock_construction | `src/server/actions/research.ts`, `src/server/actions/facilities.ts`（place/dismantle）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityVariant, FacilityConstructionRecipeInput, UserFacilityTypeUnlock |
+| 研究・解放・建設 | spec/047, **docs/054_quest_and_research_design.md** §4.3.1 | `src/server/actions/facilities-placement.ts`（place/dismantle）, `src/server/actions/research.ts`（研究グループ・解放）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityVariant, UserFacilityTypeUnlock, ResearchGroup, ResearchGroupItem, ResearchUnlockCost, UserCraftRecipeUnlock |
+| 遺物（4枠・鑑定・効果・戦闘耐性） | spec/051_relics | `src/server/actions/relic.ts`, `src/lib/constants/relic.ts`, `src/app/dashboard/bag/`（遺物タブ）, `src/app/dashboard/characters/[id]/character-relic-section.tsx`, schema: RelicType, RelicPassiveEffect, RelicInstance, CharacterRelic。戦闘は `src/server/actions/battle.ts` で遺物耐性を partyInput に渡す。 |
+| スキル分析書・スキルレベル | spec/052_skill_books_and_level | `src/server/actions/inventory.ts`（consumeSkillBook, getCharactersForSkillBook）, `src/app/dashboard/bag/`（スキル分析書タブで使用・キャラ選択）, schema: Item.skillId, CharacterSkill.level。習得/レベルアップ必要冊数は Lv N→N+1 に (N+1) 冊。 |
+| 探索・エリアドロップ（管理） | spec/049（7.2 ドロップテーブル）, **manage/admin_area_drop_edit.md** | `src/server/actions/admin.ts`（getAreaDropEditData, saveDropTableEntries 等）, `src/app/dashboard/admin/drops/`。編集手順・強敵枠追加は manage 参照。 |
+| アイテムマスタ（管理） | spec/045, **manage/admin_item_master_edit.md** | `src/server/actions/admin.ts`（getAdminItemList, getAdminItem, updateAdminItem）, `src/app/dashboard/admin/items/`, `src/lib/constants/item-categories.ts`。 |
+| クエスト（ストーリー・研究） | spec/054_quests, **docs/054_quest_and_research_design.md** | `src/server/actions/quest.ts`, `src/app/dashboard/quests/`。探索 finish で area_clear、戦闘勝利で enemy_defeat 進捗。研究ポイント報酬・解放は A1 以降で拡張。 |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
 
@@ -65,7 +70,16 @@
 
 ---
 
-## 5. コマンド・検証
+## 5. ファンタジーアイコン（UI）
+
+- **アイコンセット**: Iconify の **Game Icons**（CC BY 3.0、4,000+ アイコン）。Tailwind プラグイン `@iconify/tailwind` で利用。
+- **呼び出し**: `src/components/icons/game-icon.tsx` の `<GameIcon name="ancient-sword" className="w-5 h-5 text-brass" />` のように各所で使用する。
+- **名前**: ケバブケース（例: `ancient-sword`, `health-potion`, `dragon-head`）。一覧は [icon-sets.iconify.design/game-icons](https://icon-sets.iconify.design/game-icons/) で検索可能。
+- **キャラ用アイコン画像**: 従来どおり `public/icons` の .gif と `getProtagonistIconFilenames()`。上記 GameIcon はボタン・ラベル・装備種別など UI 用。
+
+---
+
+## 6. コマンド・検証
 
 - **開発サーバ**: `npm run dev`
 - **DB マイグレーション**: `npm run db:migrate`（schema 変更後）

@@ -11,6 +11,7 @@
  */
 import { Prisma, PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { INITIAL_FACILITY_NAMES } from "../src/lib/constants/initial-area";
 
 const prisma = new PrismaClient();
 
@@ -52,7 +53,7 @@ const TAGS = [
   { code: "intellect", name: "知力" },
 ] as const;
 
-/** docs/15, 018: 設備種別。名前はユニーク。cost は spec/035 初期エリア用（合計200）。 */
+/** docs/15, 018: 設備種別。名前はユニーク。先頭 5 件は INITIAL_FACILITY_NAMES と一致させる（spec/035 強制配置）。cost は初期エリア用（合計200）。 */
 const FACILITY_TYPES = [
   { name: "川探索拠点", kind: "resource_exploration" as const, description: "川で水を探索・採取。output 水。", cost: 40 },
   { name: "浄水施設", kind: "industrial" as const, description: "水を input に飲用・工業用水を生成。output 飲料水。", cost: 40 },
@@ -102,15 +103,6 @@ const FACILITY_TYPE_TAG_CODES: Record<string, readonly string[]> = {
   "読書室": ["training", "intellect"],
 };
 
-/** spec/035, docs/018: 初期エリアの 5 設備名（強制配置・表示順）。 */
-const INITIAL_AREA_FACILITY_NAMES = [
-  "川探索拠点",
-  "浄水施設",
-  "小麦畑",
-  "小麦製粉器",
-  "携帯食料包装",
-] as const;
-
 /** spec/035: 生産チェーン用アイテム（水・飲料水・小麦・小麦粉・携帯食料）。 */
 /** spec/045: category で種別。既存はすべて material。 */
 const ITEMS = [
@@ -142,6 +134,18 @@ const CONSUMABLE_ITEMS = [
     consumableEffect: { type: "mp_percent", value: 10 } as const,
     maxCarryPerExpedition: 2,
   },
+] as const;
+
+/** spec/051: 遺物型マスタ。groupCode は鑑定トークン（relic_group_a_token → group_a）と対応。 */
+const RELIC_TYPES = [
+  { code: "relic_series_a", name: "古い紋章", groupCode: "group_a" },
+] as const;
+
+/** spec/051: 遺物用パッシブ効果マスタ。MVP では表示用。 */
+const RELIC_PASSIVE_EFFECTS = [
+  { code: "none", name: "なし", description: "特になし" },
+  { code: "patk_up_5", name: "物理の輝き", description: "物理攻撃力+5%" },
+  { code: "matk_up_5", name: "魔法の輝き", description: "魔法攻撃力+5%" },
 ] as const;
 
 /** spec/030, docs/15: 工業スキル 5 種。対象タグの設備に配備時のみ効果。 */
@@ -176,8 +180,8 @@ const EXPLORATION_AREAS = [
     baseSkillEventRate: 10, // 資源多め・技能イベント少なめエリア
     normalBattleCount: 5,
     normalEnemyGroupCode: "rust_forest_easy_normal",
-    midBossEnemyGroupCode: "rust_forest_easy_mid_boss",
-    lastBossEnemyGroupCode: "rust_forest_easy_last_boss",
+    strongEnemyEnemyGroupCode: "rust_forest_easy_mid_boss",
+    areaLordEnemyGroupCode: "rust_forest_easy_last_boss",
   },
   // 後続エリア（監視設備廃墟・森林奥地）は拡張時に追加
 ] as const;
@@ -1147,7 +1151,22 @@ async function seedMechaSkills() {
   console.log(`Mecha skills: ${MECHA_SKILLS.length} 件 upsert, SkillEffect: ${effectCount} 件`);
 }
 
-/** spec/044: おんぼろシリーズの MechaPartType と MechaPartTypeSkill を登録。 */
+/** docs/053: おんぼろシリーズ用のステ生成設定（基礎ステ CAP 40〜60、7種均等寄り）。 */
+const ONBORO_STAT_GEN_CONFIG = {
+  capMin: 40,
+  capMax: 60,
+  weights: [
+    { key: "STR", weightMin: 1, weightMax: 3 },
+    { key: "INT", weightMin: 1, weightMax: 3 },
+    { key: "VIT", weightMin: 1, weightMax: 3 },
+    { key: "WIS", weightMin: 1, weightMax: 3 },
+    { key: "DEX", weightMin: 1, weightMax: 3 },
+    { key: "AGI", weightMin: 1, weightMax: 3 },
+    { key: "LUK", weightMin: 1, weightMax: 3 },
+  ],
+} as const;
+
+/** spec/044, docs/053: おんぼろシリーズの MechaPartType と MechaPartTypeSkill を登録。statGenConfig をマスタに持つ。 */
 async function seedOnboroPartTypes() {
   const skillByName = new Map<string, string>();
   for (const s of await prisma.skill.findMany({ where: { category: "mecha" }, select: { id: true, name: true } })) {
@@ -1164,6 +1183,7 @@ async function seedOnboroPartTypes() {
       slot: p.slot,
       name: p.name,
       statRates: (p.statRates ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+      statGenConfig: ONBORO_STAT_GEN_CONFIG as unknown as Prisma.InputJsonValue,
       strAdd: p.strAdd ?? 0,
       intAdd: p.intAdd ?? 0,
       vitAdd: p.vitAdd ?? 0,
@@ -1194,59 +1214,6 @@ async function seedOnboroPartTypes() {
     }
   }
   console.log(`Onboro part types: ${ONBORO_PART_TYPES.length} 件 upsert`);
-}
-
-/** テストユーザー(test1)のメカにおんぼろシリーズを所持装備として持たせ、装着する。spec/046 個体参照。 */
-async function ensureTest1MechHasOnboroEquipped() {
-  const user = await prisma.user.findUnique({
-    where: { email: "test1@example.com" },
-    select: { id: true },
-  });
-  if (!user) return;
-
-  const mech = await prisma.character.findFirst({
-    where: { userId: user.id, category: "mech" },
-    select: { id: true },
-  });
-  if (!mech) {
-    console.log("ensureTest1MechHasOnboroEquipped: test1 にメカがいません（主人公作成後にメカが作られます）");
-    return;
-  }
-
-  const partTypes = await prisma.mechaPartType.findMany({
-    where: { name: { startsWith: "おんぼろ" } },
-    select: { id: true, slot: true },
-  });
-  const bySlot = new Map(partTypes.map((p) => [p.slot, p.id]));
-
-  for (const p of ONBORO_PART_TYPES) {
-    const partTypeId = bySlot.get(p.slot);
-    if (!partTypeId) continue;
-
-    let instance = await prisma.mechaPartInstance.findFirst({
-      where: { userId: user.id, mechaPartTypeId: partTypeId },
-      select: { id: true },
-    });
-    if (!instance) {
-      instance = await prisma.mechaPartInstance.create({
-        data: { userId: user.id, mechaPartTypeId: partTypeId },
-        select: { id: true },
-      });
-    }
-
-    await prisma.mechaEquipment.upsert({
-      where: {
-        characterId_slot: { characterId: mech.id, slot: p.slot },
-      },
-      create: {
-        characterId: mech.id,
-        slot: p.slot,
-        mechaPartInstanceId: instance.id,
-      },
-      update: { mechaPartInstanceId: instance.id, mechaPartTypeId: null },
-    });
-  }
-  console.log("test1 のメカにおんぼろシリーズを所持装備として装着しました");
 }
 
 /** spec/038: テスト主人公が戦闘スキルを全習得しているようにする。 */
@@ -1308,6 +1275,99 @@ async function seedItems() {
   console.log(`Items: ${ITEMS.length + CONSUMABLE_ITEMS.length} 件 upsert`);
 }
 
+/** spec/052: スキル分析書アイテム。戦闘スキル1種につき1アイテム。seedBattleSkills の後に実行すること。 */
+async function seedSkillBookItems() {
+  const battleSkills = await prisma.skill.findMany({
+    where: { category: "battle_active" },
+    select: { id: true, name: true },
+  });
+  for (const skill of battleSkills) {
+    const code = `skill_book_${skill.name}`;
+    await prisma.item.upsert({
+      where: { code },
+      create: {
+        code,
+        name: `${skill.name}の分析書`,
+        category: "skill_book",
+        skillId: skill.id,
+      },
+      update: {
+        name: `${skill.name}の分析書`,
+        category: "skill_book",
+        skillId: skill.id,
+      },
+    });
+  }
+  console.log(`SkillBook items: ${battleSkills.length} 件 upsert`);
+}
+
+/** spec/051: 遺物型・遺物パッシブ効果マスタ。 */
+async function seedRelicTypesAndEffects() {
+  for (const r of RELIC_TYPES) {
+    await prisma.relicType.upsert({
+      where: { code: r.code },
+      create: { code: r.code, name: r.name, groupCode: r.groupCode ?? undefined },
+      update: { name: r.name, groupCode: r.groupCode ?? undefined },
+    });
+  }
+  for (const e of RELIC_PASSIVE_EFFECTS) {
+    await prisma.relicPassiveEffect.upsert({
+      where: { code: e.code },
+      create: { code: e.code, name: e.name, description: e.description ?? undefined },
+      update: { name: e.name, description: e.description ?? undefined },
+    });
+  }
+  console.log(`RelicTypes: ${RELIC_TYPES.length}, RelicPassiveEffects: ${RELIC_PASSIVE_EFFECTS.length} upsert`);
+}
+
+/** spec/051: 遺物グループごとの鑑定設定。groupCode は RelicType.groupCode と一致。 */
+async function seedRelicGroupConfig() {
+  const groupA = await prisma.relicGroupConfig.upsert({
+    where: { groupCode: "group_a" },
+    create: {
+      groupCode: "group_a",
+      name: "グループA",
+      statBonus1Min: 3,
+      statBonus1Max: 8,
+      statBonus2Min: 2,
+      statBonus2Max: 5,
+      attributeResistMin: 0.85,
+      attributeResistMax: 0.95,
+      includeNoEffect: true,
+    },
+    update: {
+      name: "グループA",
+      statBonus1Min: 3,
+      statBonus1Max: 8,
+      statBonus2Min: 2,
+      statBonus2Max: 5,
+      attributeResistMin: 0.85,
+      attributeResistMax: 0.95,
+      includeNoEffect: true,
+    },
+  });
+  const passives = await prisma.relicPassiveEffect.findMany({
+    where: { code: { in: ["patk_up_5", "matk_up_5"] } },
+    select: { id: true },
+  });
+  for (const p of passives) {
+    await prisma.relicGroupPassiveEffect.upsert({
+      where: {
+        relicGroupConfigId_relicPassiveEffectId: {
+          relicGroupConfigId: groupA.id,
+          relicPassiveEffectId: p.id,
+        },
+      },
+      create: {
+        relicGroupConfigId: groupA.id,
+        relicPassiveEffectId: p.id,
+      },
+      update: {},
+    });
+  }
+  console.log("RelicGroupConfig: group_a and passive links upsert");
+}
+
 /** spec/049: テストユーザー test1 に探索用消耗品を各10個所持させる。 */
 async function seedTest1Consumables() {
   const test1 = await prisma.user.findUnique({
@@ -1332,6 +1392,28 @@ async function seedTest1Consumables() {
     });
   }
   console.log("test1: 探索用消耗品（HP/MP回復薬）を各10個所持");
+}
+
+/** spec/052: テスト用に test1 にスキル分析書を10冊付与。遊覧舗装路の技能枠は weight 合計95のうち分析書が15なので約16%、かつ技能イベント発生時のみなので出にくい。 */
+async function seedTest1SkillBooks() {
+  const test1 = await prisma.user.findUnique({
+    where: { email: "test1@example.com" },
+    select: { id: true },
+  });
+  if (!test1) return;
+
+  const item = await prisma.item.findUnique({
+    where: { code: "skill_book_メテオスォーム" },
+    select: { id: true },
+  });
+  if (!item) return;
+
+  await prisma.userInventory.upsert({
+    where: { userId_itemId: { userId: test1.id, itemId: item.id } },
+    create: { userId: test1.id, itemId: item.id, quantity: 10 },
+    update: { quantity: 10 },
+  });
+  console.log("test1: スキル分析書（メテオスォーム）を10冊所持（テスト用）");
 }
 
 /** spec/035, docs/018: 初期 5 設備のレシピ（周期・入出力）。1時間で携帯食料100個。 */
@@ -1377,23 +1459,47 @@ async function seedRecipes() {
   console.log(`Recipes: ${recipes.length} 件 upsert`);
 }
 
-/** spec/046: 装備種別マスタ。クラフト出力用。 */
+/** docs/053: 装備のステ生成設定（CAP・重み）。seed でマスタに持つ。 */
+const EQUIPMENT_STAT_GEN_CONFIG: Record<
+  string,
+  { capMin: number; capMax: number; weights: Array<{ key: string; weightMin: number; weightMax: number }> }
+> = {
+  iron_sword: {
+    capMin: 70,
+    capMax: 100,
+    weights: [
+      { key: "PATK", weightMin: 5, weightMax: 10 },
+      { key: "PDEF", weightMin: 1, weightMax: 5 },
+    ],
+  },
+  cloth_armor: {
+    capMin: 50,
+    capMax: 80,
+    weights: [
+      { key: "PDEF", weightMin: 3, weightMax: 8 },
+      { key: "MDEF", weightMin: 2, weightMax: 6 },
+    ],
+  },
+};
+
+/** spec/046, docs/053: 装備種別マスタ。クラフト出力用。statGenConfig をマスタに持つ。 */
 async function seedEquipmentTypes() {
   const types = [
     { code: "iron_sword", name: "鉄の剣", slot: "main_weapon" },
     { code: "cloth_armor", name: "布の鎧", slot: "body" },
   ];
   for (const t of types) {
+    const statGenConfig = EQUIPMENT_STAT_GEN_CONFIG[t.code] ?? null;
     await prisma.equipmentType.upsert({
       where: { code: t.code },
-      create: { code: t.code, name: t.name, slot: t.slot },
-      update: { name: t.name, slot: t.slot },
+      create: { code: t.code, name: t.name, slot: t.slot, statGenConfig: statGenConfig as object },
+      update: { name: t.name, slot: t.slot, statGenConfig: statGenConfig as object },
     });
   }
   console.log(`EquipmentTypes: ${types.length} 件 upsert`);
 }
 
-/** spec/046: クラフトレシピと入力。工業設備の Recipe とは別体系。 */
+/** spec/046, docs/053: クラフトレシピと入力。鉄の剣・布の鎧・おんぼろシリーズをレシピマスタに登録。消費素材は現状のまま（あとで再設定可）。 */
 async function seedCraftRecipes() {
   const itemByCode = new Map<string, string>();
   for (const i of await prisma.item.findMany({ select: { id: true, code: true } })) {
@@ -1403,12 +1509,17 @@ async function seedCraftRecipes() {
   for (const e of await prisma.equipmentType.findMany({ select: { id: true, code: true } })) {
     equipmentTypeByCode.set(e.code, e.id);
   }
+  const mechaPartTypeByName = new Map<string, string>();
+  for (const m of await prisma.mechaPartType.findMany({ select: { id: true, name: true } })) {
+    mechaPartTypeByName.set(m.name, m.id);
+  }
 
   const recipes: {
     code: string;
     name: string;
-    outputKind: "equipment" | "item";
+    outputKind: "equipment" | "mecha_part" | "item";
     outputEquipmentTypeCode?: string;
+    outputMechaPartTypeName?: string;
     outputItemCode?: string;
     inputs: { itemCode: string; amount: number }[];
   }[] = [
@@ -1427,6 +1538,48 @@ async function seedCraftRecipes() {
       inputs: [{ itemCode: "flour", amount: 15 }, { itemCode: "wheat", amount: 10 }],
     },
     {
+      code: "onboro_frame",
+      name: "おんぼろフレーム",
+      outputKind: "mecha_part",
+      outputMechaPartTypeName: "おんぼろフレーム",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
+      code: "onboro_core",
+      name: "おんぼろコア",
+      outputKind: "mecha_part",
+      outputMechaPartTypeName: "おんぼろコア",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
+      code: "onboro_head",
+      name: "おんぼろヘッド",
+      outputKind: "mecha_part",
+      outputMechaPartTypeName: "おんぼろヘッド",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
+      code: "onboro_sword_arm",
+      name: "おんぼろソードアーム",
+      outputKind: "mecha_part",
+      outputMechaPartTypeName: "おんぼろソードアーム",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
+      code: "onboro_gun_arm",
+      name: "おんぼろガンアーム",
+      outputKind: "mecha_part",
+      outputMechaPartTypeName: "おんぼろガンアーム",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
+      code: "onboro_legs",
+      name: "おんぼろレッグス",
+      outputKind: "mecha_part",
+      outputMechaPartTypeName: "おんぼろレッグス",
+      inputs: [{ itemCode: "water", amount: 10 }, { itemCode: "wheat", amount: 5 }],
+    },
+    {
       code: "portable_ration_craft",
       name: "携帯食料（クラフト）",
       outputKind: "item",
@@ -1439,6 +1592,9 @@ async function seedCraftRecipes() {
     const outputEquipmentTypeId = r.outputEquipmentTypeCode
       ? equipmentTypeByCode.get(r.outputEquipmentTypeCode)
       : null;
+    const outputMechaPartTypeId = r.outputMechaPartTypeName
+      ? mechaPartTypeByName.get(r.outputMechaPartTypeName)
+      : null;
     const outputItemId = r.outputItemCode ? itemByCode.get(r.outputItemCode) : null;
     const recipe = await prisma.craftRecipe.upsert({
       where: { code: r.code },
@@ -1447,12 +1603,14 @@ async function seedCraftRecipes() {
         name: r.name,
         outputKind: r.outputKind,
         outputEquipmentTypeId: outputEquipmentTypeId ?? undefined,
+        outputMechaPartTypeId: outputMechaPartTypeId ?? undefined,
         outputItemId: outputItemId ?? undefined,
       },
       update: {
         name: r.name,
         outputKind: r.outputKind,
         outputEquipmentTypeId: outputEquipmentTypeId ?? undefined,
+        outputMechaPartTypeId: outputMechaPartTypeId ?? undefined,
         outputItemId: outputItemId ?? undefined,
       },
     });
@@ -1515,7 +1673,7 @@ async function seedUserFacilityTypeUnlocks() {
   for (const f of await prisma.facilityType.findMany({ select: { id: true, name: true } })) {
     facilityByName.set(f.name, f.id);
   }
-  const facilityTypeIds = INITIAL_AREA_FACILITY_NAMES.map((name) => facilityByName.get(name)).filter(Boolean) as string[];
+  const facilityTypeIds = INITIAL_FACILITY_NAMES.map((name) => facilityByName.get(name)).filter(Boolean) as string[];
   for (const user of await prisma.user.findMany({ select: { id: true } })) {
     for (const facilityTypeId of facilityTypeIds) {
       await prisma.userFacilityTypeUnlock.upsert({
@@ -1535,7 +1693,7 @@ async function ensureInitialFacilitiesForUser(userId: string) {
   });
   if (forcedCount >= 5) return;
   const facilityTypes = await prisma.facilityType.findMany({
-    where: { name: { in: [...INITIAL_AREA_FACILITY_NAMES] } },
+    where: { name: { in: [...INITIAL_FACILITY_NAMES] } },
     select: { id: true, name: true },
   });
   const byName = new Map(facilityTypes.map((f) => [f.name, f.id]));
@@ -1544,8 +1702,8 @@ async function ensureInitialFacilitiesForUser(userId: string) {
     select: { facilityTypeId: true },
   });
   const existingTypeIds = new Set(existing.map((e) => e.facilityTypeId));
-  for (let index = 0; index < INITIAL_AREA_FACILITY_NAMES.length; index++) {
-    const name = INITIAL_AREA_FACILITY_NAMES[index];
+  for (let index = 0; index < INITIAL_FACILITY_NAMES.length; index++) {
+    const name = INITIAL_FACILITY_NAMES[index];
     const facilityTypeId = byName.get(name);
     if (!facilityTypeId || existingTypeIds.has(facilityTypeId)) continue;
     await prisma.facilityInstance.create({
@@ -1609,8 +1767,8 @@ async function seedExplorationThemesAndAreas() {
         skillCheckRequiredValue: 80, // Phase 3 技能判定の必要値（MVP: 全ステ共通）
         normalBattleCount: a.normalBattleCount,
         normalEnemyGroupCode: a.normalEnemyGroupCode,
-        midBossEnemyGroupCode: a.midBossEnemyGroupCode,
-        lastBossEnemyGroupCode: a.lastBossEnemyGroupCode,
+        strongEnemyEnemyGroupCode: a.strongEnemyEnemyGroupCode,
+        areaLordEnemyGroupCode: a.areaLordEnemyGroupCode,
       },
       update: {
         themeId: theme.id,
@@ -1624,8 +1782,8 @@ async function seedExplorationThemesAndAreas() {
         skillCheckRequiredValue: 80,
         normalBattleCount: a.normalBattleCount,
         normalEnemyGroupCode: a.normalEnemyGroupCode,
-        midBossEnemyGroupCode: a.midBossEnemyGroupCode,
-        lastBossEnemyGroupCode: a.lastBossEnemyGroupCode,
+        strongEnemyEnemyGroupCode: a.strongEnemyEnemyGroupCode,
+        areaLordEnemyGroupCode: a.areaLordEnemyGroupCode,
       },
     });
   }
@@ -1640,7 +1798,7 @@ async function seedExplorationThemesAndAreas() {
     return;
   }
 
-  // アイテム ID 解決
+  // アイテム ID 解決（spec/052: スキル分析書を技能枠に追加するため code に含める）
   const itemCodes = [
     "water",
     "wheat",
@@ -1648,6 +1806,9 @@ async function seedExplorationThemesAndAreas() {
     "cloth_equip_part",
     "blueprint_water_search_alpha",
     "relic_group_a_token",
+    "skill_book_メテオスォーム",
+    "skill_book_閃槍",
+    "skill_book_癒しの光",
   ];
   const items = await prisma.item.findMany({
     where: { code: { in: itemCodes } },
@@ -1700,17 +1861,32 @@ async function seedExplorationThemesAndAreas() {
     },
   });
 
-  const lastBossTable = await prisma.dropTable.upsert({
-    where: { code: "yuran_paved_road_last_boss" },
+  const strongEnemyTable = await prisma.dropTable.upsert({
+    where: { code: "yuran_paved_road_strong_enemy" },
     create: {
-      code: "yuran_paved_road_last_boss",
-      name: "遊覧舗装路跡・大ボス専用枠",
-      kind: "last_boss_special",
+      code: "yuran_paved_road_strong_enemy",
+      name: "遊覧舗装路跡・強敵枠",
+      kind: "strong_enemy",
       areaId: area.id,
     },
     update: {
-      name: "遊覧舗装路跡・大ボス専用枠",
-      kind: "last_boss_special",
+      name: "遊覧舗装路跡・強敵枠",
+      kind: "strong_enemy",
+      areaId: area.id,
+    },
+  });
+
+  const areaLordTable = await prisma.dropTable.upsert({
+    where: { code: "yuran_paved_road_area_lord" },
+    create: {
+      code: "yuran_paved_road_area_lord",
+      name: "遊覧舗装路跡・領域主専用枠",
+      kind: "area_lord_special",
+      areaId: area.id,
+    },
+    update: {
+      name: "遊覧舗装路跡・領域主専用枠",
+      kind: "area_lord_special",
       areaId: area.id,
     },
   });
@@ -1718,7 +1894,9 @@ async function seedExplorationThemesAndAreas() {
   // DropTableEntry を簡易に upsert（既存は削除してから入れ直す）
   await prisma.dropTableEntry.deleteMany({
     where: {
-      dropTableId: { in: [baseTable.id, battleTable.id, skillTable.id, lastBossTable.id] },
+      dropTableId: {
+        in: [baseTable.id, battleTable.id, skillTable.id, strongEnemyTable.id, areaLordTable.id],
+      },
     },
   });
 
@@ -1740,15 +1918,24 @@ async function seedExplorationThemesAndAreas() {
     { tableId: battleTable.id, code: "cloth_equip_part", min: 1, max: 3, weight: 40 },
     { tableId: battleTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 20 },
 
-    // 技能枠: 設計図や部品寄り
-    { tableId: skillTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 50 },
-    { tableId: skillTable.id, code: "iron_equip_part", min: 1, max: 2, weight: 25 },
-    { tableId: skillTable.id, code: "cloth_equip_part", min: 1, max: 2, weight: 25 },
+    // 技能枠: 設計図・部品・スキル分析書（spec/052）
+    { tableId: skillTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 40 },
+    { tableId: skillTable.id, code: "iron_equip_part", min: 1, max: 2, weight: 20 },
+    { tableId: skillTable.id, code: "cloth_equip_part", min: 1, max: 2, weight: 20 },
+    { tableId: skillTable.id, code: "skill_book_メテオスォーム", min: 1, max: 1, weight: 5 },
+    { tableId: skillTable.id, code: "skill_book_閃槍", min: 1, max: 1, weight: 5 },
+    { tableId: skillTable.id, code: "skill_book_癒しの光", min: 1, max: 1, weight: 5 },
 
-    // 大ボス専用枠: 遺物グループAトークンを中心に
-    { tableId: lastBossTable.id, code: "relic_group_a_token", min: 1, max: 1, weight: 60 },
-    { tableId: lastBossTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 30 },
-    { tableId: lastBossTable.id, code: "iron_equip_part", min: 2, max: 4, weight: 10 },
+    // 強敵枠: 戦闘ボーナスよりやや良い報酬（部品・設計図・遺物トークン）
+    { tableId: strongEnemyTable.id, code: "iron_equip_part", min: 2, max: 4, weight: 35 },
+    { tableId: strongEnemyTable.id, code: "cloth_equip_part", min: 2, max: 4, weight: 35 },
+    { tableId: strongEnemyTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 20 },
+    { tableId: strongEnemyTable.id, code: "relic_group_a_token", min: 1, max: 1, weight: 10 },
+
+    // 領域主専用枠: 遺物グループAトークンを中心に
+    { tableId: areaLordTable.id, code: "relic_group_a_token", min: 1, max: 1, weight: 60 },
+    { tableId: areaLordTable.id, code: "blueprint_water_search_alpha", min: 1, max: 1, weight: 30 },
+    { tableId: areaLordTable.id, code: "iron_equip_part", min: 2, max: 4, weight: 10 },
   ];
 
   for (const e of entries) {
@@ -1775,7 +1962,8 @@ async function seedExplorationThemesAndAreas() {
       baseDropTableId: baseTable.id,
       battleDropTableId: battleTable.id,
       skillDropTableId: skillTable.id,
-      lastBossDropTableId: lastBossTable.id,
+      strongEnemyDropTableId: strongEnemyTable.id,
+      areaLordDropTableId: areaLordTable.id,
     },
   });
 }
@@ -1991,8 +2179,8 @@ async function seedEnemiesForYuranPavedRoad() {
   }
 
   const normalEnemyIds = enemyIds.slice(0, 4);
-  const midBossId = enemyIds[4];
-  const lastBossId = enemyIds[5];
+  const strongEnemyId = enemyIds[4];
+  const areaLordId = enemyIds[5];
 
   const group = await prisma.enemyGroup.upsert({
     where: { code: "yuran_normal" },
@@ -2020,12 +2208,164 @@ async function seedEnemiesForYuranPavedRoad() {
         enemyCount1Rate: 20,
         enemyCount2Rate: 50,
         enemyCount3Rate: 30,
-        midBossEnemyId: midBossId,
-        lastBossEnemyId: lastBossId,
+        strongEnemyEnemyId: strongEnemyId,
+        areaLordEnemyId: areaLordId,
       },
     });
   }
   console.log("Enemies for yuran_paved_road: 6 敵種・グループ yuran_normal・エリア紐づけ 完了");
+}
+
+/** docs/054: クエストマスタ。最初のストーリー＝探索1回クリア、研究＝スクラップウルフ10体撃破 */
+async function seedQuests() {
+  const area = await prisma.explorationArea.findUnique({
+    where: { code: "yuran_paved_road" },
+    select: { id: true },
+  });
+  const scrapWolf = await prisma.enemy.findUnique({
+    where: { code: "scrap_wolf" },
+    select: { id: true },
+  });
+  if (!area || !scrapWolf) {
+    console.warn("Quest seed skipped: yuran_paved_road or scrap_wolf not found");
+    return;
+  }
+
+  const storyQuest = await prisma.quest.upsert({
+    where: { code: "story_first_exploration" },
+    create: {
+      code: "story_first_exploration",
+      questType: "story",
+      name: "はじめての探索",
+      description:
+        "錆びれた森林地区の遊覧舗装路跡。まずは一度、足を踏み入れて無事に帰還することが目標だ。",
+      clearReportMessage:
+        "無事に帰還した。これでこの先の調査や研究に必要な「実地経験」が認められる。",
+      prerequisiteQuestId: null,
+      achievementType: "area_clear",
+      achievementParam: { areaId: area.id, count: 1 },
+      rewardResearchPoint: 0,
+    },
+    update: {
+      achievementParam: { areaId: area.id, count: 1 },
+    },
+    select: { id: true },
+  });
+
+  await prisma.quest.upsert({
+    where: { code: "research_scrap_wolf_10" },
+    create: {
+      code: "research_scrap_wolf_10",
+      questType: "research",
+      name: "スクラップウルフの生態",
+      description:
+        "遊覧舗装路跡でよく見かけるスクラップウルフ。10体撃破してデータを集め、研究に役立てる。",
+      clearReportMessage: "スクラップウルフの討伐データが研究ポイントとして記録された。",
+      prerequisiteQuestId: storyQuest.id,
+      achievementType: "enemy_defeat",
+      achievementParam: { enemyId: scrapWolf.id, count: 10 },
+      rewardResearchPoint: 10,
+    },
+    update: {
+      prerequisiteQuestId: storyQuest.id,
+      achievementParam: { enemyId: scrapWolf.id, count: 10 },
+    },
+  });
+
+  console.log("Quests: ストーリー1本（探索1回）・研究1本（スクラップウルフ10体） 投入完了");
+}
+
+/** docs/054: 研究グループ。第一弾は「錆びれた森林研究」。派生型以外すべてクリアで次グループ解放。 */
+async function seedResearchGroups() {
+  const group = await prisma.researchGroup.upsert({
+    where: { code: "rust_forest_research" },
+    create: {
+      code: "rust_forest_research",
+      name: "錆びれた森林研究",
+      displayOrder: 0,
+      prerequisiteGroupId: null,
+    },
+    update: {},
+    select: { id: true },
+  });
+
+  const facilityByName = new Map<string, string>();
+  for (const f of await prisma.facilityType.findMany({ select: { id: true, name: true } })) {
+    facilityByName.set(f.name, f.id);
+  }
+  const itemByCode = new Map<string, string>();
+  for (const i of await prisma.item.findMany({ select: { id: true, code: true } })) {
+    itemByCode.set(i.code, i.id);
+  }
+
+  const facilityNames = ["山探索拠点", "貯水槽"] as const;
+  for (let order = 0; order < facilityNames.length; order++) {
+    const name = facilityNames[order];
+    const facilityTypeId = facilityByName.get(name);
+    if (!facilityTypeId) continue;
+    await prisma.researchGroupItem.upsert({
+      where: {
+        researchGroupId_targetType_targetId: {
+          researchGroupId: group.id,
+          targetType: "facility_type",
+          targetId: facilityTypeId,
+        },
+      },
+      create: {
+        researchGroupId: group.id,
+        targetType: "facility_type",
+        targetId: facilityTypeId,
+        isVariant: false,
+        displayOrder: order,
+      },
+      update: { displayOrder: order },
+    });
+  }
+
+  const costItemCode = "iron_equip_part";
+  const costItemId = itemByCode.get(costItemCode);
+  if (costItemId) {
+    for (const name of facilityNames) {
+      const facilityTypeId = facilityByName.get(name);
+      if (!facilityTypeId) continue;
+      await prisma.researchUnlockCost.upsert({
+        where: {
+          targetType_targetId_itemId: {
+            targetType: "facility_type",
+            targetId: facilityTypeId,
+            itemId: costItemId,
+          },
+        },
+        create: {
+          targetType: "facility_type",
+          targetId: facilityTypeId,
+          itemId: costItemId,
+          amount: name === "山探索拠点" ? 5 : 3,
+        },
+        update: { amount: name === "山探索拠点" ? 5 : 3 },
+      });
+    }
+  }
+
+  console.log("Research groups: 錆びれた森林研究（山探索拠点・貯水槽）投入完了");
+}
+
+/** docs/054, 046: 既存クラフトレシピを全ユーザーに「初期解放」として付与。getCraftRecipes は解放済みのみ返す。 */
+async function seedInitialCraftRecipeUnlocks() {
+  const users = await prisma.user.findMany({ select: { id: true } });
+  const recipes = await prisma.craftRecipe.findMany({ select: { id: true } });
+  for (const user of users) {
+    for (const recipe of recipes) {
+      await prisma.userCraftRecipeUnlock.upsert({
+        where: {
+          userId_craftRecipeId: { userId: user.id, craftRecipeId: recipe.id },
+        },
+        create: { userId: user.id, craftRecipeId: recipe.id },
+        update: {},
+      });
+    }
+  }
+  console.log("UserCraftRecipeUnlock: 全ユーザーに既存クラフトレシピを初期解放");
 }
 
 async function main() {
@@ -2119,13 +2459,20 @@ async function main() {
   await seedMechaSkills();
   await seedOnboroPartTypes();
   await seedItems();
+  await seedSkillBookItems();
   await seedTest1Consumables();
+  await seedTest1SkillBooks();
   await seedRecipes();
   await seedEquipmentTypes();
+  await seedRelicTypesAndEffects();
+  await seedRelicGroupConfig();
   await seedCraftRecipes();
   await seedFacilityVariantsAndConstruction();
   await seedExplorationThemesAndAreas();
   await seedEnemiesForYuranPavedRoad();
+  await seedQuests();
+  await seedResearchGroups();
+  await seedInitialCraftRecipeUnlocks();
 
   for (const u of TEST_USERS) {
     const user = await prisma.user.findUnique({ where: { email: u.email } });
@@ -2173,35 +2520,7 @@ async function main() {
         data: { level: 50, ...LEVEL_50_BASE_STATS },
       });
     }
-
-    // spec/044: test1 にメカがいなければ作成し、おんぼろシリーズを装備
-    let mech = await prisma.character.findFirst({
-      where: { userId: test1.id, category: "mech" },
-      select: { id: true },
-    });
-    if (!mech) {
-      const created = await prisma.character.create({
-        data: {
-          userId: test1.id,
-          category: "mech",
-          displayName: "メカ",
-          iconFilename: null,
-          // メカは基礎ステ10/CAP70（7*10）をベースとし、実際の性能はパーツで表現する。
-          STR: 10,
-          INT: 10,
-          VIT: 10,
-          WIS: 10,
-          DEX: 10,
-          AGI: 10,
-          LUK: 10,
-          CAP: 70,
-        },
-        select: { id: true },
-      });
-      mech = created;
-      console.log("test1 にメカを1体作成しました");
-    }
-    await ensureTest1MechHasOnboroEquipped();
+    // メカはアカウント作成フローで作成されるため、test1 用のメカ作成・おんぼろ装着は seed では行わない。
   }
 }
 

@@ -12,7 +12,8 @@ import type {
   SkillDataForBattle,
 } from "@/lib/battle/run-battle-with-party";
 
-export type ExplorationBattleType = "normal" | "mid_boss" | "last_boss";
+/** 強敵＝旧中ボス、領域主＝旧大ボス */
+export type ExplorationBattleType = "normal" | "strong_enemy" | "area_lord";
 
 /** 重み付きランダムで1体のインデックスを返す（entries は { enemyId, weight } の配列） */
 function weightedPick<T extends { weight: number }>(entries: T[]): number {
@@ -145,7 +146,7 @@ function enemyToInput(enemy: {
     conditionKind: s.conditionKind,
     conditionParam: (s.conditionParam as Record<string, unknown>) ?? {},
     actionType: s.actionType,
-    skillId: s.skillId ?? undefined,
+    skillId: s.skillId ?? null,
   }));
   const skills: Record<string, SkillDataForBattle> = {};
   for (const es of enemy.enemySkills) {
@@ -164,6 +165,7 @@ function enemyToInput(enemy: {
       row: Math.max(1, Math.min(3, enemy.defaultBattleRow)) as 1 | 2 | 3,
       col: Math.max(1, Math.min(3, enemy.defaultBattleCol)) as 1 | 2 | 3,
     },
+    enemyId: enemy.id,
   };
 }
 
@@ -180,7 +182,7 @@ const enemyInclude = {
 
 /**
  * 探索戦闘で使う敵 1～3 体を選出する。
- * 通常戦: グループから重み付きで選出。中/大ボス戦: ボス1体＋(体数-1)を雑魚グループから選出。
+ * 通常戦: グループから重み付きで選出。強敵/領域主戦: その1体＋(体数-1)を雑魚グループから選出。
  */
 export async function resolveEnemiesForExplorationBattle(
   areaId: string,
@@ -193,8 +195,8 @@ export async function resolveEnemiesForExplorationBattle(
       enemyCount1Rate: true,
       enemyCount2Rate: true,
       enemyCount3Rate: true,
-      midBossEnemyId: true,
-      lastBossEnemyId: true,
+      strongEnemyEnemyId: true,
+      areaLordEnemyId: true,
     },
   });
   if (!area) return [];
@@ -227,7 +229,7 @@ export async function resolveEnemiesForExplorationBattle(
     return inputs;
   }
 
-  const bossId = battleType === "mid_boss" ? area.midBossEnemyId : area.lastBossEnemyId;
+  const bossId = battleType === "strong_enemy" ? area.strongEnemyEnemyId : area.areaLordEnemyId;
   if (!bossId) return [];
 
   const boss = await prisma.enemy.findUnique({

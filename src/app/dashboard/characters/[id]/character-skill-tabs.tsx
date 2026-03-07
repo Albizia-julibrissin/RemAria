@@ -1,8 +1,9 @@
 "use client";
 
-// 戦闘スキル / 工業スキルをタブで切り替えて表示
+// 戦闘スキル / 工業スキルをタブで切り替えて表示。作戦室のスキル一覧の見た目に寄せる（横長・カード並び）
 
 import { useState } from "react";
+import { BATTLE_SKILL_TYPE_LABELS } from "@/app/dashboard/tactics/tactics-constants";
 
 type SkillForDisplay = {
   id: string;
@@ -11,6 +12,13 @@ type SkillForDisplay = {
   description?: string | null;
   effectType?: string | null;
   effectValue?: number | null;
+  /** spec/052: スキルレベル。0=習得直後。 */
+  level?: number;
+  /** 作戦室と同様の表示用 */
+  displayTags?: unknown;
+  battleSkillType?: string | null;
+  chargeCycles?: number | null;
+  cooldownCycles?: number | null;
 };
 
 function formatIndustrialEffect(effectType: string | null, effectValue: number | null): string {
@@ -18,6 +26,11 @@ function formatIndustrialEffect(effectType: string | null, effectValue: number |
   if (effectType === "time_reduction") return `作業時間 ${effectValue}% 短縮`;
   if (effectType === "production_bonus") return `生産量 ${effectValue}% アップ`;
   return "";
+}
+
+function displayTagsToArray(displayTags: unknown): string[] {
+  if (Array.isArray(displayTags)) return displayTags.filter((t): t is string => typeof t === "string");
+  return [];
 }
 
 export function CharacterSkillTabs({
@@ -62,16 +75,45 @@ export function CharacterSkillTabs({
           {battleSkills.length === 0 ? (
             <p className="text-sm text-text-muted">習得している戦闘スキルはありません。</p>
           ) : (
-            <ul className="space-y-2 text-sm">
-              {battleSkills.map((skill) => (
-                <li key={skill.id} className="text-text-primary">
-                  <span className="font-medium">{skill.name}</span>
-                  {skill.description && (
-                    <span className="text-text-muted"> — {skill.description}</span>
-                  )}
-                </li>
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+              {battleSkills.map((s) => (
+                <div key={s.id} className="flex gap-3 rounded border border-base-border bg-base px-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-text-primary">{s.name}</span>
+                      {s.level != null && (
+                        <span className="inline-flex items-center rounded-full border border-base-border/60 bg-base px-2 py-0.5 text-2xs text-text-muted">
+                          Lv{s.level}
+                        </span>
+                      )}
+                      {s.battleSkillType && (
+                        <span className="inline-flex items-center rounded-full border border-base-border bg-base px-2 py-0.5 text-2xs text-text-muted">
+                          {BATTLE_SKILL_TYPE_LABELS[s.battleSkillType] ?? s.battleSkillType}
+                        </span>
+                      )}
+                      {s.chargeCycles != null && (
+                        <span className="inline-flex items-center rounded-full border border-base-border/60 bg-base px-2 py-0.5 text-2xs text-text-muted">
+                          CT{s.chargeCycles}
+                        </span>
+                      )}
+                      {s.cooldownCycles != null && (
+                        <span className="inline-flex items-center rounded-full border border-base-border/60 bg-base px-2 py-0.5 text-2xs text-text-muted">
+                          CD{s.cooldownCycles}
+                        </span>
+                      )}
+                    </div>
+                    {s.description && (
+                      <p className="mt-1 break-words text-xs text-text-muted">{s.description}</p>
+                    )}
+                    {displayTagsToArray(s.displayTags).length > 0 && (
+                      <p className="mt-1 break-words text-[11px] text-text-muted">
+                        {displayTagsToArray(s.displayTags).join(" ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       )}
@@ -82,21 +124,30 @@ export function CharacterSkillTabs({
           {industrialSkills.length === 0 ? (
             <p className="text-sm text-text-muted">習得している工業スキルはありません。</p>
           ) : (
-            <ul className="space-y-2 text-sm">
-              {industrialSkills.map((skill) => (
-                <li key={skill.id} className="text-text-primary">
-                  <span className="font-medium">{skill.name}</span>
-                  {skill.description && (
-                    <span className="text-text-muted"> — {skill.description}</span>
-                  )}
-                  {skill.effectType != null && skill.effectValue != null && (
-                    <span className="text-text-muted">
-                      （{formatIndustrialEffect(skill.effectType, skill.effectValue)}）
-                    </span>
-                  )}
-                </li>
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+              {industrialSkills.map((s) => (
+                <div key={s.id} className="flex gap-3 rounded border border-base-border bg-base px-3 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-text-primary">{s.name}</span>
+                      {s.level != null && (
+                        <span className="inline-flex items-center rounded-full border border-base-border/60 bg-base px-2 py-0.5 text-2xs text-text-muted">
+                          Lv{s.level}
+                        </span>
+                      )}
+                      {s.effectType != null && s.effectValue != null && (
+                        <span className="inline-flex items-center rounded-full border border-base-border bg-base px-2 py-0.5 text-2xs text-text-muted">
+                          {formatIndustrialEffect(s.effectType, s.effectValue)}
+                        </span>
+                      )}
+                    </div>
+                    {s.description && (
+                      <p className="mt-1 break-words text-xs text-text-muted">{s.description}</p>
+                    )}
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       )}

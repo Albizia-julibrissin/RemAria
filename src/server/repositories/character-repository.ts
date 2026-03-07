@@ -191,6 +191,7 @@ export async function getCharacterWithSkillsForUser(characterId: string, userId:
       CAP: true,
       characterSkills: {
         select: {
+          level: true,
           skill: {
             select: {
               id: true,
@@ -199,6 +200,10 @@ export async function getCharacterWithSkillsForUser(characterId: string, userId:
               description: true,
               effectType: true,
               effectValue: true,
+              displayTags: true,
+              battleSkillType: true,
+              chargeCycles: true,
+              cooldownCycles: true,
             },
           },
         },

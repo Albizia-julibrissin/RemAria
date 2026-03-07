@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "RelicGroupPassiveEffect_relicGroupConfigId_relicPassiveEffectId" RENAME TO "RelicGroupPassiveEffect_relicGroupConfigId_relicPassiveEffe_key";

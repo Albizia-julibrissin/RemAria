@@ -3,19 +3,19 @@
 /** 表示名の最大文字数 */
 export const DISPLAY_NAME_MAX_LEN = 50;
 
-/** 主人公の基礎ステータス初期値（オール10）。docs/10_battle_status.csv 準拠: STR, INT, VIT, WIS, DEX, AGI, LUK */
-export const INITIAL_STR = 10;
-export const INITIAL_INT = 10;
-export const INITIAL_VIT = 10;
-export const INITIAL_WIS = 10;
-export const INITIAL_DEX = 10;
-export const INITIAL_AGI = 10;
-export const INITIAL_LUK = 10;
+/** レベル1の基礎ステータス初期値（CAP560想定で各80）。主人公作成・仲間雇用時に使用。docs/09, 10_battle_status.csv 準拠 */
+export const INITIAL_STR = 80;
+export const INITIAL_INT = 80;
+export const INITIAL_VIT = 80;
+export const INITIAL_WIS = 80;
+export const INITIAL_DEX = 80;
+export const INITIAL_AGI = 80;
+export const INITIAL_LUK = 80;
 
-/** 主人公の CAP 初期値（基礎ステ7種がすべて10なので 7*10=70） */
-export const INITIAL_CAP = 70;
+/** レベル1の CAP 初期値（560 = 80×7）。docs/09: 560 + 60*(N-1) の N=1 の場合 */
+export const INITIAL_CAP = 560;
 
-/** 初期ステータスをまとめたオブジェクト（作成時に使用） */
+/** 初期ステータスをまとめたオブジェクト（主人公作成・仲間雇用・メカ作成時に使用） */
 export const INITIAL_PROTAGONIST_STATS = {
   STR: INITIAL_STR,
   INT: INITIAL_INT,

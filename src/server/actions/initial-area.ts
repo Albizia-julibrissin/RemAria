@@ -5,17 +5,8 @@
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-
-/** docs/019: 生産キャップ 24 時間 */
-const PRODUCTION_CAP_MINUTES = 1440;
-
-const INITIAL_FACILITY_NAMES = [
-  "川探索拠点",
-  "浄水施設",
-  "小麦畑",
-  "小麦製粉器",
-  "携帯食料包装",
-] as const;
+import { INITIAL_FACILITY_NAMES } from "@/lib/constants/initial-area";
+import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 
 export type IndustrialFacility = {
   id: string;

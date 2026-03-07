@@ -1,13 +1,15 @@
 "use client";
 
-// spec/046 - キャラ詳細での装備着脱
+// spec/046 - キャラ詳細での装備着脱。装着はモーダルで候補をステータス一覧表示（案D）
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { equipEquipment, unequipEquipment } from "@/server/actions/craft";
 import { EQUIPMENT_SLOT_LABELS } from "@/lib/constants/equipment-slots";
 import type { CharacterEquipmentSlot } from "@/server/actions/craft";
 import type { EquipmentInstanceWithEquipped } from "@/server/actions/craft";
+import { EquipEquipmentModal } from "./equip-equipment-modal";
 
 type Props = {
   characterId: string;
@@ -22,6 +24,7 @@ export function CharacterEquipmentSection({
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [modalSlot, setModalSlot] = useState<string | null>(null);
 
   function handleUnequip(slot: string) {
     startTransition(async () => {
@@ -38,12 +41,27 @@ export function CharacterEquipmentSection({
     startTransition(async () => {
       const result = await equipEquipment(characterId, slot, equipmentInstanceId);
       if (result.success) {
+        setModalSlot(null);
         router.refresh();
       } else {
         alert(result.message);
       }
     });
   }
+
+  const modalSlotRow = modalSlot ? slots.find((s) => s.slot === modalSlot) : null;
+  const slotLabel = modalSlotRow
+    ? EQUIPMENT_SLOT_LABELS[modalSlotRow.slot as keyof typeof EQUIPMENT_SLOT_LABELS] ?? modalSlotRow.slot
+    : "";
+  const availableForModal =
+    modalSlot != null
+      ? allEquipment.filter(
+          (e) =>
+            e.slot === modalSlot &&
+            (e.equippedCharacterId === null || e.equippedCharacterId === characterId) &&
+            (modalSlotRow?.equipmentInstanceId == null || e.id !== modalSlotRow.equipmentInstanceId)
+        )
+      : [];
 
   return (
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
@@ -80,32 +98,29 @@ export function CharacterEquipmentSection({
                 </button>
               )}
               {available.length > 0 && (
-                <span className="flex items-center gap-1">
-                  <select
-                    className="rounded border border-base-border bg-base px-2 py-1 text-text-primary focus:border-brass focus:outline-none"
-                    defaultValue=""
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      if (id) {
-                        handleEquip(row.slot, id);
-                        e.target.value = "";
-                      }
-                    }}
-                    disabled={isPending}
-                  >
-                    <option value="">装着する</option>
-                    {available.map((eq) => (
-                      <option key={eq.id} value={eq.id}>
-                        {eq.equipmentTypeName}
-                      </option>
-                    ))}
-                  </select>
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setModalSlot(row.slot)}
+                  disabled={isPending}
+                  className="rounded border border-brass bg-brass px-2 py-1 text-xs font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+                >
+                  装着する
+                </button>
               )}
             </li>
           );
         })}
       </ul>
+
+      <EquipEquipmentModal
+        isOpen={modalSlot != null}
+        onClose={() => setModalSlot(null)}
+        slotLabel={slotLabel}
+        slotCode={modalSlot ?? ""}
+        availableEquipment={availableForModal}
+        onEquip={handleEquip}
+        isPending={isPending}
+      />
     </div>
   );
 }
