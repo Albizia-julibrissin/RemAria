@@ -34,14 +34,28 @@ const DEBUFF_DISPLAY_NAMES: Record<string, string> = {
 
 type LogEntry = RunTestBattleSuccess["log"][number];
 
-function attackerName(entry: LogEntry, partyDisplayNames: string[]): string {
-  if (entry.attacker === "enemy") return `${ENEMY_LABEL}${(entry.attackerEnemyIndex ?? 0) + 1}`;
+function attackerName(
+  entry: LogEntry,
+  partyDisplayNames: string[],
+  enemyDisplayNames?: string[]
+): string {
+  if (entry.attacker === "enemy") {
+    const idx = entry.attackerEnemyIndex ?? 0;
+    return enemyDisplayNames?.[idx] ?? `${ENEMY_LABEL}${idx + 1}`;
+  }
   const i = entry.attackerPartyIndex ?? 0;
   return partyDisplayNames[i] ?? "味方";
 }
 
-function targetName(entry: LogEntry, partyDisplayNames: string[]): string {
-  if (entry.target === "enemy") return `${ENEMY_LABEL}${(entry.targetEnemyIndex ?? 0) + 1}`;
+function targetName(
+  entry: LogEntry,
+  partyDisplayNames: string[],
+  enemyDisplayNames?: string[]
+): string {
+  if (entry.target === "enemy") {
+    const idx = entry.targetEnemyIndex ?? 0;
+    return enemyDisplayNames?.[idx] ?? `${ENEMY_LABEL}${idx + 1}`;
+  }
   const i = entry.targetPartyIndex ?? 0;
   return partyDisplayNames[i] ?? "味方";
 }
@@ -51,9 +65,13 @@ function targetNameFromHit(
   target: "player" | "enemy",
   targetEnemyIndex?: number,
   targetPartyIndex?: number,
-  partyDisplayNames?: string[]
+  partyDisplayNames?: string[],
+  enemyDisplayNames?: string[]
 ): string {
-  if (target === "enemy") return `${ENEMY_LABEL}${(targetEnemyIndex ?? 0) + 1}`;
+  if (target === "enemy") {
+    const idx = targetEnemyIndex ?? 0;
+    return enemyDisplayNames?.[idx] ?? `${ENEMY_LABEL}${idx + 1}`;
+  }
   const i = targetPartyIndex ?? 0;
   return partyDisplayNames?.[i] ?? "味方";
 }
@@ -103,12 +121,15 @@ function DamageLine({
 export function EntryLines({
   entry,
   partyDisplayNames,
+  enemyDisplayNames,
 }: {
   entry: LogEntry;
   partyDisplayNames: string[];
+  /** spec/050: 探索戦闘などで敵の表示名を渡す。省略時はスライム1～3 */
+  enemyDisplayNames?: string[];
 }) {
-  const attacker = attackerName(entry, partyDisplayNames);
-  const target = targetName(entry, partyDisplayNames);
+  const attacker = attackerName(entry, partyDisplayNames, enemyDisplayNames);
+  const target = targetName(entry, partyDisplayNames, enemyDisplayNames);
   const isPlayer = entry.attacker === "player";
   const actionLabel =
     entry.actionType === "skill" && entry.skillName
@@ -221,7 +242,8 @@ export function EntryLines({
                 entry.target,
                 h.targetEnemyIndex,
                 h.targetPartyIndex,
-                partyDisplayNames
+                partyDisplayNames,
+                enemyDisplayNames
               );
               if (!h.hit)
                 return (
@@ -405,6 +427,7 @@ interface BattleLogViewProps {
 
 export function BattleLogView({ data }: BattleLogViewProps) {
   const partyNames = data.summary.partyDisplayNames ?? ["味方"];
+  const enemyNames = data.enemyDisplayNames;
   const cycles = formatLogByCycle(data.log, partyNames);
 
   return (
@@ -432,6 +455,7 @@ export function BattleLogView({ data }: BattleLogViewProps) {
                   key={i}
                   entry={entry}
                   partyDisplayNames={partyNames}
+                  enemyDisplayNames={enemyNames}
                 />
               ))}
             </div>

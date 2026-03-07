@@ -19,12 +19,13 @@ export const CONDITION_OPTIONS = [
   { value: "subject_has_attr_state", label: "指定の属性状態になっている" },
 ] as const;
 
-/** 主語「サイクル」用の条件（偶数／奇数／Nの倍数／N以上） */
+/** 主語「サイクル」用の条件（偶数／奇数／Nの倍数／N以上／Nのとき） */
 export const CYCLE_CONDITION_OPTIONS = [
   { value: "cycle_is_even", label: "偶数サイクル" },
   { value: "cycle_is_odd", label: "奇数サイクル" },
   { value: "cycle_is_multiple_of", label: "Nの倍数サイクル" },
   { value: "cycle_at_least", label: "Nサイクル以上" },
+  { value: "cycle_equals", label: "サイクルがNのとき" },
 ] as const;
 
 /** 主語「ターン」用の条件（本サイクル内の行動順 1～6） */

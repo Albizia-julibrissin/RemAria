@@ -98,6 +98,10 @@ function evaluateCycleCondition(
     const n = Number(param["n"] ?? 0);
     return cycle >= n;
   }
+  if (conditionKind === "cycle_equals") {
+    const n = Number(param["n"] ?? 1);
+    return cycle === n;
+  }
   return false;
 }
 
@@ -125,7 +129,13 @@ function evaluateCondition(slot: TacticSlotForEval, ctx: TacticEvaluationContext
   if (slot.subject === "turn") {
     return evaluateTurnCondition(conditionKind, param, ctx.turnIndexInCycle);
   }
-  if (conditionKind === "cycle_is_even" || conditionKind === "cycle_is_odd" || conditionKind === "cycle_is_multiple_of" || conditionKind === "cycle_at_least") {
+  if (
+    conditionKind === "cycle_is_even" ||
+    conditionKind === "cycle_is_odd" ||
+    conditionKind === "cycle_is_multiple_of" ||
+    conditionKind === "cycle_at_least" ||
+    conditionKind === "cycle_equals"
+  ) {
     return evaluateCycleCondition(conditionKind, param, ctx.cycle);
   }
   if (conditionKind === "turn_order_in_range") {

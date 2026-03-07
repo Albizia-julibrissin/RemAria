@@ -30,7 +30,6 @@ import {
   type TacticSlotForEval,
 } from "./tactic-evaluation";
 
-const ENEMY_COUNT = 3;
 
 export interface TacticSlotInput {
   orderIndex: number;
@@ -108,6 +107,16 @@ interface PartyFighter extends FighterState {
 interface EnemyFighter extends FighterState {
   tacticSlots?: TacticSlotInput[];
   skills?: Record<string, SkillDataForBattle>;
+}
+
+/** spec/050: 体ごとの敵入力（1～3体）。未使用枠は作らない。 */
+export interface EnemyInput {
+  base: BaseStats;
+  tacticSlots: TacticSlotInput[];
+  skills: Record<string, SkillDataForBattle>;
+  displayName?: string;
+  iconFilename?: string | null;
+  position: BattlePosition;
 }
 
 export interface BattleLogEntryWithParty {
@@ -200,10 +209,16 @@ export interface BattleSummaryWithParty {
   partyMaxHp: number[];
   partyMaxMp: number[];
   partyDisplayNames: string[];
+  /** spec/050: 敵の表示名（enemyInputs の順）。未指定時は "敵" */
+  enemyDisplayNames: string[];
+  /** spec/050: 敵のアイコンファイル名（enemyInputs の順）。未設定時は null */
+  enemyIconFilenames: (string | null)[];
   playerMaxHp: number;
   playerMaxMp: number;
-  enemyMaxHp: number;
-  enemyMaxMp: number;
+  /** 敵ごとの最大HP（enemyInputs の順） */
+  enemyMaxHp: number[];
+  /** 敵ごとの最大MP（enemyInputs の順） */
+  enemyMaxMp: number[];
 }
 
 export interface BattleResultWithParty {
@@ -586,9 +601,10 @@ function pickEnemyTarget(
   allowedIndices?: number[] | null,
   useEqualWeight?: boolean
 ): number {
+  const n = positions.length;
   const pool = allowedIndices?.length
-    ? allowedIndices.filter((i) => i >= 0 && i < ENEMY_COUNT && alive[i])
-    : Array.from({ length: ENEMY_COUNT }, (_, i) => i).filter((i) => alive[i]);
+    ? allowedIndices.filter((i) => i >= 0 && i < n && alive[i])
+    : Array.from({ length: n }, (_, i) => i).filter((i) => alive[i]);
   if (pool.length === 0) return 0;
   if (useEqualWeight) return pool[Math.floor(Math.random() * pool.length)]!;
   let totalWeight = 0;
@@ -632,7 +648,7 @@ function buildTurnOrder(
 ): TurnSlot[] {
   const pool: TurnSlot[] = [];
   for (let i = 0; i < party.length; i++) if (partyAlive[i]) pool.push({ kind: "p", index: i });
-  for (let i = 0; i < ENEMY_COUNT; i++) if (enemyAlive[i]) pool.push({ kind: "e", index: i });
+  for (let i = 0; i < enemies.length; i++) if (enemyAlive[i]) pool.push({ kind: "e", index: i });
 
   const getWeight = (s: TurnSlot): number => {
     if (s.kind === "p")
@@ -688,22 +704,22 @@ function partyToLegacyPlayer(party: PartyFighter[]): { playerHp: number; playerM
  */
 export function runBattleWithParty(
   partyInput: PartyMemberInput[],
-  enemyBase: BaseStats,
-  enemyPositions: BattlePosition[],
+  /** spec/050: 敵を体ごとに渡す（1～3体）。未使用枠は作らない。 */
+  enemyInputs: EnemyInput[],
   /** 戦闘開始時の味方の列位置。省略時は defaultPartyPositions。長さが party と一致する場合のみ使用 */
   initialPartyPositions?: BattlePosition[],
-  /** Phase 10: 敵ごとの属性耐性。長さ3。未指定時は全員耐性なし(空オブジェクト)。装備・遺物実装後に敵側も拡張可能。 */
+  /** Phase 10: 敵ごとの属性耐性。長さは enemyInputs.length。未指定時は全員耐性なし。 */
   enemyAttributeResistances?: AttributeResistances[],
-  /** 敵の作戦スロット（省略時は常に通常攻撃）。渡す場合は敵全員が同じスロットを持つ。 */
-  enemyTacticSlots?: TacticSlotInput[],
-  /** 敵のスキルマスタ（skillId → SkillDataForBattle）。省略時はスキルなし。 */
-  enemySkills?: Record<string, SkillDataForBattle>,
   /** 探索などで HP/MP を引き継ぐときの初期値。未指定または 0 の場合は最大値から開始。partyInput と同じ順番を想定。 */
   initialPartyHpMp?: { currentHp: number; currentMp: number }[]
 ): BattleResultWithParty {
   if (partyInput.length === 0) {
     throw new Error("runBattleWithParty: party must have at least 1 member");
   }
+  if (enemyInputs.length === 0 || enemyInputs.length > 3) {
+    throw new Error("runBattleWithParty: enemyInputs must have 1 to 3 elements");
+  }
+  const enemyCount = enemyInputs.length;
 
   const party: PartyFighter[] = partyInput.map((p, idx) => {
     const derived = computeDerivedStats(p.base);
@@ -732,29 +748,26 @@ export function runBattleWithParty(
     (p) => p.attributeResistances ?? {}
   );
 
-  const enemies: EnemyFighter[] = enemyPositions.map(() => {
-    const derived = computeDerivedStats(enemyBase);
-    const base: EnemyFighter = {
-      base: enemyBase,
+  const enemies: EnemyFighter[] = enemyInputs.map((input) => {
+    const derived = computeDerivedStats(input.base);
+    return {
+      base: input.base,
       derived,
       currentHp: derived.HP,
       currentMp: derived.MP,
+      tacticSlots: input.tacticSlots,
+      skills: input.skills,
     };
-    if (enemyTacticSlots?.length && enemySkills && Object.keys(enemySkills).length > 0) {
-      base.tacticSlots = enemyTacticSlots;
-      base.skills = enemySkills;
-    }
-    return base;
   });
 
   /** Phase 10: 敵ごとの属性耐性。未指定時は全員空（耐性なし）。 */
   const enemyResistances: AttributeResistances[] =
-    enemyAttributeResistances && enemyAttributeResistances.length >= ENEMY_COUNT
-      ? enemyAttributeResistances.slice(0, ENEMY_COUNT)
-      : Array.from({ length: ENEMY_COUNT }, () => ({}));
+    enemyAttributeResistances && enemyAttributeResistances.length >= enemyCount
+      ? enemyAttributeResistances.slice(0, enemyCount)
+      : Array.from({ length: enemyCount }, () => ({}));
 
   const partyAlive = party.map(() => true);
-  const enemyAlive = [true, true, true];
+  const enemyAlive = Array.from({ length: enemyCount }, () => true);
 
   // 戦闘開始時点で HP が 0 以下の味方は戦闘不能扱いとし、行動・回復対象から除外する
   for (let i = 0; i < party.length; i++) {
@@ -770,15 +783,15 @@ export function runBattleWithParty(
       ? initialPartyPositions.map((p) => ({ row: p.row, col: p.col }))
       : defaultPartyPositions(party.length);
   /** Phase 2: 列移動を反映するため敵位置はループ内で更新可能なコピーを使用 */
-  const currentEnemyPositions: BattlePosition[] = enemyPositions.map((p) => ({ row: p.row, col: p.col }));
+  const currentEnemyPositions: BattlePosition[] = enemyInputs.map((input) => ({ row: input.position.row, col: input.position.col }));
 
   /** Phase 3: 属性状態。味方・敵ごとに { attr, remainingCycles }[]。サイクル終了時に tick で減算 */
   const partyAttrStates: AttrStateEntry[][] = Array.from({ length: party.length }, () => []);
-  const enemyAttrStates: AttrStateEntry[][] = Array.from({ length: ENEMY_COUNT }, () => []);
+  const enemyAttrStates: AttrStateEntry[][] = Array.from({ length: enemyCount }, () => []);
 
   /** Phase 4: デバフ。味方・敵ごとに { code, remainingCycles }[]。サイクル終了時に tick */
   const partyDebuffs: DebuffEntry[][] = Array.from({ length: party.length }, () => []);
-  const enemyDebuffs: DebuffEntry[][] = Array.from({ length: ENEMY_COUNT }, () => []);
+  const enemyDebuffs: DebuffEntry[][] = Array.from({ length: enemyCount }, () => []);
 
   /** Phase 7: バフ。味方ごとに { stat, pct, remainingCycles }[]。サイクル終了時に tick */
   const partyBuffs: BuffEntry[][] = Array.from({ length: party.length }, () => []);
@@ -801,7 +814,7 @@ export function runBattleWithParty(
 
   /** 戦闘不能になった敵 1 体の状態を整理する（行動不可・ターゲット外・状態異常リセット） */
   function handleEnemyDeath(index: number): void {
-    if (index < 0 || index >= ENEMY_COUNT) return;
+    if (index < 0 || index >= enemyCount) return;
     enemyAlive[index] = false;
     enemyAttrStates[index] = [];
     enemyDebuffs[index] = [];
@@ -815,9 +828,9 @@ export function runBattleWithParty(
     () => null
   );
   /** 敵が作戦・スキルを持つ場合のクールダウン。enemyCooldowns[i][skillId] = 残りサイクル数 */
-  const enemyCooldowns: Record<string, number>[] = Array.from({ length: ENEMY_COUNT }, () => ({}));
+  const enemyCooldowns: Record<string, number>[] = Array.from({ length: enemyCount }, () => ({}));
   const enemySkillUsedThisTurn: ({ skillId: string; cooldownCycles: number } | null)[] = Array.from(
-    { length: ENEMY_COUNT },
+    { length: enemyCount },
     () => null
   );
 
@@ -915,7 +928,7 @@ export function runBattleWithParty(
         }
       } else {
         const idx = slot.index;
-        if (idx < ENEMY_COUNT && enemyAlive[idx] && enemies[idx].currentHp > 0) {
+        if (idx < enemyCount && enemyAlive[idx] && enemies[idx].currentHp > 0) {
           const unitDebuffs = enemyDebuffs[idx];
           for (const d of unitDebuffs) {
             if (d.remainingCycles <= 0 || !d.dotKind || d.dotPct == null) continue;
@@ -1406,7 +1419,7 @@ export function runBattleWithParty(
               : [];
             if (cols.length > 0) {
               columnTargetIndices = [];
-              for (let i = 0; i < ENEMY_COUNT; i++) {
+              for (let i = 0; i < enemyCount; i++) {
                 if (enemyAlive[i] && cols.includes(currentEnemyPositions[i].col)) columnTargetIndices.push(i);
               }
               if (columnTargetIndices.length === 0) {
@@ -1542,7 +1555,7 @@ export function runBattleWithParty(
               if (!triggerAttr || !hasAttrState(enemyAttrStates[targetIdx], triggerAttr)) continue;
               const pct = Number(p.pctOfDealtDamage) || 0;
               const splashBase = finalDmg * pct;
-              for (let i = 0; i < ENEMY_COUNT; i++) {
+              for (let i = 0; i < enemyCount; i++) {
                 if (!enemyAlive[i]) continue;
                 const splash = resolveSplashDamage(
                   enemies[i],
@@ -1621,7 +1634,7 @@ export function runBattleWithParty(
               if (currentEnemyPositions[targetIdx].col !== whenCol) continue;
               const pct = Number(p.pctOfDealtDamage) || 0;
               const splashBase = finalDmg * pct;
-              for (let i = 0; i < ENEMY_COUNT; i++) {
+              for (let i = 0; i < enemyCount; i++) {
                 if (!enemyAlive[i]) continue;
                 const splash = resolveSplashDamage(
                   enemies[i],
@@ -1660,7 +1673,7 @@ export function runBattleWithParty(
               if (p.targetScope === "enemy_all") {
                 // 敵全員に1回だけ適用（同じヒット内で複数ターゲットに重複適用しない）
                 if (targetIdx === targetsThisHit[0]) {
-                  for (let i = 0; i < ENEMY_COUNT; i++) {
+                  for (let i = 0; i < enemyCount; i++) {
                     if (enemyAlive[i]) addDebuff(enemyDebuffs[i], code, duration, meta);
                   }
                 }
@@ -1721,7 +1734,7 @@ export function runBattleWithParty(
           actor.currentMp = Math.max(0, actor.currentMp - cost);
           const ctMain = skill.cooldownCycles ?? 0;
           if (ctMain > 0) skillUsedThisTurnByPartyIndex[actorIndex] = { skillId: action.skillId!, cooldownCycles: ctMain };
-          for (let i = 0; i < ENEMY_COUNT; i++) {
+          for (let i = 0; i < enemyCount; i++) {
             if (enemies[i].currentHp <= 0) handleEnemyDeath(i);
           }
 
@@ -1829,7 +1842,7 @@ export function runBattleWithParty(
         }
       } else {
         const enemyIdx = slot.index;
-        if (enemyIdx >= ENEMY_COUNT || !enemyAlive[enemyIdx] || enemies[enemyIdx].currentHp <= 0) continue;
+        if (enemyIdx >= enemyCount || !enemyAlive[enemyIdx] || enemies[enemyIdx].currentHp <= 0) continue;
 
         const enemy = enemies[enemyIdx];
         let action: TacticAction = { actionType: "normal_attack", skillId: null };
@@ -2039,10 +2052,12 @@ export function runBattleWithParty(
       partyMaxHp: party.map((p) => p.derived.HP),
       partyMaxMp: party.map((p) => p.derived.MP),
       partyDisplayNames: party.map((p) => p.displayName),
+      enemyDisplayNames: enemyInputs.map((e) => e.displayName ?? "敵"),
+      enemyIconFilenames: enemyInputs.map((e) => e.iconFilename ?? null),
       playerMaxHp: party[0]?.derived.HP ?? 0,
       playerMaxMp: party[0]?.derived.MP ?? 0,
-      enemyMaxHp: enemies[0]?.derived.HP ?? 0,
-      enemyMaxMp: enemies[0]?.derived.MP ?? 0,
+      enemyMaxHp: enemies.map((e) => e.derived.HP),
+      enemyMaxMp: enemies.map((e) => e.derived.MP),
     },
     enemyPositions: currentEnemyPositions,
   };

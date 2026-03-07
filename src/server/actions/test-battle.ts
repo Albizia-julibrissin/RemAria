@@ -12,12 +12,15 @@ import type {
   SkillDataForBattle,
   BattleLogEntryWithParty,
   BattleSummaryWithParty,
+  EnemyInput,
 } from "@/lib/battle/run-battle-with-party";
 import {
   TEST_ENEMY_BASE_STATS,
   TEST_ENEMY_POSITIONS_1V3,
   TEST_ENEMY_TACTIC_SLOTS,
   TEST_ENEMY_SKILLS,
+  TEST_ENEMY_NAME,
+  TEST_ENEMY_ICON_FILENAME,
 } from "@/lib/battle/test-enemy";
 import type { BattleCol, BattlePosition, BattleRow } from "@/lib/battle/battle-position";
 import { prisma } from "@/lib/db/prisma";
@@ -29,6 +32,10 @@ export type RunTestBattleSuccess = {
   protagonistIconFilename: string | null;
   partyDisplayNames: string[];
   partyIconFilenames: (string | null)[];
+  /** spec/050: 敵の表示名（探索時はエリア敵、仮戦闘時はスライム1～3） */
+  enemyDisplayNames: string[];
+  /** spec/050: 敵のアイコンファイル名（未設定時は null） */
+  enemyIconFilenames: (string | null)[];
   /** 戦闘開始時の味方の列位置（作戦室で設定した列） */
   initialPartyPositions: BattlePosition[];
   enemyPositions: BattlePosition[];
@@ -49,7 +56,9 @@ export type RunTestBattleResult = RunTestBattleSuccess | RunTestBattleError;
 /** 仮戦闘実行。指定プリセットの編成・作戦・スキルで戦闘。 */
 export async function runTestBattle(
   presetId: string,
-  initialHpMpByCharacterId?: Record<string, { hp: number; mp: number }>
+  initialHpMpByCharacterId?: Record<string, { hp: number; mp: number }>,
+  /** spec/050: 探索戦闘でエリア敵を使う場合に渡す。省略時は仮戦闘用の固定敵（スライム×3）。 */
+  enemyInputs?: EnemyInput[]
 ): Promise<RunTestBattleResult> {
   const session = await getSession();
   if (!session.userId || !session.isLoggedIn) {
@@ -339,14 +348,22 @@ export async function runTestBattle(
     }
   }
 
+  const resolvedEnemyInputs =
+    enemyInputs ??
+    TEST_ENEMY_POSITIONS_1V3.map((pos, i) => ({
+      base: TEST_ENEMY_BASE_STATS,
+      tacticSlots: TEST_ENEMY_TACTIC_SLOTS,
+      skills: TEST_ENEMY_SKILLS,
+      displayName: `${TEST_ENEMY_NAME}${i + 1}`,
+      iconFilename: TEST_ENEMY_ICON_FILENAME,
+      position: pos,
+    }));
+
   const battle = runBattleWithParty(
     partyInput,
-    TEST_ENEMY_BASE_STATS,
-    TEST_ENEMY_POSITIONS_1V3,
+    resolvedEnemyInputs,
     initialPartyPositions,
     undefined,
-    TEST_ENEMY_TACTIC_SLOTS,
-    TEST_ENEMY_SKILLS,
     initialPartyHpMp
   );
 
@@ -357,6 +374,8 @@ export async function runTestBattle(
     protagonistIconFilename: partyIconFilenames[0] ?? null,
     partyDisplayNames: battle.summary.partyDisplayNames,
     partyIconFilenames,
+    enemyDisplayNames: battle.summary.enemyDisplayNames,
+    enemyIconFilenames: battle.summary.enemyIconFilenames,
     initialPartyPositions,
     enemyPositions: battle.enemyPositions,
     log: battle.log,

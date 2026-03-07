@@ -29,7 +29,7 @@
 
 | 項目 | 型・内容 | 用途 |
 |------|----------|------|
-| **cycle** | number | 現在サイクル番号（1 始まり）。cycleIsEven, cycleIsMultipleOf, cycleAtLeast 用。 |
+| **cycle** | number | 現在サイクル番号（1 始まり）。cycle_is_even / cycle_is_odd / cycle_is_multiple_of / cycle_at_least / cycle_equals 用。 |
 | **turnIndexInCycle** | number | 本サイクル内で何番目に行動するか（1 始まり）。turnOrderInRange 用。 |
 | **actorPartyIndex** | number | 行動者が味方パーティの何番目か（0～2）。主語「自分」の解決用。 |
 | **party** | 味方 1 体あたり { currentHp, maxHp, currentMp, maxMp, attrStates[], debuffs[] } の配列（長さ 1～3） | HP/MP 閾値・属性状態・状態異常の評価用。 |
@@ -64,7 +64,7 @@
 | **cycle** | 現在サイクル | コンテキストの **cycle**（1 始まり）。偶数／奇数／N の倍数／N 以上 などの条件に使う。隔ターン（2 サイクルに 1 回など）もここで表現可能。 |
 | **turn** | 本サイクル内の行動順 | コンテキストの **turnIndexInCycle**（1～6、1 始まり）。「1～2 ターン目なら発動」（先手を取れた場合だけ）などに使う。 |
 
-- **cycle** を主語にしたときは、条件種別は 4.5 のサイクル条件（cycle_is_even / cycle_is_odd / cycle_is_multiple_of / cycle_at_least）のみ有効。
+- **cycle** を主語にしたときは、条件種別は 4.5 のサイクル条件（cycle_is_even / cycle_is_odd / cycle_is_multiple_of / cycle_at_least / cycle_equals）のみ有効。
 - **turn** を主語にしたときは、条件種別は 4.6 のターン条件（turn_order_in_range）のみ有効。
 
 ------------------------------------------------------------------------
@@ -121,6 +121,7 @@
 | **cycle_is_odd** | 不要 | 現在サイクルが奇数なら true（1, 3, 5, ...）。 |
 | **cycle_is_multiple_of** | `{ "n": number }`（例: 2 で隔ターン、3 で 3 サイクルに 1 回） | 現在サイクルが n の倍数なら true。 |
 | **cycle_at_least** | `{ "n": number }` | 現在サイクルが n 以上なら true。 |
+| **cycle_equals** | `{ "n": number }` | 現在サイクルが n と一致するときだけ true（例: n=1 で 1 サイクル目のみ発動）。 |
 
 ### 4.6 本サイクルの行動順（主語 **turn** または主語なし）
 
@@ -137,7 +138,7 @@
 - [ ] 戦闘ループで「味方のターン」になったとき、そのキャラの TacticSlot を orderIndex 昇順で取得している。
 - [ ] コンテキストに cycle / turnIndexInCycle / actorPartyIndex / party（HP・MP・属性状態・状態異常）/ enemies（同様）/ 位置情報 を渡している。
 - [ ] 主語の解決（self / any_ally / any_enemy / front_enemy）を実装している。front_enemy は「同じ row の敵のうち col 最小の生存者」。
-- [ ] 主語 **cycle** のときはユニットリストを求めず、ctx.cycle に対して cycle_is_even / cycle_is_odd / cycle_is_multiple_of / cycle_at_least で判定している。
+- [ ] 主語 **cycle** のときはユニットリストを求めず、ctx.cycle に対して cycle_is_even / cycle_is_odd / cycle_is_multiple_of / cycle_at_least / cycle_equals で判定している。
 - [ ] 主語 **turn** のときはユニットリストを求めず、ctx.turnIndexInCycle に対して turn_order_in_range で判定している。
 - [ ] 各 conditionKind について、上記 4 の表どおり conditionParam を読んで true/false を返す関数を用意している。
 - [ ] 「対象のうち 1 体でも満たせば true」を、主語で得たリスト（ユニット主語の場合）に対して適用している。

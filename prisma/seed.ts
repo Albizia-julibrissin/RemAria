@@ -1780,6 +1780,254 @@ async function seedExplorationThemesAndAreas() {
   });
 }
 
+/** spec/050, docs/content-guides/051: 遊覧舗装路跡の敵マスタ・グループ・エリア紐づけ */
+async function seedEnemiesForYuranPavedRoad() {
+  const skillRows = await prisma.skill.findMany({
+    where: { category: "battle_active" },
+    select: { id: true, name: true },
+  });
+  const skillIdByName = new Map(skillRows.map((s) => [s.name, s.id]));
+
+  const ENEMIES_YURAN: Array<{
+    code: string;
+    name: string;
+    iconFilename: string;
+    defaultBattleRow: number;
+    defaultBattleCol: number;
+    STR: number;
+    INT: number;
+    VIT: number;
+    WIS: number;
+    DEX: number;
+    AGI: number;
+    LUK: number;
+    CAP: number;
+    tacticSlots: Array<{
+      orderIndex: number;
+      subject: string;
+      conditionKind: string;
+      conditionParam: object | null;
+      actionType: string;
+      skillName: string | null;
+    }>;
+    skillNames: string[];
+  }> = [
+    {
+      code: "scrap_wolf",
+      name: "スクラップウルフ",
+      iconFilename: "0.gif",
+      defaultBattleRow: 1,
+      defaultBattleCol: 1,
+      STR: 39,
+      INT: 39,
+      VIT: 30,
+      WIS: 39,
+      DEX: 39,
+      AGI: 75,
+      LUK: 39,
+      CAP: 300,
+      tacticSlots: [{ orderIndex: 1, subject: "self", conditionKind: "always", conditionParam: null, actionType: "normal_attack", skillName: null }],
+      skillNames: [],
+    },
+    {
+      code: "cable_crow",
+      name: "ケーブルクロウ",
+      iconFilename: "0.gif",
+      defaultBattleRow: 2,
+      defaultBattleCol: 2,
+      STR: 32,
+      INT: 33,
+      VIT: 25,
+      WIS: 33,
+      DEX: 62,
+      AGI: 33,
+      LUK: 32,
+      CAP: 250,
+      tacticSlots: [{ orderIndex: 1, subject: "self", conditionKind: "always", conditionParam: null, actionType: "skill", skillName: "閃槍" }],
+      skillNames: ["閃槍"],
+    },
+    {
+      code: "asphalt_mole",
+      name: "アスファルトモール",
+      iconFilename: "0.gif",
+      defaultBattleRow: 2,
+      defaultBattleCol: 2,
+      STR: 32,
+      INT: 32,
+      VIT: 80,
+      WIS: 80,
+      DEX: 32,
+      AGI: 32,
+      LUK: 32,
+      CAP: 320,
+      tacticSlots: [{ orderIndex: 1, subject: "self", conditionKind: "always", conditionParam: null, actionType: "normal_attack", skillName: null }],
+      skillNames: [],
+    },
+    {
+      code: "wild_drone",
+      name: "ワイルドドローン",
+      iconFilename: "0.gif",
+      defaultBattleRow: 3,
+      defaultBattleCol: 3,
+      STR: 45,
+      INT: 90,
+      VIT: 45,
+      WIS: 45,
+      DEX: 45,
+      AGI: 45,
+      LUK: 45,
+      CAP: 360,
+      tacticSlots: [
+        { orderIndex: 1, subject: "cycle", conditionKind: "cycle_at_least", conditionParam: { n: 3 }, actionType: "skill", skillName: "ファイアボルト" },
+        { orderIndex: 2, subject: "self", conditionKind: "always", conditionParam: null, actionType: "normal_attack", skillName: null },
+      ],
+      skillNames: ["ファイアボルト"],
+    },
+    {
+      code: "fusion_erosion_wire_trent",
+      name: "融合侵食ワイヤートレント",
+      iconFilename: "0.gif",
+      defaultBattleRow: 1,
+      defaultBattleCol: 1,
+      STR: 104,
+      INT: 104,
+      VIT: 200,
+      WIS: 104,
+      DEX: 104,
+      AGI: 80,
+      LUK: 104,
+      CAP: 800,
+      tacticSlots: [
+        { orderIndex: 1, subject: "self", conditionKind: "always", conditionParam: null, actionType: "skill", skillName: "砦の構え" },
+        { orderIndex: 2, subject: "self", conditionKind: "hp_below_percent", conditionParam: { percent: 50 }, actionType: "skill", skillName: "浄化の祈り" },
+      ],
+      skillNames: ["砦の構え", "浄化の祈り"],
+    },
+    {
+      code: "road_admin_pathfinder",
+      name: "道路管理機構パスファインダー",
+      iconFilename: "0.gif",
+      defaultBattleRow: 2,
+      defaultBattleCol: 2,
+      STR: 210,
+      INT: 120,
+      VIT: 210,
+      WIS: 120,
+      DEX: 210,
+      AGI: 210,
+      LUK: 120,
+      CAP: 1200,
+      tacticSlots: [
+        { orderIndex: 1, subject: "cycle", conditionKind: "cycle_equals", conditionParam: { n: 1 }, actionType: "skill", skillName: "感覚深化" },
+        { orderIndex: 2, subject: "self", conditionKind: "always", conditionParam: null, actionType: "skill", skillName: "虎挟ミ" },
+        { orderIndex: 3, subject: "self", conditionKind: "always", conditionParam: null, actionType: "skill", skillName: "クエイクバースト" },
+      ],
+      skillNames: ["感覚深化", "虎挟ミ", "クエイクバースト"],
+    },
+  ];
+
+  const enemyIds: string[] = [];
+  for (const e of ENEMIES_YURAN) {
+    const enemy = await prisma.enemy.upsert({
+      where: { code: e.code },
+      create: {
+        code: e.code,
+        name: e.name,
+        iconFilename: e.iconFilename,
+        defaultBattleRow: e.defaultBattleRow,
+        defaultBattleCol: e.defaultBattleCol,
+        STR: e.STR,
+        INT: e.INT,
+        VIT: e.VIT,
+        WIS: e.WIS,
+        DEX: e.DEX,
+        AGI: e.AGI,
+        LUK: e.LUK,
+        CAP: e.CAP,
+      },
+      update: {
+        name: e.name,
+        iconFilename: e.iconFilename,
+        defaultBattleRow: e.defaultBattleRow,
+        defaultBattleCol: e.defaultBattleCol,
+        STR: e.STR,
+        INT: e.INT,
+        VIT: e.VIT,
+        WIS: e.WIS,
+        DEX: e.DEX,
+        AGI: e.AGI,
+        LUK: e.LUK,
+        CAP: e.CAP,
+      },
+      select: { id: true },
+    });
+    enemyIds.push(enemy.id);
+
+    await prisma.enemyTacticSlot.deleteMany({ where: { enemyId: enemy.id } });
+    for (const slot of e.tacticSlots) {
+      const skillId = slot.skillName ? skillIdByName.get(slot.skillName) ?? null : null;
+      await prisma.enemyTacticSlot.create({
+        data: {
+          enemyId: enemy.id,
+          orderIndex: slot.orderIndex,
+          subject: slot.subject,
+          conditionKind: slot.conditionKind,
+          conditionParam: slot.conditionParam as Prisma.InputJsonValue,
+          actionType: slot.actionType,
+          skillId,
+        },
+      });
+    }
+
+    await prisma.enemySkill.deleteMany({ where: { enemyId: enemy.id } });
+    for (const skillName of e.skillNames) {
+      const skillId = skillIdByName.get(skillName);
+      if (skillId) {
+        await prisma.enemySkill.create({
+          data: { enemyId: enemy.id, skillId },
+        });
+      }
+    }
+  }
+
+  const normalEnemyIds = enemyIds.slice(0, 4);
+  const midBossId = enemyIds[4];
+  const lastBossId = enemyIds[5];
+
+  const group = await prisma.enemyGroup.upsert({
+    where: { code: "yuran_normal" },
+    create: { code: "yuran_normal" },
+    update: {},
+    select: { id: true },
+  });
+
+  await prisma.enemyGroupEntry.deleteMany({ where: { enemyGroupId: group.id } });
+  for (let i = 0; i < normalEnemyIds.length; i++) {
+    await prisma.enemyGroupEntry.create({
+      data: { enemyGroupId: group.id, enemyId: normalEnemyIds[i], weight: 1 },
+    });
+  }
+
+  const area = await prisma.explorationArea.findUnique({
+    where: { code: "yuran_paved_road" },
+    select: { id: true },
+  });
+  if (area) {
+    await prisma.explorationArea.update({
+      where: { id: area.id },
+      data: {
+        normalEnemyGroupCode: "yuran_normal",
+        enemyCount1Rate: 20,
+        enemyCount2Rate: 50,
+        enemyCount3Rate: 30,
+        midBossEnemyId: midBossId,
+        lastBossEnemyId: lastBossId,
+      },
+    });
+  }
+  console.log("Enemies for yuran_paved_road: 6 敵種・グループ yuran_normal・エリア紐づけ 完了");
+}
+
 async function main() {
   for (const u of TEST_USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
@@ -1877,6 +2125,7 @@ async function main() {
   await seedCraftRecipes();
   await seedFacilityVariantsAndConstruction();
   await seedExplorationThemesAndAreas();
+  await seedEnemiesForYuranPavedRoad();
 
   for (const u of TEST_USERS) {
     const user = await prisma.user.findUnique({ where: { email: u.email } });

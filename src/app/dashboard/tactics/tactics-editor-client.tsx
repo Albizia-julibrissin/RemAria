@@ -159,7 +159,12 @@ export function TacticsEditorClient({
         if (sub === "cycle") {
           row.subject = "cycle";
           row.conditionKind = row.conditionKind && CYCLE_CONDITION_OPTIONS.some((o) => o.value === row.conditionKind) ? row.conditionKind : "cycle_is_even";
-          row.conditionParam = row.conditionKind === "cycle_is_multiple_of" ? { n: 2 } : row.conditionKind === "cycle_at_least" ? { n: 1 } : null;
+          row.conditionParam =
+            row.conditionKind === "cycle_is_multiple_of"
+              ? { n: 2 }
+              : row.conditionKind === "cycle_at_least" || row.conditionKind === "cycle_equals"
+                ? { n: 1 }
+                : null;
         } else if (sub === "turn") {
           row.subject = "turn";
           row.conditionKind = "turn_order_in_range";
@@ -178,7 +183,7 @@ export function TacticsEditorClient({
         else if (kind === "subject_has_attr_state") row.conditionParam = { attr: "none" };
         else if (kind === "cycle_is_even" || kind === "cycle_is_odd") row.conditionParam = null;
         else if (kind === "cycle_is_multiple_of") row.conditionParam = { n: 2 };
-        else if (kind === "cycle_at_least") row.conditionParam = { n: 1 };
+        else if (kind === "cycle_at_least" || kind === "cycle_equals") row.conditionParam = { n: 1 };
         else if (kind === "turn_order_in_range") row.conditionParam = { turnIndexMin: 1, turnIndexMax: 6 };
         else row.conditionParam = { percent: 50 };
       } else {
@@ -455,9 +460,14 @@ export function TacticsEditorClient({
                             row.conditionKind === "cycle_is_even" ||
                             row.conditionKind === "cycle_is_odd" ? (
                               <span className="text-text-muted">—</span>
-                            ) : row.conditionKind === "cycle_is_multiple_of" || row.conditionKind === "cycle_at_least" ? (
+                            ) : row.conditionKind === "cycle_is_multiple_of" ||
+                              row.conditionKind === "cycle_at_least" ||
+                              row.conditionKind === "cycle_equals" ? (
                               <select
-                                value={(row.conditionParam as { n?: number } | null)?.n ?? 2}
+                                value={
+                                  (row.conditionParam as { n?: number } | null)?.n ??
+                                  (row.conditionKind === "cycle_equals" ? 1 : 2)
+                                }
                                 onChange={(e) =>
                                   updateSlotRow(char.characterId, i, "conditionParam", {
                                     n: Number(e.target.value),

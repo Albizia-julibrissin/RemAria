@@ -8,6 +8,10 @@ import { prisma } from "@/lib/db/prisma";
 import type { RunTestBattleSuccess } from "@/server/actions/test-battle";
 import { runTestBattle } from "@/server/actions/test-battle";
 import { userRepository } from "@/server/repositories/user-repository";
+import {
+  resolveEnemiesForExplorationBattle,
+  type ExplorationBattleType,
+} from "@/server/lib/resolve-exploration-enemies";
 import { computeDerivedStats } from "@/lib/battle/derived-stats";
 
 export type ExplorationAreaSummary = {
@@ -833,7 +837,9 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     select: {
       id: true,
       partyPresetId: true,
+      areaId: true,
       remainingNormalBattles: true,
+      midBossCleared: true,
       battleWinCount: true,
       currentHpMp: true,
       explorationState: true,
@@ -858,7 +864,19 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
 
   const initialHpMpByCharacterId =
     (expedition.currentHpMp as Record<string, { hp: number; mp: number }> | null) ?? undefined;
-  const baseResult = await runTestBattle(expedition.partyPresetId, initialHpMpByCharacterId);
+
+  const battleType: ExplorationBattleType =
+    expedition.remainingNormalBattles > 0
+      ? "normal"
+      : !expedition.midBossCleared
+        ? "mid_boss"
+        : "last_boss";
+  const enemyInputs = await resolveEnemiesForExplorationBattle(expedition.areaId, battleType);
+  const baseResult = await runTestBattle(
+    expedition.partyPresetId,
+    initialHpMpByCharacterId,
+    enemyInputs.length > 0 ? enemyInputs : undefined
+  );
 
   if (!baseResult.success) {
     return baseResult;
@@ -905,15 +923,27 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
       }
     : rawState;
 
+  const updateData: {
+    currentHpMp: Record<string, { hp: number; mp: number }>;
+    remainingNormalBattles: number;
+    battleWinCount: number;
+    state: string;
+    explorationState: Prisma.InputJsonValue;
+    midBossCleared?: boolean;
+    lastBossCleared?: boolean;
+  } = {
+    currentHpMp: hpMpByCharId,
+    remainingNormalBattles: nextRemaining,
+    battleWinCount: expedition.battleWinCount + (isPlayerWin ? 1 : 0),
+    state: nextState,
+    explorationState: explorationState as Prisma.InputJsonValue,
+  };
+  if (battleType === "mid_boss" && isPlayerWin) updateData.midBossCleared = true;
+  if (battleType === "last_boss" && isPlayerWin) updateData.lastBossCleared = true;
+
   await prisma.expedition.update({
     where: { id: expedition.id },
-    data: {
-      currentHpMp: hpMpByCharId,
-      remainingNormalBattles: nextRemaining,
-      battleWinCount: expedition.battleWinCount + (isPlayerWin ? 1 : 0),
-      state: nextState,
-      explorationState: explorationState as Prisma.InputJsonValue,
-    },
+    data: updateData,
   });
 
   return {

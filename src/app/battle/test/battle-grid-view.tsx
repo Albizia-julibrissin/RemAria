@@ -66,27 +66,31 @@ export function AllyGridRow({
   );
 }
 
-/** 敵陣地の1行分（row は 1|2|3） */
+/** 敵陣地の1行分（row は 1|2|3）。体ごとにアイコンを指定可能（enemyIconFilenames[i]、未設定時は defaultIconFilename） */
 export function EnemyGridRow({
   row,
   enemyPositions,
   enemyAlive,
-  enemyIconFilename,
+  enemyIconFilenames,
+  defaultIconFilename,
 }: {
   row: 1 | 2 | 3;
   enemyPositions: BattlePosition[];
   enemyAlive: boolean[];
-  enemyIconFilename: string;
+  enemyIconFilenames: (string | null)[];
+  defaultIconFilename: string;
 }) {
   return (
     <div className="leading-none flex">
       {COLS_DISPLAY_ORDER_ENEMY.map((col) => {
-        const filled = enemyPositions.some(
+        const idx = enemyPositions.findIndex(
           (pos, i) => enemyAlive[i] && pos.row === row && pos.col === col
         );
+        const filled = idx >= 0;
+        const icon = filled ? (enemyIconFilenames[idx] ?? defaultIconFilename) : null;
         return (
           <span key={col} className="inline-flex">
-            {filled ? <IconCell iconFilename={enemyIconFilename} /> : <EmptyCell />}
+            {filled && icon ? <IconCell iconFilename={icon} /> : <EmptyCell />}
           </span>
         );
       })}
@@ -124,28 +128,32 @@ function AllyGrid({
   );
 }
 
-/** 敵複数用 3x3 グリッド（生存している敵の位置にスライムアイコンを表示） */
+/** 敵複数用 3x3 グリッド（生存している敵の位置に体別アイコンを表示） */
 function EnemyGrid({
   enemyPositions,
   enemyAlive,
-  enemyIconFilename,
+  enemyIconFilenames,
+  defaultIconFilename,
 }: {
   enemyPositions: BattlePosition[];
   enemyAlive: boolean[];
-  enemyIconFilename: string;
+  enemyIconFilenames: (string | null)[];
+  defaultIconFilename: string;
 }) {
   return (
     <div className="inline-block border border-base-border rounded p-2 bg-base-elevated">
       {ROWS.map((row) => (
         <div key={row} className="leading-none flex">
           {COLS.map((col) => {
-            const filled = enemyPositions.some(
+            const idx = enemyPositions.findIndex(
               (pos, i) => enemyAlive[i] && pos.row === row && pos.col === col
             );
+            const filled = idx >= 0;
+            const icon = filled ? (enemyIconFilenames[idx] ?? defaultIconFilename) : null;
             return (
               <span key={col} className="inline-flex">
-                {filled ? (
-                  <IconCell iconFilename={enemyIconFilename} />
+                {filled && icon ? (
+                  <IconCell iconFilename={icon} />
                 ) : (
                   <EmptyCell />
                 )}
@@ -164,8 +172,9 @@ interface BattleGridViewProps {
   protagonistIconFilename: string | null;
   enemyPositions: BattlePosition[];
   enemyAlive: boolean[];
-  /** 敵（スライム）のアイコン */
-  enemyIconFilename: string;
+  /** 敵のアイコン（体ごと。未設定時は defaultEnemyIconFilename を使用） */
+  enemyIconFilenames: (string | null)[];
+  defaultEnemyIconFilename: string;
 }
 
 export function BattleGridView({
@@ -173,7 +182,8 @@ export function BattleGridView({
   protagonistIconFilename,
   enemyPositions,
   enemyAlive,
-  enemyIconFilename,
+  enemyIconFilenames,
+  defaultEnemyIconFilename,
 }: BattleGridViewProps) {
   return (
     <div className="flex items-center justify-center gap-8 flex-wrap">
@@ -187,7 +197,8 @@ export function BattleGridView({
         <EnemyGrid
           enemyPositions={enemyPositions}
           enemyAlive={enemyAlive}
-          enemyIconFilename={enemyIconFilename}
+          enemyIconFilenames={enemyIconFilenames}
+          defaultIconFilename={defaultEnemyIconFilename}
         />
       </div>
     </div>

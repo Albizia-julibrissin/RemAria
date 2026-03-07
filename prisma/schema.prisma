@@ -573,10 +573,93 @@ model Skill {
   skillEffects    SkillEffect[]
   tacticSlots     TacticSlot[]
   mechaPartTypeSkills MechaPartTypeSkill[]
+  enemySkills     EnemySkill[]
+  enemyTacticSlots EnemyTacticSlot[]
 
   @@unique([name, category])
   @@index([category])
   @@index([targetTagId])
+}
+
+/// spec/050: 敵種マスタ。1種類の敵の基礎ステ・デフォルト配置・作戦・使用スキル。
+model Enemy {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  iconFilename String?
+  description String?
+
+  STR Int
+  INT Int
+  VIT Int
+  WIS Int
+  DEX Int
+  AGI Int
+  LUK Int
+  CAP Int
+
+  defaultBattleRow Int  // 1-3
+  defaultBattleCol Int  // 1-3
+
+  tacticSlots EnemyTacticSlot[]
+  enemySkills EnemySkill[]
+  groupEntries EnemyGroupEntry[]
+
+  midBossAreas ExplorationArea[] @relation("MidBossEnemy")
+  lastBossAreas ExplorationArea[] @relation("LastBossEnemy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// spec/050: 敵の作戦スロット（最大10。spec/039 と同等）
+model EnemyTacticSlot {
+  id         String @id @default(cuid())
+  enemyId    String
+  enemy      Enemy  @relation(fields: [enemyId], references: [id], onDelete: Cascade)
+  orderIndex Int
+  subject    String
+  conditionKind String
+  conditionParam Json?
+  actionType String
+  skillId    String?
+  skill      Skill? @relation(fields: [skillId], references: [id], onDelete: SetNull)
+
+  @@index([enemyId])
+}
+
+/// spec/050: 敵が使用可能なスキル（Skill 共有）
+model EnemySkill {
+  id      String @id @default(cuid())
+  enemyId String
+  enemy   Enemy  @relation(fields: [enemyId], references: [id], onDelete: Cascade)
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([enemyId, skillId])
+  @@index([enemyId])
+}
+
+/// spec/050: 雑魚用敵グループ
+model EnemyGroup {
+  id   String @id @default(cuid())
+  code String @unique
+  entries EnemyGroupEntry[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// spec/050: グループに属する敵種と重み
+model EnemyGroupEntry {
+  id            String @id @default(cuid())
+  enemyGroupId  String
+  enemyGroup    EnemyGroup @relation(fields: [enemyGroupId], references: [id], onDelete: Cascade)
+  enemyId       String
+  enemy         Enemy  @relation(fields: [enemyId], references: [id], onDelete: Cascade)
+  weight        Int    @default(1)
+
+  @@unique([enemyGroupId, enemyId])
+  @@index([enemyGroupId])
 }
 
 /// spec/038: スキル効果（effectType + param）。1スキルに0個以上。
@@ -679,10 +762,19 @@ model ExplorationArea {
   skillCheckRequiredValue Int @default(80) // 技能判定の必要値（MVP: 全ステ共通。docs/020 の基準値は将来拡張）
   normalBattleCount Int      @default(5)  // 雑魚戦の想定回数（中ボス前）
 
-  /// 戦闘用の敵グループコード（実際の敵編成はバトル側マスタ/ロジックで解釈）
-  normalEnemyGroupCode   String?  // 通常戦闘用（必要に応じて配列マスタ側に持たせてもよい）
-  midBossEnemyGroupCode  String?  // 中ボス戦
-  lastBossEnemyGroupCode String?  // 大ボス戦
+  /// spec/050: 通常戦の雑魚グループ（EnemyGroup.code で参照）
+  normalEnemyGroupCode   String?
+  /// spec/050: 体数 1/2/3 の出現率（0-100、合計100）
+  enemyCount1Rate        Int      @default(34)
+  enemyCount2Rate        Int      @default(33)
+  enemyCount3Rate        Int      @default(33)
+  /// spec/050: 中ボス・大ボスはエリアに1体ずつ直接紐づけ（優先）。以下は互換用に残す。
+  midBossEnemyId         String?
+  midBossEnemy           Enemy?   @relation("MidBossEnemy", fields: [midBossEnemyId], references: [id], onDelete: SetNull)
+  lastBossEnemyId        String?
+  lastBossEnemy          Enemy?   @relation("LastBossEnemy", fields: [lastBossEnemyId], references: [id], onDelete: SetNull)
+  midBossEnemyGroupCode  String?  // 非推奨。midBossEnemyId を優先
+  lastBossEnemyGroupCode String?  // 非推奨。lastBossEnemyId を優先
 
   /// 枠由来ごとのドロップテーブル紐づけ（報酬 Phase5）
   baseDropTableId        String?

@@ -229,7 +229,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
     <main className="min-h-screen bg-base p-8">
       <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
       <p className="mt-2 text-text-muted">
-        {battleResult.themeName} / {battleResult.areaName} での戦闘結果です。（現時点ではスライム固定の仮戦闘）
+        {battleResult.themeName} / {battleResult.areaName} での戦闘結果です。
       </p>
 
       <div className="mt-4">

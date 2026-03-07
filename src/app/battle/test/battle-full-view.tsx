@@ -109,6 +109,9 @@ function TurnBlock({
   partyPositions,
   enemyPositions,
   summary,
+  enemyDisplayNames,
+  enemyIconFilenames,
+  defaultEnemyIconFilename,
 }: {
   /** このターン内の全ログ（状態表示は最後のエントリを使用） */
   entries: LogEntry[];
@@ -120,6 +123,9 @@ function TurnBlock({
   /** このターン終了時点の敵の陣地位置 */
   enemyPositions: BattlePosition[];
   summary: RunTestBattleSuccess["summary"];
+  enemyDisplayNames: string[];
+  enemyIconFilenames: (string | null)[];
+  defaultEnemyIconFilename: string;
 }) {
   const entry = entries[entries.length - 1]!;
   const enemyAlive = entry.enemyHpAfter.map((hp) => hp > 0);
@@ -166,16 +172,17 @@ function TurnBlock({
                 row={enemyRow}
                 enemyPositions={enemyPositions}
                 enemyAlive={enemyAlive}
-                enemyIconFilename={TEST_ENEMY_ICON_FILENAME}
+                enemyIconFilenames={enemyIconFilenames}
+                defaultIconFilename={defaultEnemyIconFilename}
               />
             </div>
             <div className="shrink-0 w-28 max-sm:w-20">
               <CompactUnit
-                name={`${TEST_ENEMY_NAME}${enemyIndex + 1}`}
+                name={enemyDisplayNames[enemyIndex] ?? `${TEST_ENEMY_NAME}${enemyIndex + 1}`}
                 hpCurrent={entry.enemyHpAfter[enemyIndex] ?? 0}
-                hpMax={summary.enemyMaxHp ?? 1}
+                hpMax={summary.enemyMaxHp?.[enemyIndex] ?? 1}
                 mpCurrent={entry.enemyMpAfter[enemyIndex] ?? 0}
-                mpMax={summary.enemyMaxMp ?? 1}
+                mpMax={summary.enemyMaxMp?.[enemyIndex] ?? 1}
                 hpColor="bg-red-600"
                 mpColor="bg-blue-600"
               />
@@ -190,6 +197,7 @@ function TurnBlock({
             key={i}
             entry={e}
             partyDisplayNames={summary.partyDisplayNames ?? ["味方"]}
+            enemyDisplayNames={enemyDisplayNames}
           />
         ))}
       </div>
@@ -220,7 +228,7 @@ export function BattleFullView({ data }: BattleFullViewProps) {
       </p>
       <p className="text-sm text-text-muted">
         味方の最終HP: {(data.summary.partyDisplayNames ?? ["味方"]).map((name, i) => `${name}=${data.summary.partyHpFinals?.[i] ?? data.summary.playerHpFinal}`).join(", ")} / 敵の最終HP:{" "}
-        {data.summary.enemyHpFinals.map((hp, i) => `${TEST_ENEMY_NAME}${i + 1}=${hp}`).join(", ")}
+        {data.summary.enemyHpFinals.map((hp, i) => `${(data.enemyDisplayNames ?? [])[i] ?? `${TEST_ENEMY_NAME}${i + 1}`}=${hp}`).join(", ")}
       </p>
 
       <div className="space-y-6">
@@ -234,6 +242,8 @@ export function BattleFullView({ data }: BattleFullViewProps) {
                 ? data.initialPartyPositions
                 : defaultPartyPositions(partyNames.length);
           const resolvedEnemy = lastEntry.enemyPositions ?? data.enemyPositions;
+          const enemyNames = data.enemyDisplayNames ?? [1, 2, 3].map((i) => `${TEST_ENEMY_NAME}${i}`);
+          const enemyIcons = data.enemyIconFilenames ?? [null, null, null];
           return (
             <TurnBlock
               key={`${cycle}-${turn}`}
@@ -244,6 +254,9 @@ export function BattleFullView({ data }: BattleFullViewProps) {
               partyPositions={resolvedParty as BattlePosition[]}
               enemyPositions={resolvedEnemy}
               summary={data.summary}
+              enemyDisplayNames={enemyNames}
+              enemyIconFilenames={enemyIcons}
+              defaultEnemyIconFilename={TEST_ENEMY_ICON_FILENAME}
             />
           );
         })}
