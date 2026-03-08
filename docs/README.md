@@ -97,6 +97,7 @@
 | 022_chat_ui_design.md | チャット UI 設計 |
 | **054_quest_and_research_design.md** | **クエストと研究の設計**（定義・前提・作業分解。ストーリー/研究/一般クエスト・研究ポイント・解放コスト・称号。設計メモ。正式仕様は spec/054_quests で定義済み。） |
 | **055_titles_design.md** | **称号の設計メモ**（称号マスタ・ユーザ解放・説明・解放条件メモ）。→ spec/055_titles。 |
+| **056_how_to_play_guide.md** | **遊び方ガイド（プレイヤー向け）**。文面・構成の正本。実装は `src/app/guide/page.tsx`。 |
 
 → spec/037。クエストは spec/054_quests。称号は spec/055_titles。
 

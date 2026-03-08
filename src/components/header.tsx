@@ -22,6 +22,9 @@ export function Header({ isLoggedIn, activeUserCount }: HeaderProps) {
               いま{activeUserCount}人がプレイ中
             </span>
           )}
+          <Link href="/guide" className="text-text-muted hover:text-brass transition-colors">
+            遊び方
+          </Link>
           {isLoggedIn ? (
             <>
               <Link href="/dashboard" className="text-text-muted hover:text-brass transition-colors">
