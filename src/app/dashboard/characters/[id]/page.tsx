@@ -208,6 +208,7 @@ export default async function CharacterDetailPage({
         {!isMech && (
           <CharacterStatAllocationForm
             characterId={character.id}
+            cap={character.CAP}
             initialValues={{
               STR: character.STR,
               INT: character.INT,

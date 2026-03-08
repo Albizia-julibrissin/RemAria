@@ -6,48 +6,53 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentExpeditionSummary, getExplorationMenu } from "@/server/actions/exploration";
-import { getPartyPresets } from "@/server/actions/tactics";
-import { getInventory } from "@/server/actions/inventory";
-import { isTestUser1 } from "@/server/lib/admin";
+import { getPartyPresetListForExploration } from "@/server/actions/tactics";
+import { getConsumableStacksForExploration } from "@/server/actions/inventory";
+import { TEST_USER_1_EMAIL } from "@/lib/constants/admin";
 import { ExplorationStartClient } from "./exploration-start-client";
 import { ExplorationAbortClient } from "./exploration-abort-client";
 import { GraDisplay } from "@/components/currency/gra-display";
 
 export default async function DashboardPage() {
+  // セッション取得後、ダッシュボード表示に必要なデータだけを並列取得
   const session = await getSession();
-  const showAdminContent = await isTestUser1();
-  let balances: { premiumFree: number; premiumPaid: number } | null = null;
-  if (session?.userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: {
-        premiumCurrencyFreeBalance: true,
-        premiumCurrencyPaidBalance: true,
-      },
-    });
-    if (user) {
-      balances = {
-        premiumFree: user.premiumCurrencyFreeBalance,
-        premiumPaid: user.premiumCurrencyPaidBalance,
-      };
-    }
-  }
 
-  // 探索メニュー（MVP プレビュー用）
-  const explorationMenuResult = await getExplorationMenu();
+  const [
+    userForDashboard,
+    explorationMenuResult,
+    partyPresetListResult,
+    consumableStacksResult,
+    currentExpedition,
+  ] = await Promise.all([
+    session?.userId
+      ? prisma.user.findUnique({
+          where: { id: session.userId },
+          select: {
+            email: true,
+            premiumCurrencyFreeBalance: true,
+            premiumCurrencyPaidBalance: true,
+          },
+        })
+      : Promise.resolve(null),
+    getExplorationMenu(),
+    getPartyPresetListForExploration(),
+    getConsumableStacksForExploration(),
+    getCurrentExpeditionSummary(),
+  ]);
+
+  const balances =
+    userForDashboard != null
+      ? {
+          premiumFree: userForDashboard.premiumCurrencyFreeBalance,
+          premiumPaid: userForDashboard.premiumCurrencyPaidBalance,
+        }
+      : null;
+  const showAdminContent = userForDashboard?.email === TEST_USER_1_EMAIL;
+
   const explorationThemes =
     explorationMenuResult.success === true ? explorationMenuResult.themes : [];
-
-  // パーティプリセット一覧（探索時の編成選択用）
-  const partyPresetResult = await getPartyPresets();
-  const partyPresets = "presets" in partyPresetResult ? partyPresetResult.presets : [];
-
-  // 探索用消耗品候補（category=consumable の所持アイテム）
-  const inventory = await getInventory("consumable");
-  const consumableStacks = inventory?.stackable ?? [];
-
-  // 進行中の探索サマリ（あれば）
-  const currentExpedition = await getCurrentExpeditionSummary();
+  const partyPresets = "presets" in partyPresetListResult ? partyPresetListResult.presets : [];
+  const consumableStacks = consumableStacksResult ?? [];
 
   const subMenuLinks = [
     { href: "/dashboard/characters", label: "宿舎", sub: "キャラクター一覧" },

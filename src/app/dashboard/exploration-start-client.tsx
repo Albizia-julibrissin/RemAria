@@ -24,13 +24,8 @@ type Props = {
     description: string | null;
     areas: { areaId: string; name: string; description: string | null; recommendedLevel: number }[];
   }[];
-  partyPresets: {
-    id: string;
-    name: string | null;
-    slot1?: { displayName: string } | null;
-    slot2?: { displayName: string } | null;
-    slot3?: { displayName: string } | null;
-  }[];
+  /** プリセット一覧（id と name のみ。ダッシュボード用の軽量データ） */
+  partyPresets: { id: string; name: string | null }[];
   consumableStacks: StackableItem[];
 };
 
@@ -63,16 +58,10 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
 
   const presetOptions: PartyPresetOption[] = useMemo(
     () =>
-      partyPresets.map((p) => {
-        const names = [p.slot1?.displayName, p.slot2?.displayName, p.slot3?.displayName]
-          .filter(Boolean)
-          .join(" / ");
-        return {
-          id: p.id,
-          // Null 合体演算子と論理 OR の混在はパースエラーになるため、三項演算子で明示する
-          label: p.name != null && p.name !== "" ? p.name : names || "名称未設定プリセット",
-        };
-      }),
+      partyPresets.map((p) => ({
+        id: p.id,
+        label: p.name != null && p.name !== "" ? p.name : "名称未設定プリセット",
+      })),
     [partyPresets]
   );
 

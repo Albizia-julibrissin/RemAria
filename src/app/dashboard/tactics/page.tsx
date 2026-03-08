@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import {
-  getPartyPresets,
+  getPartyPresetListForTacticsPage,
   getPartyPresetWithCharacters,
   getTacticsForCharacters,
   getCharactersForPartySlots,
@@ -18,9 +18,11 @@ export default async function TacticsRoomPage({
   searchParams: Promise<{ presetId?: string }>;
 }) {
   const { presetId } = await searchParams;
-  const { presets } = await getPartyPresets();
 
+  // プリセット一覧表示時のみ軽量APIで取得（id・name・3スロットの表示名だけ）
   if (!presetId) {
+    const result = await getPartyPresetListForTacticsPage();
+    const presets = "presets" in result ? result.presets : [];
     return (
       <main className="min-h-screen bg-base p-8">
         <h1 className="text-2xl font-bold text-text-primary">作戦室</h1>
@@ -41,9 +43,9 @@ export default async function TacticsRoomPage({
                 >
                   <span className="font-medium">{p.name ?? `プリセット（${p.id.slice(0, 8)}）`}</span>
                   <span className="ml-2 text-sm text-text-muted">
-                    {p.slot1?.displayName ?? "—"}
-                    {p.slot2 ? ` / ${p.slot2.displayName}` : " / —"}
-                    {p.slot3 ? ` / ${p.slot3.displayName}` : " / —"}
+                    {p.slot1DisplayName ?? "—"}
+                    {p.slot2DisplayName != null ? ` / ${p.slot2DisplayName}` : " / —"}
+                    {p.slot3DisplayName != null ? ` / ${p.slot3DisplayName}` : " / —"}
                   </span>
                 </Link>
               </li>
@@ -76,10 +78,17 @@ export default async function TacticsRoomPage({
   }
 
   const characterIds = [preset.slot1!.characterId, preset.slot2?.characterId, preset.slot3?.characterId].filter(Boolean) as string[];
-  const { tactics: initialTactics } = await getTacticsForCharacters(characterIds);
-  const { companions, mechs } = await getCharactersForPartySlots();
-  const battleSkillsByCharacter = await getBattleSkillsForCharacters(characterIds);
-  const { skills: skillCatalog } = await getTacticsSkillCatalogForCharacters(characterIds);
+
+  // 作戦・仲間/メカ一覧・スキル一覧を並列取得
+  const [tacticsResult, { companions, mechs }, battleSkillsByCharacter, catalogResult] = await Promise.all([
+    getTacticsForCharacters(characterIds),
+    getCharactersForPartySlots(),
+    getBattleSkillsForCharacters(characterIds),
+    getTacticsSkillCatalogForCharacters(characterIds),
+  ]);
+
+  const initialTactics = tacticsResult.tactics;
+  const skillCatalog = "skills" in catalogResult ? catalogResult.skills : [];
 
   return (
     <main className="min-h-screen bg-base p-8">

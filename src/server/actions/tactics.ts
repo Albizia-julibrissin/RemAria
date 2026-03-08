@@ -23,7 +23,70 @@ function clampBattleCol(v: number | null | undefined): number {
   return Math.max(1, Math.min(3, v));
 }
 
-/** ログインユーザーのパーティプリセット一覧を取得 */
+/** ダッシュボード・探索開始フォーム用：id と name だけの軽量一覧（編成の中身は取らない） */
+export type PartyPresetListItem = { id: string; name: string | null };
+
+export async function getPartyPresetListForExploration(): Promise<
+  { presets: PartyPresetListItem[] } | { error: "UNAUTHORIZED" }
+> {
+  const session = await getSession();
+  if (!session.userId) return { error: "UNAUTHORIZED" as const };
+
+  const presets = await prisma.partyPreset.findMany({
+    where: { userId: session.userId },
+    select: { id: true, name: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return {
+    presets: presets.map((p) => ({ id: p.id, name: p.name ?? null })),
+  };
+}
+
+/** 作戦室のプリセット一覧用：id・name・3スロットの表示名だけ（編集時は使わない） */
+export type PartyPresetListForTacticsItem = {
+  id: string;
+  name: string | null;
+  slot1DisplayName: string | null;
+  slot2DisplayName: string | null;
+  slot3DisplayName: string | null;
+};
+
+export async function getPartyPresetListForTacticsPage(): Promise<
+  { presets: PartyPresetListForTacticsItem[] } | { error: "UNAUTHORIZED" }
+> {
+  const session = await getSession();
+  if (!session.userId) return { error: "UNAUTHORIZED" as const };
+
+  const presets = await prisma.partyPreset.findMany({
+    where: { userId: session.userId },
+    select: {
+      id: true,
+      name: true,
+      user: { select: { name: true } },
+      slot1Character: { select: { displayName: true, category: true } },
+      slot2Character: { select: { displayName: true } },
+      slot3Character: { select: { displayName: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return {
+    presets: presets.map((p) => ({
+      id: p.id,
+      name: p.name ?? null,
+      slot1DisplayName: p.slot1Character
+        ? p.slot1Character.category === "protagonist"
+          ? p.user.name
+          : p.slot1Character.displayName
+        : null,
+      slot2DisplayName: p.slot2Character?.displayName ?? null,
+      slot3DisplayName: p.slot3Character?.displayName ?? null,
+    })),
+  };
+}
+
+/** ログインユーザーのパーティプリセット一覧を取得（編成3人分の情報付き。作戦室の編集時などで使用） */
 export async function getPartyPresets() {
   const session = await getSession();
   if (!session.userId) return { presets: [] as PartyPresetWithCharacters[], error: "UNAUTHORIZED" as const };

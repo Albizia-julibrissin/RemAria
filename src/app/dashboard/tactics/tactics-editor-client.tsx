@@ -2,7 +2,7 @@
 
 // spec/039: 作戦室 - プリセット編成と3人分の作戦スロット編集
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback, memo, useMemo } from "react";
 import { savePresetWithTactics, type TacticSlotRow, type BattleSkillOption, type TacticsSkillCatalogItem } from "@/server/actions/tactics";
 import {
   SUBJECT_OPTIONS,
@@ -60,11 +60,325 @@ export type TacticsPreset = {
   slot3: SlotCharacter | null;
 };
 
+const MAX_SLOTS = 10;
+
 const BATTLE_COL_OPTIONS = [
   { value: 1, label: "前列" },
   { value: 2, label: "中列" },
   { value: 3, label: "後列" },
 ] as const;
+
+type CharacterTacticsTableProps = {
+  char: SlotCharacter;
+  rows: TacticSlotRow[];
+  draggedRowIndex: number | null;
+  updateSlotRow: (characterId: string, rowIndex: number, field: keyof TacticSlotRow, value: unknown) => void;
+  addSlotRow: (characterId: string) => void;
+  deleteSlotRow: (characterId: string, rowIndex: number) => void;
+  moveSlotRow: (characterId: string, fromIndex: number, toIndex: number) => void;
+  setDraggedSlot: (v: { characterId: string; rowIndex: number } | null) => void;
+  battleSkillsByCharacter: Record<string, BattleSkillOption[]>;
+};
+
+const CharacterTacticsTable = memo(function CharacterTacticsTable({
+  char,
+  rows,
+  draggedRowIndex,
+  updateSlotRow,
+  addSlotRow,
+  deleteSlotRow,
+  moveSlotRow,
+  setDraggedSlot,
+  battleSkillsByCharacter,
+}: CharacterTacticsTableProps) {
+  const skillsByType = useMemo(() => {
+    const list = battleSkillsByCharacter[char.characterId] ?? [];
+    const map = new Map<string, BattleSkillOption[]>();
+    for (const s of list) {
+      const type = s.battleSkillType ?? "other";
+      if (!map.has(type)) map.set(type, []);
+      map.get(type)!.push(s);
+    }
+    return map;
+  }, [battleSkillsByCharacter, char.characterId]);
+
+  return (
+    <div className="rounded-lg border border-base-border bg-base-elevated p-4">
+      <h3 className="text-base font-medium text-text-primary mb-3">{char.displayName} の作戦（優先順・最大{MAX_SLOTS}）</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-text-muted border-b border-base-border">
+              <th className="py-2 pr-2 w-10">#</th>
+              <th className="py-2 pr-2">主語</th>
+              <th className="py-2 pr-2">条件</th>
+              <th className="py-2 pr-2">条件パラメータ</th>
+              <th className="py-2 pr-2">行動</th>
+              <th className="py-2 pr-2 w-28">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const isDragging = draggedRowIndex === i;
+              return (
+                <tr
+                  key={i}
+                  className={`border-b border-base-border/70 cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50 bg-base" : ""}`}
+                  draggable
+                  title="ドラッグで並び替え"
+                  onDragStart={(e) => {
+                    setDraggedSlot({ characterId: char.characterId, rowIndex: i });
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", String(i));
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const fromIndex = Number(e.dataTransfer.getData("text/plain"));
+                    const toIndex = Number((e.currentTarget as HTMLTableRowElement).dataset.rowIndex);
+                    if (!Number.isNaN(fromIndex) && !Number.isNaN(toIndex)) {
+                      moveSlotRow(char.characterId, fromIndex, toIndex);
+                    }
+                    setDraggedSlot(null);
+                  }}
+                  onDragEnd={() => setDraggedSlot(null)}
+                  data-row-index={i}
+                >
+                  <td className="py-1.5 pr-2 text-text-muted align-middle">{i + 1}</td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      value={row.subject}
+                      onChange={(e) => updateSlotRow(char.characterId, i, "subject", e.target.value)}
+                      className="w-full min-w-[120px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                    >
+                      {SUBJECT_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      value={
+                        row.subject === "cycle"
+                          ? CYCLE_CONDITION_VALUES.has(row.conditionKind)
+                            ? row.conditionKind
+                            : "cycle_is_even"
+                          : row.subject === "turn"
+                            ? "turn_order_in_range"
+                            : row.conditionKind
+                      }
+                      onChange={(e) => updateSlotRow(char.characterId, i, "conditionKind", e.target.value)}
+                      className="w-full min-w-[140px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                    >
+                      {row.subject === "cycle" &&
+                        CYCLE_CONDITION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      {row.subject === "turn" &&
+                        TURN_CONDITION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      {row.subject !== "cycle" &&
+                        row.subject !== "turn" &&
+                        CONDITION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                    </select>
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    {row.conditionKind === "always" ||
+                    row.conditionKind === "cycle_is_even" ||
+                    row.conditionKind === "cycle_is_odd" ? (
+                      <span className="text-text-muted">—</span>
+                    ) : row.conditionKind === "cycle_is_multiple_of" ||
+                      row.conditionKind === "cycle_at_least" ||
+                      row.conditionKind === "cycle_equals" ? (
+                      <select
+                        value={
+                          (row.conditionParam as { n?: number } | null)?.n ??
+                          (row.conditionKind === "cycle_equals" ? 1 : 2)
+                        }
+                        onChange={(e) =>
+                          updateSlotRow(char.characterId, i, "conditionParam", {
+                            n: Number(e.target.value),
+                          })
+                        }
+                        className="min-w-[60px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                      >
+                        {CYCLE_N_OPTIONS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    ) : row.conditionKind === "turn_order_in_range" ? (
+                      <span className="flex items-center gap-1 flex-wrap">
+                        <select
+                          value={(row.conditionParam as { turnIndexMin?: number } | null)?.turnIndexMin ?? 1}
+                          onChange={(e) => {
+                            const p = (row.conditionParam as { turnIndexMin?: number; turnIndexMax?: number }) ?? {};
+                            updateSlotRow(char.characterId, i, "conditionParam", {
+                              ...p,
+                              turnIndexMin: Number(e.target.value),
+                            });
+                          }}
+                          className="min-w-[48px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                        >
+                          {TURN_INDEX_OPTIONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-text-muted">～</span>
+                        <select
+                          value={(row.conditionParam as { turnIndexMax?: number } | null)?.turnIndexMax ?? 6}
+                          onChange={(e) => {
+                            const p = (row.conditionParam as { turnIndexMin?: number; turnIndexMax?: number }) ?? {};
+                            updateSlotRow(char.characterId, i, "conditionParam", {
+                              ...p,
+                              turnIndexMax: Number(e.target.value),
+                            });
+                          }}
+                          className="min-w-[48px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                        >
+                          {TURN_INDEX_OPTIONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-text-muted text-xs">番目</span>
+                      </span>
+                    ) : row.conditionKind === "subject_has_attr_state" ? (
+                      <select
+                        value={(row.conditionParam as { attr?: string } | null)?.attr ?? "none"}
+                        onChange={(e) => updateSlotRow(char.characterId, i, "conditionParam", { attr: e.target.value })}
+                        className="min-w-[100px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                      >
+                        {ATTR_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={(row.conditionParam as { percent?: number } | null)?.percent ?? 50}
+                        onChange={(e) => updateSlotRow(char.characterId, i, "conditionParam", { percent: Number(e.target.value) })}
+                        className="min-w-[80px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                      >
+                        {PERCENT_OPTIONS.map((p) => (
+                          <option key={p} value={p}>
+                            {p}%
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <select
+                        value={row.actionType}
+                        onChange={(e) => {
+                          const v = e.target.value as "normal_attack" | "skill";
+                          updateSlotRow(char.characterId, i, "actionType", v);
+                          if (v === "normal_attack") updateSlotRow(char.characterId, i, "skillId", null);
+                        }}
+                        className="min-w-[100px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                      >
+                        {ACTION_TYPES.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {row.actionType === "skill" && (
+                        <select
+                          value={row.skillId ?? ""}
+                          onChange={(e) => updateSlotRow(char.characterId, i, "skillId", e.target.value || null)}
+                          className="min-w-[140px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                        >
+                          <option value="">スキルを選択</option>
+                          {Array.from(skillsByType.entries()).map(([type, list]) => (
+                            <optgroup key={type} label={BATTLE_SKILL_TYPE_LABELS[type] ?? type}>
+                              {list.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-1.5 pr-2 align-middle">
+                    <div className="flex items-center gap-0.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => moveSlotRow(char.characterId, i, i - 1)}
+                        disabled={i === 0}
+                        className="p-1 rounded border border-base-border bg-base text-text-muted hover:border-brass hover:text-brass disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label="上へ"
+                        title="上へ"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveSlotRow(char.characterId, i, i + 1)}
+                        disabled={i === rows.length - 1}
+                        className="p-1 rounded border border-base-border bg-base text-text-muted hover:border-brass hover:text-brass disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label="下へ"
+                        title="下へ"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteSlotRow(char.characterId, i)}
+                        className="p-1 rounded border border-base-border bg-base text-red-600 dark:text-red-400 hover:border-red-500 hover:bg-base-elevated"
+                        aria-label="この行を削除"
+                        title="削除"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length < MAX_SLOTS && (
+              <tr>
+                <td colSpan={6} className="py-2">
+                  <button
+                    type="button"
+                    onClick={() => addSlotRow(char.characterId)}
+                    className="text-sm text-brass hover:text-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base rounded px-2 py-1"
+                  >
+                    + 行を追加
+                  </button>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+});
 
 interface TacticsEditorClientProps {
   preset: TacticsPreset;
@@ -99,16 +413,15 @@ export function TacticsEditorClient({
   const slot1 = preset.slot1!;
   const characters: SlotCharacter[] = [slot1, preset.slot2, preset.slot3].filter(Boolean) as SlotCharacter[];
 
+  /** 初期表示: 保存済みスロットがあればその数（最大10）、なければ1行 */
   const getInitialSlotsFor = (characterId: string): TacticSlotRow[] => {
     const found = initialTactics.find((t) => t.characterId === characterId);
     const existing = found?.slots ?? [];
-    const byOrder = new Map(existing.map((s) => [s.orderIndex, s]));
-    return Array.from({ length: 10 }, (_, i) => {
-      const order = i + 1;
-      const existingSlot = byOrder.get(order);
-      if (existingSlot) return { ...existingSlot, orderIndex: order };
-      return { ...DEFAULT_ROW, orderIndex: order };
-    });
+    if (existing.length === 0) return [{ ...DEFAULT_ROW, orderIndex: 1 }];
+    return existing
+      .slice(0, MAX_SLOTS)
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((s, i) => ({ ...s, orderIndex: i + 1 }));
   };
 
   const [slotsByCharacter, setSlotsByCharacter] = useState<Record<string, TacticSlotRow[]>>(() => {
@@ -134,7 +447,7 @@ export function TacticsEditorClient({
       const characterIds = [slot1.characterId, slot2Id || null, slot3Id || null].filter(Boolean) as string[];
       const tacticsByCharacter = characterIds.map((characterId) => ({
         characterId,
-        slots: buildSlotsFromRows(slotsByCharacter[characterId] ?? getDefaultRows()),
+        slots: buildSlotsFromRows(slotsByCharacter[characterId] ?? []),
       }));
 
       const result = await savePresetWithTactics(preset.id, presetData, tacticsByCharacter);
@@ -147,52 +460,85 @@ export function TacticsEditorClient({
   };
 
   const getDefaultRows = () =>
-    Array.from({ length: 10 }, (_, i) => ({ ...DEFAULT_ROW, orderIndex: i + 1 }));
+    Array.from({ length: MAX_SLOTS }, (_, i) => ({ ...DEFAULT_ROW, orderIndex: i + 1 }));
 
-  const updateSlotRow = (characterId: string, rowIndex: number, field: keyof TacticSlotRow, value: unknown) => {
+  const addSlotRow = useCallback((characterId: string) => {
     setSlotsByCharacter((prev) => {
-      const current = prev[characterId] ?? getDefaultRows();
+      const current = prev[characterId] ?? [];
+      if (current.length >= MAX_SLOTS) return prev;
+      const next = [...current, { ...DEFAULT_ROW, orderIndex: current.length + 1 }];
+      return { ...prev, [characterId]: next };
+    });
+  }, []);
+
+  const deleteSlotRow = useCallback((characterId: string, rowIndex: number) => {
+    setSlotsByCharacter((prev) => {
+      const current = prev[characterId] ?? [];
+      const next = current.filter((_, i) => i !== rowIndex).map((r, i) => ({ ...r, orderIndex: i + 1 }));
+      return { ...prev, [characterId]: next };
+    });
+  }, []);
+
+  const moveSlotRow = useCallback((characterId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setSlotsByCharacter((prev) => {
+      const current = prev[characterId] ?? [];
+      if (fromIndex < 0 || fromIndex >= current.length || toIndex < 0 || toIndex >= current.length) return prev;
+      const next = [...current];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      return { ...prev, [characterId]: next.map((r, i) => ({ ...r, orderIndex: i + 1 })) };
+    });
+  }, []);
+
+  const [draggedSlot, setDraggedSlot] = useState<{ characterId: string; rowIndex: number } | null>(null);
+
+  const updateSlotRow = useCallback((characterId: string, rowIndex: number, field: keyof TacticSlotRow, value: unknown) => {
+    setSlotsByCharacter((prev) => {
+      const current = prev[characterId] ?? [];
       const rows = [...current];
-      const row = { ...rows[rowIndex] };
+      const row = rows[rowIndex];
+      if (!row) return prev;
+      const rowCopy = { ...row };
       if (field === "subject") {
         const sub = value as string;
         if (sub === "cycle") {
-          row.subject = "cycle";
-          row.conditionKind = row.conditionKind && CYCLE_CONDITION_OPTIONS.some((o) => o.value === row.conditionKind) ? row.conditionKind : "cycle_is_even";
-          row.conditionParam =
-            row.conditionKind === "cycle_is_multiple_of"
+          rowCopy.subject = "cycle";
+          rowCopy.conditionKind = rowCopy.conditionKind && CYCLE_CONDITION_OPTIONS.some((o) => o.value === rowCopy.conditionKind) ? rowCopy.conditionKind : "cycle_is_even";
+          rowCopy.conditionParam =
+            rowCopy.conditionKind === "cycle_is_multiple_of"
               ? { n: 2 }
-              : row.conditionKind === "cycle_at_least" || row.conditionKind === "cycle_equals"
+              : rowCopy.conditionKind === "cycle_at_least" || rowCopy.conditionKind === "cycle_equals"
                 ? { n: 1 }
                 : null;
         } else if (sub === "turn") {
-          row.subject = "turn";
-          row.conditionKind = "turn_order_in_range";
-          row.conditionParam = { turnIndexMin: 1, turnIndexMax: 2 };
+          rowCopy.subject = "turn";
+          rowCopy.conditionKind = "turn_order_in_range";
+          rowCopy.conditionParam = { turnIndexMin: 1, turnIndexMax: 2 };
         } else {
-          row.subject = sub;
-          if (!CONDITION_OPTIONS.some((o) => o.value === row.conditionKind)) {
-            row.conditionKind = "always";
-            row.conditionParam = null;
+          rowCopy.subject = sub;
+          if (!CONDITION_OPTIONS.some((o) => o.value === rowCopy.conditionKind)) {
+            rowCopy.conditionKind = "always";
+            rowCopy.conditionParam = null;
           }
         }
       } else if (field === "conditionKind") {
         const kind = value as string;
-        row.conditionKind = kind;
-        if (kind === "always") row.conditionParam = null;
-        else if (kind === "subject_has_attr_state") row.conditionParam = { attr: "none" };
-        else if (kind === "cycle_is_even" || kind === "cycle_is_odd") row.conditionParam = null;
-        else if (kind === "cycle_is_multiple_of") row.conditionParam = { n: 2 };
-        else if (kind === "cycle_at_least" || kind === "cycle_equals") row.conditionParam = { n: 1 };
-        else if (kind === "turn_order_in_range") row.conditionParam = { turnIndexMin: 1, turnIndexMax: 6 };
-        else row.conditionParam = { percent: 50 };
+        rowCopy.conditionKind = kind;
+        if (kind === "always") rowCopy.conditionParam = null;
+        else if (kind === "subject_has_attr_state") rowCopy.conditionParam = { attr: "none" };
+        else if (kind === "cycle_is_even" || kind === "cycle_is_odd") rowCopy.conditionParam = null;
+        else if (kind === "cycle_is_multiple_of") rowCopy.conditionParam = { n: 2 };
+        else if (kind === "cycle_at_least" || kind === "cycle_equals") rowCopy.conditionParam = { n: 1 };
+        else if (kind === "turn_order_in_range") rowCopy.conditionParam = { turnIndexMin: 1, turnIndexMax: 6 };
+        else rowCopy.conditionParam = { percent: 50 };
       } else {
-        (row as Record<string, unknown>)[field] = value;
+        (rowCopy as Record<string, unknown>)[field] = value;
       }
-      rows[rowIndex] = row;
+      rows[rowIndex] = rowCopy;
       return { ...prev, [characterId]: rows };
     });
-  };
+  }, []);
 
   const getSkillsByTypeFor = (characterId: string) => {
     const list = battleSkillsByCharacter[characterId] ?? [];
@@ -204,6 +550,9 @@ export function TacticsEditorClient({
     }
     return map;
   };
+
+  /** 未設定キャラ用の安定した rows 参照（メモ化のため） */
+  const defaultRowsStable = useMemo(() => getDefaultRows(), []);
 
   return (
     <div className="space-y-6">
@@ -385,213 +734,20 @@ export function TacticsEditorClient({
           : null,
       ]
         .filter((c): c is SlotCharacter => c != null && !!c.characterId)
-        .map((char) => {
-          const rows = slotsByCharacter[char.characterId] ?? getDefaultRows();
-          return (
-            <div key={char.characterId} className="rounded-lg border border-base-border bg-base-elevated p-4">
-              <h3 className="text-base font-medium text-text-primary mb-3">{char.displayName} の作戦（優先順）</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-text-muted border-b border-base-border">
-                      <th className="py-2 pr-2 w-10">#</th>
-                      <th className="py-2 pr-2">主語</th>
-                      <th className="py-2 pr-2">条件</th>
-                      <th className="py-2 pr-2">条件パラメータ</th>
-                      <th className="py-2 pr-2">行動</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: 10 }, (_, i) => {
-                      const row = rows[i] ?? { ...DEFAULT_ROW, orderIndex: i + 1 };
-                      return (
-                        <tr key={i} className="border-b border-base-border/70">
-                          <td className="py-1.5 pr-2 text-text-muted">{i + 1}</td>
-                          <td className="py-1.5 pr-2">
-                            <select
-                              value={row.subject}
-                              onChange={(e) => updateSlotRow(char.characterId, i, "subject", e.target.value)}
-                              className="w-full min-w-[120px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                            >
-                              {SUBJECT_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="py-1.5 pr-2">
-                            <select
-                              value={
-                                row.subject === "cycle"
-                                  ? CYCLE_CONDITION_VALUES.has(row.conditionKind)
-                                    ? row.conditionKind
-                                    : "cycle_is_even"
-                                  : row.subject === "turn"
-                                    ? "turn_order_in_range"
-                                    : row.conditionKind
-                              }
-                              onChange={(e) => updateSlotRow(char.characterId, i, "conditionKind", e.target.value)}
-                              className="w-full min-w-[140px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                            >
-                              {row.subject === "cycle" &&
-                                CYCLE_CONDITION_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              {row.subject === "turn" &&
-                                TURN_CONDITION_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              {row.subject !== "cycle" &&
-                                row.subject !== "turn" &&
-                                CONDITION_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                            </select>
-                          </td>
-                          <td className="py-1.5 pr-2">
-                            {row.conditionKind === "always" ||
-                            row.conditionKind === "cycle_is_even" ||
-                            row.conditionKind === "cycle_is_odd" ? (
-                              <span className="text-text-muted">—</span>
-                            ) : row.conditionKind === "cycle_is_multiple_of" ||
-                              row.conditionKind === "cycle_at_least" ||
-                              row.conditionKind === "cycle_equals" ? (
-                              <select
-                                value={
-                                  (row.conditionParam as { n?: number } | null)?.n ??
-                                  (row.conditionKind === "cycle_equals" ? 1 : 2)
-                                }
-                                onChange={(e) =>
-                                  updateSlotRow(char.characterId, i, "conditionParam", {
-                                    n: Number(e.target.value),
-                                  })
-                                }
-                                className="min-w-[60px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                              >
-                                {CYCLE_N_OPTIONS.map((n) => (
-                                  <option key={n} value={n}>
-                                    {n}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : row.conditionKind === "turn_order_in_range" ? (
-                              <span className="flex items-center gap-1 flex-wrap">
-                                <select
-                                  value={(row.conditionParam as { turnIndexMin?: number } | null)?.turnIndexMin ?? 1}
-                                  onChange={(e) => {
-                                    const p = (row.conditionParam as { turnIndexMin?: number; turnIndexMax?: number }) ?? {};
-                                    updateSlotRow(char.characterId, i, "conditionParam", {
-                                      ...p,
-                                      turnIndexMin: Number(e.target.value),
-                                    });
-                                  }}
-                                  className="min-w-[48px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                                >
-                                  {TURN_INDEX_OPTIONS.map((n) => (
-                                    <option key={n} value={n}>
-                                      {n}
-                                    </option>
-                                  ))}
-                                </select>
-                                <span className="text-text-muted">～</span>
-                                <select
-                                  value={(row.conditionParam as { turnIndexMax?: number } | null)?.turnIndexMax ?? 6}
-                                  onChange={(e) => {
-                                    const p = (row.conditionParam as { turnIndexMin?: number; turnIndexMax?: number }) ?? {};
-                                    updateSlotRow(char.characterId, i, "conditionParam", {
-                                      ...p,
-                                      turnIndexMax: Number(e.target.value),
-                                    });
-                                  }}
-                                  className="min-w-[48px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                                >
-                                  {TURN_INDEX_OPTIONS.map((n) => (
-                                    <option key={n} value={n}>
-                                      {n}
-                                    </option>
-                                  ))}
-                                </select>
-                                <span className="text-text-muted text-xs">番目</span>
-                              </span>
-                            ) : row.conditionKind === "subject_has_attr_state" ? (
-                              <select
-                                value={(row.conditionParam as { attr?: string } | null)?.attr ?? "none"}
-                                onChange={(e) => updateSlotRow(char.characterId, i, "conditionParam", { attr: e.target.value })}
-                                className="min-w-[100px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                              >
-                                {ATTR_OPTIONS.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <select
-                                value={(row.conditionParam as { percent?: number } | null)?.percent ?? 50}
-                                onChange={(e) => updateSlotRow(char.characterId, i, "conditionParam", { percent: Number(e.target.value) })}
-                                className="min-w-[80px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                              >
-                                {PERCENT_OPTIONS.map((p) => (
-                                  <option key={p} value={p}>
-                                    {p}%
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                          </td>
-                          <td className="py-1.5 pr-2">
-                            <div className="flex flex-wrap gap-1 items-center">
-                              <select
-                                value={row.actionType}
-                                onChange={(e) => {
-                                  const v = e.target.value as "normal_attack" | "skill";
-                                  updateSlotRow(char.characterId, i, "actionType", v);
-                                  if (v === "normal_attack") updateSlotRow(char.characterId, i, "skillId", null);
-                                }}
-                                className="min-w-[100px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                              >
-                                {ACTION_TYPES.map((o) => (
-                                  <option key={o.value} value={o.value}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {row.actionType === "skill" && (
-                                <select
-                                  value={row.skillId ?? ""}
-                                  onChange={(e) => updateSlotRow(char.characterId, i, "skillId", e.target.value || null)}
-                                  className="min-w-[140px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
-                                >
-                                  <option value="">スキルを選択</option>
-                                  {Array.from(getSkillsByTypeFor(char.characterId).entries()).map(([type, list]) => (
-                                    <optgroup key={type} label={BATTLE_SKILL_TYPE_LABELS[type] ?? type}>
-                                      {list.map((s) => (
-                                        <option key={s.id} value={s.id}>
-                                          {s.name}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          );
-        })}
+        .map((char) => (
+          <CharacterTacticsTable
+            key={char.characterId}
+            char={char}
+            rows={slotsByCharacter[char.characterId] ?? defaultRowsStable}
+            draggedRowIndex={draggedSlot?.characterId === char.characterId ? draggedSlot.rowIndex : null}
+            updateSlotRow={updateSlotRow}
+            addSlotRow={addSlotRow}
+            deleteSlotRow={deleteSlotRow}
+            moveSlotRow={moveSlotRow}
+            setDraggedSlot={setDraggedSlot}
+            battleSkillsByCharacter={battleSkillsByCharacter}
+          />
+        ))}
 
       {error && (
         <p className="text-error text-sm" role="alert">

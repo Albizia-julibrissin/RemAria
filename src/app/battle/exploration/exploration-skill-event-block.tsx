@@ -7,8 +7,8 @@
  */
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { AllyGridRow } from "../practice/battle-grid-view";
+import { ExplorationNextButton } from "./exploration-next-button";
 import { resolveExplorationSkillEvent } from "@/server/actions/exploration";
 import type { CarriedConsumableChoice, ExplorationPartyMemberChoice } from "@/server/actions/exploration";
 import { ExplorationConsumableUseClient } from "./exploration-consumable-use-client";
@@ -186,12 +186,10 @@ export function ExplorationSkillEventBlock({
               {resolved.logLine}
             </p>
             <div className="pt-2 flex flex-wrap items-center gap-3">
-              <Link
+              <ExplorationNextButton
                 href="/battle/exploration?step=next"
-                className="inline-block px-4 py-2 rounded border border-base-border bg-base-elevated text-text-primary text-sm hover:bg-base-border/50 hover:no-underline"
-              >
-                次へ →
-              </Link>
+                className="inline-flex items-center justify-center rounded border border-base-border bg-base-elevated px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50 disabled:opacity-50 disabled:pointer-events-none"
+              />
             </div>
           </>
         ) : (

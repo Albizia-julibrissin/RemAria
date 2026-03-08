@@ -43,6 +43,36 @@ export type GetInventoryResult = {
 };
 
 /**
+ * 探索開始フォーム用：消耗品のスタック一覧のみ取得（装備・メカパーツは取得しない）。
+ * ダッシュボード表示の軽量化用。
+ */
+export async function getConsumableStacksForExploration(): Promise<StackableItem[] | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const rows = await prisma.userInventory.findMany({
+    where: {
+      userId: session.userId,
+      item: { category: "consumable" },
+      quantity: { gt: 0 },
+    },
+    include: {
+      item: { select: { code: true, name: true, category: true, maxCarryPerExpedition: true } },
+    },
+    orderBy: { item: { code: "asc" } },
+  });
+
+  return rows.map((row) => ({
+    itemId: row.itemId,
+    code: row.item.code,
+    name: row.item.name,
+    category: row.item.category,
+    quantity: row.quantity,
+    maxCarryPerExpedition: row.item.maxCarryPerExpedition ?? null,
+  }));
+}
+
+/**
  * ユーザーの所持一覧を種別ごとに取得。バッグ画面のタブ表示用。spec/045。
  * category を指定した場合はスタック型のみその category に絞る（オプション）。
  */

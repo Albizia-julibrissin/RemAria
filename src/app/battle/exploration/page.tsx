@@ -15,6 +15,7 @@ import { BattleFullView } from "../practice/battle-full-view";
 import { ExplorationFinishClient } from "../exploration-finish-client";
 import { ExplorationSkillEventBlock } from "./exploration-skill-event-block";
 import { ExplorationAfterBattleStatusClient } from "./exploration-after-battle-status-client";
+import { ExplorationNextButton } from "./exploration-next-button";
 
 type PageProps = { searchParams?: Promise<{ step?: string }> };
 
@@ -106,12 +107,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
           />
         </div>
         <p className="mt-6 flex gap-4">
-          <Link
-            href="/battle/exploration?step=next"
-            className="inline-flex items-center justify-center rounded-md bg-brass px-4 py-2 text-sm font-medium text-brass-inverse hover:bg-brass-hover"
-          >
-            次へ
-          </Link>
+          <ExplorationNextButton href="/battle/exploration?step=next" />
           <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover self-center">
             ← ダッシュボードへ
           </Link>
@@ -435,12 +431,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
               </div>
             ) : (
               <p className="mt-4">
-                <Link
-                  href="/battle/exploration?step=next"
-                  className="inline-flex items-center justify-center rounded-md bg-brass px-4 py-2 text-sm font-medium text-brass-inverse hover:bg-brass-hover"
-                >
-                  次へ
-                </Link>
+                <ExplorationNextButton href="/battle/exploration?step=next" />
               </p>
             )}
           </>
