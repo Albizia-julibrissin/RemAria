@@ -7,7 +7,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
+import { execSync, type ExecSyncOptions } from "child_process";
 
 function loadEnv(): void {
   const envPath = path.join(__dirname, "..", ".env");
@@ -48,12 +48,10 @@ function main(): void {
     .slice(0, 15);
   const outFile = path.join(backupsDir, `remaria_${timestamp}.dump`);
 
-  // 1) ホストの pg_dump を試す
+  // 1) ホストの pg_dump を試す（Node 型で shell が string のみの overload があるため unknown 経由でアサーション）
+  const execOptsPipe = { stdio: "pipe" as const, shell: true } as unknown as ExecSyncOptions;
   try {
-    execSync(`pg_dump "${url}" -Fc -f "${outFile}"`, {
-      stdio: "pipe",
-      shell: true,
-    });
+    execSync(`pg_dump "${url}" -Fc -f "${outFile}"`, execOptsPipe);
     console.log(`Backup written: ${outFile}`);
     return;
   } catch {
@@ -68,11 +66,12 @@ function main(): void {
   }
   const { user, db } = parsed;
   const rootDir = path.join(__dirname, "..");
+  const execOptsInherit = { stdio: "inherit" as const, shell: true } as unknown as ExecSyncOptions;
   const runInDocker = (composeCmd: string): boolean => {
     try {
       execSync(
         `${composeCmd} -T db pg_dump -U ${user} -Fc ${db} > "${outFile}"`,
-        { stdio: "inherit", shell: true, cwd: rootDir }
+        { ...execOptsInherit, cwd: rootDir }
       );
       return true;
     } catch {
@@ -87,16 +86,10 @@ function main(): void {
   try {
     execSync(
       `docker exec remaria-db pg_dump -U ${user} -Fc ${db} -f /tmp/remaria_backup.dump`,
-      { stdio: "inherit", shell: true }
+      execOptsInherit
     );
-    execSync(`docker cp remaria-db:/tmp/remaria_backup.dump "${outFile}"`, {
-      stdio: "inherit",
-      shell: true,
-    });
-    execSync("docker exec remaria-db rm /tmp/remaria_backup.dump", {
-      stdio: "pipe",
-      shell: true,
-    });
+    execSync(`docker cp remaria-db:/tmp/remaria_backup.dump "${outFile}"`, execOptsInherit);
+    execSync("docker exec remaria-db rm /tmp/remaria_backup.dump", execOptsPipe);
     console.log(`Backup written: ${outFile}`);
   } catch (e) {
     console.error(

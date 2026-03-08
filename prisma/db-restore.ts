@@ -12,7 +12,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
+import { execSync, type ExecSyncOptions } from "child_process";
 
 function loadEnv(): void {
   const envPath = path.join(__dirname, "..", ".env");
@@ -78,28 +78,24 @@ function main(): void {
 
   const { dumpPath, targetUrl } = parseArgs();
   const restoreUrl = targetUrl ?? defaultUrl;
+  const execOptsInherit = { stdio: "inherit" as const, shell: true } as unknown as ExecSyncOptions;
 
   if (targetUrl) {
     console.log("別 DB に復元します（現在の DB は触りません）:", restoreUrl.replace(/:[^:@]+@/, ":****@"));
   } else {
     try {
       console.log("Dropping existing schema...");
-      execSync(`psql "${defaultUrl}" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`, {
-        stdio: "inherit",
-        shell: true,
-      });
+      execSync(`psql "${defaultUrl}" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`, execOptsInherit);
     } catch (e) {
       console.error("psql での DROP に失敗しました。DB が存在するか、接続情報を確認してください。");
       process.exit(1);
     }
   }
 
+  const execOptsPipe = { stdio: "pipe" as const, shell: true } as unknown as ExecSyncOptions;
   const runRestore = (): boolean => {
     try {
-      execSync(`pg_restore -d "${restoreUrl}" --no-owner --no-privileges "${dumpPath}"`, {
-        stdio: "pipe",
-        shell: true,
-      });
+      execSync(`pg_restore -d "${restoreUrl}" --no-owner --no-privileges "${dumpPath}"`, execOptsPipe);
       return true;
     } catch {
       return false;
@@ -119,12 +115,12 @@ function main(): void {
     const user = u.username || "remaria";
     const dumpBasename = path.basename(dumpPath);
     const containerPath = `/tmp/${dumpBasename}`;
-    execSync(`docker cp "${dumpPath}" remaria-db:${containerPath}`, { stdio: "inherit", shell: true });
+    execSync(`docker cp "${dumpPath}" remaria-db:${containerPath}`, execOptsInherit);
     execSync(
       `docker exec remaria-db pg_restore -U ${user} -d ${dbName} --no-owner --no-privileges ${containerPath}`,
-      { stdio: "inherit", shell: true }
+      execOptsInherit
     );
-    execSync(`docker exec remaria-db rm ${containerPath}`, { stdio: "pipe", shell: true });
+    execSync(`docker exec remaria-db rm ${containerPath}`, execOptsPipe);
     console.log("Restore completed (via Docker).");
   } catch (e) {
     console.error(
