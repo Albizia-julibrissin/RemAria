@@ -85,7 +85,8 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
 
   if (!isLoggedIn) return null;
 
-  const displayMessages = [...messages].reverse();
+  // サーバーは createdAt 降順（最新が先頭）で返しているのでそのまま表示＝上が最新
+  const displayMessages = messages;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-0">
