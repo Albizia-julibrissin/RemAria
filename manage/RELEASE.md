@@ -45,7 +45,7 @@
 
 ## 3. リリース実行（手順の例）
 
-※ 実際のデプロイ先に合わせて書き換える。**デプロイ先の候補・比較は [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md) を参照。**
+※ 実際のデプロイ先に合わせて書き換える。**Railway で出す場合は [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) に手順あり。** 候補の比較は [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md)。
 
 1. **ブランチ・タグ**
    - リリース用ブランチを切る or `main` からタグを打つ（例: `v0.1.0`）。  

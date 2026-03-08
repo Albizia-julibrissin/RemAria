@@ -271,6 +271,48 @@ export type AdminItemRow = {
 };
 
 /**
+ * 登録済みユーザ一覧（管理用）。テストユーザー1のみ。
+ */
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  accountId: string;
+  name: string;
+  accountStatus: string;
+  createdAt: Date;
+  lastLoginAt: Date | null;
+  hasProtagonist: boolean;
+};
+
+export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.user.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      email: true,
+      accountId: true,
+      name: true,
+      accountStatus: true,
+      createdAt: true,
+      lastLoginAt: true,
+      protagonistCharacterId: true,
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    email: r.email,
+    accountId: r.accountId,
+    name: r.name,
+    accountStatus: r.accountStatus,
+    createdAt: r.createdAt,
+    lastLoginAt: r.lastLoginAt,
+    hasProtagonist: r.protagonistCharacterId != null,
+  }));
+}
+
+/**
  * アイテム一覧（管理用）。テストユーザー1のみ。
  */
 export async function getAdminItemList(): Promise<AdminItemRow[] | null> {

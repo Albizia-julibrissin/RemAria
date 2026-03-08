@@ -50,6 +50,12 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
       { href: "/battle/practice", label: "仮戦闘" },
     ],
   },
+  {
+    title: "運用",
+    links: [
+      { href: "/dashboard/admin/users", label: "登録済みユーザ一覧" },
+    ],
+  },
 ];
 
 export default async function AdminContentPage() {

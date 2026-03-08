@@ -12,6 +12,8 @@
 | [ECONOMY_DESIGN.md](./ECONOMY_DESIGN.md) | **経済設計メモ**。課金通貨の統一方針（無償/有償のみ・表示1単位・無償から消費）、円→通貨の価格表、初期・ストーリー・デイリー付与。 |
 | [RELEASE.md](./RELEASE.md) | **リリース相談用**。リリースの種類・前チェックリスト・実行手順の例・ロールバック・相談メモ。本番に出すときの参照・更新用。 |
 | [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md) | **デプロイ先の検討**。Railway 一式 vs Vercel+Neon/Supabase の比較・料金の目安・RemAria 向けのおすすめ。決まったら RELEASE の手順を具体化する。 |
+| [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) | **Railway でデプロイする手順**。初回（プロジェクト作成・PostgreSQL・Web サービス・環境変数・マイグレーション・シード）と 2 回目以降の流れ。 |
+| [GITHUB_BASICS.md](./GITHUB_BASICS.md) | **GitHub を初めて使う人向け**。リポジトリの作り方・ローカルから push する手順（RemAria を GitHub に上げて Railway と連携するまで）。 |
 | [admin_master_edit_overview.md](./admin_master_edit_overview.md) | **管理者用** マスタ編集の全体像。編集済みマスタ一覧と編集候補（敵・探索エリア・スキル・クエスト・研究等）を優先度付きで整理。振り返り・次にどれを実装するかの参照用。 |
 | [admin_area_drop_edit.md](./admin_area_drop_edit.md) | **管理者用** エリア別ドロップ編集。探索エリアごとのドロップテーブル（基本／戦闘／技能／強敵／領域主）の編集手順・API・データ構造・強敵枠の追加方法。spec/049 の 7.2 と対応。 |
 | [admin_enemy_group_edit.md](./admin_enemy_group_edit.md) | **管理者用** 敵グループ編集。EnemyGroup の code・メンバー（敵・重み）。通常戦雑魚用。spec/050。 |
