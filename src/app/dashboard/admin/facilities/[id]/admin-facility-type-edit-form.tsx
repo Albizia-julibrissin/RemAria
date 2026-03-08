@@ -11,6 +11,7 @@ import {
   updateAdminFacilityType,
   deleteAdminFacilityType,
   updateAdminFacilityConstructionInputs,
+  createAdminFacilityVariantBase,
 } from "@/server/actions/admin";
 
 const KIND_OPTIONS: { value: string; label: string }[] = [
@@ -51,6 +52,23 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
     return init;
   });
   const [constructionSaving, setConstructionSaving] = useState<string | null>(null);
+  const [addingBase, setAddingBase] = useState(false);
+
+  const handleAddBaseVariant = () => {
+    setAddingBase(true);
+    createAdminFacilityVariantBase(facility.id).then((result) => {
+      setAddingBase(false);
+      setMessage(
+        result.success
+          ? { type: "ok", text: "基本型を追加しました。建設材料を設定してください。" }
+          : { type: "error", text: result.error ?? "追加に失敗しました。" }
+      );
+      if (result.success) {
+        setConstructionByVariant((prev) => ({ ...prev, base: [] }));
+        router.refresh();
+      }
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +225,22 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
       </form>
 
       {/* 建設材料（型ごと） */}
+      {facility.variants.length === 0 && (
+        <section className="border-t border-base-border pt-8">
+          <h2 className="text-lg font-medium text-text-primary">建設材料（型ごと）</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            この設備には型が登録されていません。工業エリアで建設するには「基本型」が必要です。
+          </p>
+          <button
+            type="button"
+            disabled={addingBase}
+            onClick={handleAddBaseVariant}
+            className="mt-3 rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+          >
+            {addingBase ? "追加中…" : "基本型を追加"}
+          </button>
+        </section>
+      )}
       {facility.variants.length > 0 && (
         <section className="border-t border-base-border pt-8">
           <h2 className="text-lg font-medium text-text-primary">建設材料（型ごと）</h2>

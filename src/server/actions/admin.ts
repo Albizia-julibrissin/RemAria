@@ -1608,14 +1608,25 @@ export async function createAdminFacilityType(
   });
   if (existing) return { success: false, error: "この name は既に使用されています。" };
 
-  const created = await prisma.facilityType.create({
-    data: {
-      name,
-      kind: input.kind,
-      description: input.description?.trim() || null,
-      cost,
-    },
-    select: { id: true },
+  const created = await prisma.$transaction(async (tx) => {
+    const ft = await tx.facilityType.create({
+      data: {
+        name,
+        kind: input.kind,
+        description: input.description?.trim() || null,
+        cost,
+      },
+      select: { id: true },
+    });
+    // spec/047: 建設は型（FacilityVariant）単位。必ず基本型 "base" を作成する。
+    await tx.facilityVariant.create({
+      data: {
+        facilityTypeId: ft.id,
+        variantCode: "base",
+        name: "基本型",
+      },
+    });
+    return ft;
   });
   return { success: true, facilityTypeId: created.id };
 }
@@ -1782,6 +1793,35 @@ export async function updateAdminFacilityConstructionInputs(
         })),
       });
     }
+  });
+  return { success: true };
+}
+
+/** 設備種別に基本型（variantCode=base）が無い場合に作成する。既に base がある場合はエラー。 */
+export async function createAdminFacilityVariantBase(
+  facilityTypeId: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const ft = await prisma.facilityType.findUnique({
+    where: { id: facilityTypeId },
+    select: { id: true },
+  });
+  if (!ft) return { success: false, error: "設備種別が見つかりません。" };
+
+  const existing = await prisma.facilityVariant.findUnique({
+    where: { facilityTypeId_variantCode: { facilityTypeId, variantCode: "base" } },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "基本型は既に存在します。" };
+
+  await prisma.facilityVariant.create({
+    data: {
+      facilityTypeId,
+      variantCode: "base",
+      name: "基本型",
+    },
   });
   return { success: true };
 }
