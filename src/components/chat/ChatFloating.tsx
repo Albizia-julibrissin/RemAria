@@ -107,28 +107,9 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto bg-base">
-            {loading && messages.length === 0 ? (
-              <p className="p-3 text-sm text-text-muted">読み込み中…</p>
-            ) : displayMessages.length === 0 ? (
-              <p className="p-3 text-sm text-text-muted">まだメッセージはありません。</p>
-            ) : (
-              <ul className="p-3 space-y-2 font-sans text-text-primary text-sm">
-                {displayMessages.map((m) => (
-                  <li key={m.id} className="break-words">
-                    <span className="text-text-muted text-xs mr-2">
-                      {formatTime(m.createdAt)} {m.senderName}
-                    </span>
-                    <span>{m.body}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
           <form
             onSubmit={handleSubmit}
-            className="flex gap-2 border-t border-base-border bg-base-elevated p-2"
+            className="flex gap-2 border-b border-base-border bg-base-elevated p-2"
           >
             <input
               type="text"
@@ -150,10 +131,29 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
           </form>
 
           {sendError && (
-            <p className="px-3 py-1 text-xs text-error border-t border-base-border">
+            <p className="px-3 py-1 text-xs text-error border-b border-base-border bg-base-elevated">
               {sendError}
             </p>
           )}
+
+          <div className="flex-1 min-h-0 overflow-y-auto bg-base">
+            {loading && messages.length === 0 ? (
+              <p className="p-3 text-sm text-text-muted">読み込み中…</p>
+            ) : displayMessages.length === 0 ? (
+              <p className="p-3 text-sm text-text-muted">まだメッセージはありません。</p>
+            ) : (
+              <ul className="p-3 space-y-2 font-sans text-text-primary text-sm">
+                {displayMessages.map((m) => (
+                  <li key={m.id} className="break-words">
+                    <span className="text-text-muted text-xs mr-2">
+                      {formatTime(m.createdAt)} {m.senderName}
+                    </span>
+                    <span>{m.body}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 
