@@ -16,7 +16,8 @@
     "db:seed": "prisma db seed",
     "db:seed:test": "cross-env SEED_TEST=1 prisma db seed",
     "db:backup": "tsx prisma/db-backup.ts",
-    "db:restore": "tsx prisma/db-restore.ts"
+    "db:restore": "tsx prisma/db-restore.ts",
+    "db:migrate:bump-industrial": "tsx prisma/migrate-bump-user-industrial.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

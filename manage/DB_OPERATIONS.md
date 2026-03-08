@@ -63,7 +63,22 @@
 
 ---
 
-## 6. 参照リンク
+## 6. 一度きりのデータ移行（本番など）
+
+全ユーザーに「工業コスト上限 +200」「設備設置数 +4」を一括で反映するスクリプト。
+
+| コマンド | 用途 |
+|----------|------|
+| `npm run db:migrate:bump-industrial` | 全ユーザーの `industrialMaxCost` を +200、`industrialMaxSlots` を +4 する。 |
+
+- **実行前に**: `.env` の `DATABASE_URL` が対象環境（本番など）を指していることを確認する。
+- 本番で実行する場合: ローカルで本番の DATABASE_URL を一時的に設定してから実行するか、デプロイ先で実行する。
+- **注意**: 複数回実行するとその都度 +200 / +4 が加算される。一度だけ実行すること。
+- スクリプト本体: `prisma/migrate-bump-user-industrial.ts`
+
+---
+
+## 7. 参照リンク
 
 | 内容 | 参照先 |
 |------|--------|
@@ -71,3 +86,4 @@
 | バックアップ・復元の詳細 | [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) |
 | マスタ編集の全体像 | [admin_master_edit_overview.md](./admin_master_edit_overview.md) |
 | リリース・本番デプロイ | [RELEASE.md](./RELEASE.md), [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md) |
+| Railway デプロイ | [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) |
