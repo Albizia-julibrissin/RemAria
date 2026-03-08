@@ -79,6 +79,30 @@ export default async function AdminContentPage() {
         >
           敵マスタ編集
         </Link>
+        <Link
+          href="/dashboard/admin/enemy-groups"
+          className="text-sm text-text-muted hover:text-brass"
+        >
+          敵グループ編集
+        </Link>
+        <Link
+          href="/dashboard/admin/exploration-themes"
+          className="text-sm text-text-muted hover:text-brass"
+        >
+          探索テーマ・エリア編集
+        </Link>
+        <Link
+          href="/dashboard/admin/skills"
+          className="text-sm text-text-muted hover:text-brass"
+        >
+          スキル編集
+        </Link>
+        <Link
+          href="/dashboard/admin/research-groups"
+          className="text-sm text-text-muted hover:text-brass"
+        >
+          研究グループ編集
+        </Link>
       </div>
       <h1 className="text-2xl font-bold text-text-primary">コンテンツ管理</h1>
       <p className="mt-2 text-sm text-text-muted">
@@ -128,6 +152,14 @@ export default async function AdminContentPage() {
           スキル（Skill）
         </h2>
         <p className="mt-1 text-xs text-text-muted">name / category / battleSkillType</p>
+        <p className="mt-1">
+          <Link
+            href="/dashboard/admin/skills"
+            className="text-sm text-brass hover:text-brass-hover"
+          >
+            スキル編集
+          </Link>
+        </p>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[400px] text-sm border-collapse border border-base-border">
             <thead>
@@ -315,6 +347,14 @@ export default async function AdminContentPage() {
           探索テーマ・エリア（ExplorationTheme / Area）
         </h2>
         <p className="mt-1 text-xs text-text-muted">テーマ名 → エリア code / name</p>
+        <p className="mt-1">
+          <Link
+            href="/dashboard/admin/exploration-themes"
+            className="text-sm text-brass hover:text-brass-hover"
+          >
+            探索テーマ・エリア編集
+          </Link>
+        </p>
         <ul className="mt-2 space-y-4">
           {data.explorationThemes.map((theme) => (
             <li key={theme.id} className="rounded border border-base-border bg-base-elevated p-3">

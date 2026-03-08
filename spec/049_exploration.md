@@ -415,8 +415,8 @@
 | 項目 | 状態 | 備考 |
 |------|------|------|
 | 規定の通常戦闘後の「強敵へ挑む」表示・強敵戦 1 回実行 | ✅ | getNextExplorationStep で strong_enemy_challenge 返却。戦闘ログ直下に「強敵へ挑む」ボタン。step=strong_enemy_battle で runExplorationBattle |
-| 強敵撃破後の領域主出現抽選・「領域主へ挑む」表示・領域主戦 | ✅ | 強敵勝利時 50% で areaLordAvailable。area_lord_challenge / step=area_lord_battle で領域主戦。専用枠は finishExploration で付与 |
-| エリア別敵編成（normalEnemyGroupCode 等）とマスタ連携 | 🔶 | spec/050・resolve-exploration-enemies で normal/strong_enemy/area_lord を取得。**敵の配置**は 050 §4.3：探索では**選出順で上から固定**（1体目＝上段、2体目＝中段、3体目＝下段）。050 マスタ拡張で差し替え可能 |
+| 強敵撃破後の領域主出現抽選・「領域主へ挑む」表示・領域主戦 | ✅ | 強敵勝利時にエリアの areaLordAppearanceRate（0～100％）で抽選、当たれば areaLordAvailable。area_lord_challenge / step=area_lord_battle で領域主戦。専用枠は finishExploration で付与 |
+| エリア別敵編成（normalEnemyGroupCode 等）とマスタ連携 | 🔶 | spec/050・resolve-exploration-enemies で normal/strong_enemy/area_lord を取得。**敵の配置**は 050 §4.3：探索では **row は選出順で上から固定**（1体目＝上段、2体目＝中段、3体目＝下段）、**col はマスタの defaultBattleCol**。050 マスタ拡張で差し替え可能 |
 
 ### 9.9 更新ルール（このセクション）
 

@@ -79,7 +79,6 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
     LUK: enemy.LUK,
     CAP: enemy.CAP,
   });
-  const [defaultBattleRow, setDefaultBattleRow] = useState(enemy.defaultBattleRow);
   const [defaultBattleCol, setDefaultBattleCol] = useState(enemy.defaultBattleCol);
   const [slots, setSlots] = useState<SlotState[]>(() => {
     const fromDb = enemy.tacticSlots.map((s) => ({
@@ -157,7 +156,7 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
       AGI: stats.AGI ?? 0,
       LUK: stats.LUK ?? 0,
       CAP: stats.CAP ?? 0,
-      defaultBattleRow,
+      defaultBattleRow: enemy.defaultBattleRow, // 探索では選出順で上から固定のため画面では編集しない
       defaultBattleCol,
       tacticSlots: slots.map((s, i) => ({
         orderIndex: i + 1,
@@ -250,30 +249,18 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
       </section>
 
       <section className="rounded border border-base-border bg-base-elevated p-4">
-        <h2 className="text-lg font-medium text-text-primary">デフォルト配置（1～3）</h2>
-        <div className="mt-3 flex gap-4">
-          <div>
-            <label className="block text-sm font-medium text-text-muted">行</label>
-            <input
-              type="number"
-              min={1}
-              max={3}
-              value={defaultBattleRow}
-              onChange={(e) => setDefaultBattleRow(Number(e.target.value))}
-              className="mt-1 w-16 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-muted">列</label>
-            <input
-              type="number"
-              min={1}
-              max={3}
-              value={defaultBattleCol}
-              onChange={(e) => setDefaultBattleCol(Number(e.target.value))}
-              className="mt-1 w-16 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
-            />
-          </div>
+        <h2 className="text-lg font-medium text-text-primary">デフォルト列（1～3）</h2>
+        <p className="mt-1 text-sm text-text-muted">探索では行は選出順で上から固定。列のみマスタで指定。</p>
+        <div className="mt-3">
+          <label className="block text-sm font-medium text-text-muted">列</label>
+          <input
+            type="number"
+            min={1}
+            max={3}
+            value={defaultBattleCol}
+            onChange={(e) => setDefaultBattleCol(Number(e.target.value))}
+            className="mt-1 w-16 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+          />
         </div>
       </section>
 

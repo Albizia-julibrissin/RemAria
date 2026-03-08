@@ -11,6 +11,7 @@ import type { EquipmentStatGenConfig } from "@/lib/craft/equipment-stat-gen";
 import type { MechaPartStatGenConfig } from "@/lib/craft/mecha-part-stat-gen";
 import { isEquipmentSlot } from "@/lib/constants/equipment-slots";
 import { isMechaSlot } from "@/lib/constants/mecha-slots";
+import { SKILL_EFFECT_TYPE_INFO } from "@/lib/constants/skill-effect-types";
 
 export type AdminContentLists = {
   items: { id: string; code: string; name: string; category: string }[];
@@ -300,6 +301,41 @@ export async function getAdminItemList(): Promise<AdminItemRow[] | null> {
   }));
 }
 
+/** アイテムマスタ画面用：装備型（EquipmentType）の名前のみ編集。 */
+export type AdminEquipmentTypeRow = { id: string; code: string; name: string };
+
+export async function getAdminEquipmentTypeListForItemMaster(): Promise<
+  AdminEquipmentTypeRow[] | null
+> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.equipmentType.findMany({
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, name: true },
+  });
+  return rows;
+}
+
+export async function updateAdminEquipmentTypeName(
+  id: string,
+  name: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const trimmed = name.trim();
+  if (!trimmed) return { success: false, error: "name は必須です。" };
+  const exists = await prisma.equipmentType.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!exists) return { success: false, error: "装備型が見つかりません。" };
+  await prisma.equipmentType.update({
+    where: { id },
+    data: { name: trimmed },
+  });
+  return { success: true };
+}
+
 export type AdminItemDetail = AdminItemRow;
 
 /**
@@ -346,6 +382,239 @@ export async function getAdminSkillsForItem(): Promise<
     orderBy: [{ category: "asc" }, { name: "asc" }],
     select: { id: true, name: true, category: true },
   });
+}
+
+// --- スキル編集（表示用・効果は既存のみ選択可）---
+
+export type AdminSkillRow = {
+  id: string;
+  name: string;
+  category: string;
+  battleSkillType: string | null;
+};
+
+export async function getAdminSkillList(): Promise<AdminSkillRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  return prisma.skill.findMany({
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, category: true, battleSkillType: true },
+  });
+}
+
+/** DB に実際に存在する effectType のみ返す（慎重に扱うため新規は選べない） */
+export async function getExistingSkillEffectTypes(): Promise<
+  { effectType: string; label: string; description: string }[] | null
+> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.skillEffect.findMany({
+    select: { effectType: true },
+    distinct: ["effectType"],
+    orderBy: { effectType: "asc" },
+  });
+  const info = SKILL_EFFECT_TYPE_INFO;
+  return rows.map((r) => {
+    const i = info[r.effectType];
+    return {
+      effectType: r.effectType,
+      label: i?.label ?? r.effectType,
+      description: i?.description ?? "（説明未登録）",
+    };
+  });
+}
+
+export type AdminSkillEffectRow = {
+  id: string;
+  effectType: string;
+  param: unknown;
+};
+
+export type AdminSkillEditData = {
+  skill: {
+    id: string;
+    name: string;
+    category: string;
+    description: string | null;
+    battleSkillType: string | null;
+    mpCostCapCoef: number | null;
+    mpCostFlat: number | null;
+    chargeCycles: number | null;
+    cooldownCycles: number | null;
+    powerMultiplier: number | null;
+    hitsMin: number | null;
+    hitsMax: number | null;
+    resampleTargetPerHit: boolean | null;
+    targetScope: string | null;
+    attribute: string | null;
+    weightAddFront: number | null;
+    weightAddMid: number | null;
+    weightAddBack: number | null;
+    logMessage: string | null;
+    logMessageOnCondition: string | null;
+  };
+  skillEffects: AdminSkillEffectRow[];
+  /** 選択可能な効果タイプ（DB に存在するもののみ） */
+  effectTypeOptions: { effectType: string; label: string; description: string }[];
+  /** 全効果タイプの説明（参照表示用） */
+  effectTypeInfo: Record<string, { label: string; description: string }>;
+};
+
+export async function getAdminSkillEditData(
+  skillId: string
+): Promise<AdminSkillEditData | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const [skill, effectTypeOptions] = await Promise.all([
+    prisma.skill.findUnique({
+      where: { id: skillId },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        description: true,
+        battleSkillType: true,
+        mpCostCapCoef: true,
+        mpCostFlat: true,
+        chargeCycles: true,
+        cooldownCycles: true,
+        powerMultiplier: true,
+        hitsMin: true,
+        hitsMax: true,
+        resampleTargetPerHit: true,
+        targetScope: true,
+        attribute: true,
+        weightAddFront: true,
+        weightAddMid: true,
+        weightAddBack: true,
+        logMessage: true,
+        logMessageOnCondition: true,
+        skillEffects: { select: { id: true, effectType: true, param: true } },
+      },
+    }),
+    getExistingSkillEffectTypes(),
+  ]);
+  if (!skill || !effectTypeOptions) return null;
+  const decimalToNum = (v: unknown) => (v != null ? Number(v) : null);
+  return {
+    skill: {
+      id: skill.id,
+      name: skill.name,
+      category: skill.category,
+      description: skill.description,
+      battleSkillType: skill.battleSkillType,
+      mpCostCapCoef: decimalToNum(skill.mpCostCapCoef),
+      mpCostFlat: skill.mpCostFlat,
+      chargeCycles: skill.chargeCycles,
+      cooldownCycles: skill.cooldownCycles,
+      powerMultiplier: decimalToNum(skill.powerMultiplier),
+      hitsMin: skill.hitsMin,
+      hitsMax: skill.hitsMax,
+      resampleTargetPerHit: skill.resampleTargetPerHit,
+      targetScope: skill.targetScope,
+      attribute: skill.attribute,
+      weightAddFront: decimalToNum(skill.weightAddFront),
+      weightAddMid: decimalToNum(skill.weightAddMid),
+      weightAddBack: decimalToNum(skill.weightAddBack),
+      logMessage: skill.logMessage,
+      logMessageOnCondition: skill.logMessageOnCondition,
+    },
+    skillEffects: skill.skillEffects.map((e) => ({
+      id: e.id,
+      effectType: e.effectType,
+      param: e.param,
+    })),
+    effectTypeOptions,
+    effectTypeInfo: SKILL_EFFECT_TYPE_INFO,
+  };
+}
+
+export type UpdateAdminSkillInput = {
+  name: string;
+  category: string;
+  description: string | null;
+  battleSkillType: string | null;
+  mpCostCapCoef: number | null;
+  mpCostFlat: number | null;
+  chargeCycles: number | null;
+  cooldownCycles: number | null;
+  powerMultiplier: number | null;
+  hitsMin: number | null;
+  hitsMax: number | null;
+  resampleTargetPerHit: boolean | null;
+  targetScope: string | null;
+  attribute: string | null;
+  weightAddFront: number | null;
+  weightAddMid: number | null;
+  weightAddBack: number | null;
+  logMessage: string | null;
+  logMessageOnCondition: string | null;
+  skillEffects: { effectType: string; param: unknown }[];
+};
+
+export async function updateAdminSkill(
+  skillId: string,
+  input: UpdateAdminSkillInput
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const skill = await prisma.skill.findUnique({
+    where: { id: skillId },
+    select: { id: true },
+  });
+  if (!skill) return { success: false, error: "スキルが見つかりません。" };
+
+  const allowedTypes = await prisma.skillEffect.findMany({
+    select: { effectType: true },
+    distinct: ["effectType"],
+  });
+  const allowedSet = new Set(allowedTypes.map((r) => r.effectType));
+  const effects = (input.skillEffects ?? []).filter((e) => {
+    if (!e.effectType?.trim()) return false;
+    if (!allowedSet.has(e.effectType.trim())) return false;
+    return true;
+  });
+
+  const name = input.name.trim();
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.skill.update({
+      where: { id: skillId },
+      data: {
+        name,
+        category: input.category.trim() || "battle_active",
+        description: input.description?.trim() || null,
+        battleSkillType: input.battleSkillType?.trim() || null,
+        mpCostCapCoef: input.mpCostCapCoef != null ? input.mpCostCapCoef : null,
+        mpCostFlat: input.mpCostFlat ?? null,
+        chargeCycles: input.chargeCycles ?? null,
+        cooldownCycles: input.cooldownCycles ?? null,
+        powerMultiplier: input.powerMultiplier != null ? input.powerMultiplier : null,
+        hitsMin: input.hitsMin ?? null,
+        hitsMax: input.hitsMax ?? null,
+        resampleTargetPerHit: input.resampleTargetPerHit ?? null,
+        targetScope: input.targetScope?.trim() || null,
+        attribute: input.attribute?.trim() || null,
+        weightAddFront: input.weightAddFront != null ? input.weightAddFront : null,
+        weightAddMid: input.weightAddMid != null ? input.weightAddMid : null,
+        weightAddBack: input.weightAddBack != null ? input.weightAddBack : null,
+        logMessage: input.logMessage?.trim() || null,
+        logMessageOnCondition: input.logMessageOnCondition?.trim() || null,
+      },
+    });
+    await tx.skillEffect.deleteMany({ where: { skillId } });
+    if (effects.length > 0) {
+      await tx.skillEffect.createMany({
+        data: effects.map((e) => ({
+          skillId,
+          effectType: e.effectType.trim(),
+          param: (e.param as object) ?? undefined,
+        })),
+      });
+    }
+  });
+  return { success: true };
 }
 
 export type UpdateAdminItemInput = {
@@ -1229,6 +1498,172 @@ export async function createAdminFacilityType(
   return { success: true, facilityTypeId: created.id };
 }
 
+/**
+ * 設備種別を削除する。参照がある場合は削除不可。
+ * 参照: FacilityInstance, UserFacilityTypeUnlock, ResearchGroupItem, ResearchUnlockCost
+ */
+export async function deleteAdminFacilityType(
+  facilityTypeId: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const ft = await prisma.facilityType.findUnique({
+    where: { id: facilityTypeId },
+    select: { id: true, name: true },
+  });
+  if (!ft) return { success: false, error: "設備種別が見つかりません。" };
+
+  const [instanceCount, unlockCount, groupItemCount, unlockCostCount] = await Promise.all([
+    prisma.facilityInstance.count({ where: { facilityTypeId } }),
+    prisma.userFacilityTypeUnlock.count({ where: { facilityTypeId } }),
+    prisma.researchGroupItem.count({
+      where: { targetType: "facility_type", targetId: facilityTypeId },
+    }),
+    prisma.researchUnlockCost.count({
+      where: { targetType: "facility_type", targetId: facilityTypeId },
+    }),
+  ]);
+
+  if (instanceCount > 0) {
+    return { success: false, error: "この設備は設置済みのため削除できません。" };
+  }
+  if (unlockCount > 0) {
+    return { success: false, error: "この設備は解放済みユーザーがいるため削除できません。" };
+  }
+  if (groupItemCount > 0 || unlockCostCount > 0) {
+    return { success: false, error: "この設備は研究解放に紐づいているため削除できません。" };
+  }
+
+  await prisma.facilityType.delete({ where: { id: facilityTypeId } });
+  return { success: true };
+}
+
+// --- 設備建設材料（FacilityConstructionRecipeInput, spec/047）---
+
+export type AdminFacilityConstructionInputRow = {
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  amount: number;
+};
+
+export type AdminFacilityVariantWithInputs = {
+  facilityVariantId: string;
+  variantCode: string;
+  variantName: string | null;
+  constructionInputs: AdminFacilityConstructionInputRow[];
+};
+
+export type AdminFacilityTypeWithConstruction = AdminFacilityTypeDetail & {
+  variants: AdminFacilityVariantWithInputs[];
+};
+
+export async function getAdminFacilityTypeWithConstruction(
+  facilityTypeId: string
+): Promise<AdminFacilityTypeWithConstruction | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+
+  const ft = await prisma.facilityType.findUnique({
+    where: { id: facilityTypeId },
+    select: {
+      id: true,
+      name: true,
+      kind: true,
+      description: true,
+      cost: true,
+      facilityVariants: {
+        orderBy: { variantCode: "asc" },
+        select: {
+          id: true,
+          variantCode: true,
+          name: true,
+          constructionInputs: {
+            orderBy: { item: { code: "asc" } },
+            include: { item: { select: { id: true, code: true, name: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!ft) return null;
+
+  return {
+    id: ft.id,
+    name: ft.name,
+    kind: ft.kind,
+    description: ft.description,
+    cost: ft.cost,
+    variants: ft.facilityVariants.map((v) => ({
+      facilityVariantId: v.id,
+      variantCode: v.variantCode,
+      variantName: v.name,
+      constructionInputs: v.constructionInputs.map((inp) => ({
+        itemId: inp.itemId,
+        itemCode: inp.item.code,
+        itemName: inp.item.name,
+        amount: inp.amount,
+      })),
+    })),
+  };
+}
+
+export type AdminFacilityConstructionInputEntry = { itemId: string; amount: number };
+
+export async function updateAdminFacilityConstructionInputs(
+  facilityTypeId: string,
+  variantCode: string,
+  inputs: AdminFacilityConstructionInputEntry[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const variant = await prisma.facilityVariant.findUnique({
+    where: {
+      facilityTypeId_variantCode: { facilityTypeId, variantCode },
+    },
+    select: { id: true },
+  });
+  if (!variant) return { success: false, error: "指定した型（variant）が見つかりません。" };
+
+  const normalized: { itemId: string; amount: number }[] = [];
+  const seen = new Set<string>();
+  for (const e of inputs) {
+    const amount = typeof e.amount === "number" && Number.isInteger(e.amount) && e.amount >= 1 ? e.amount : 0;
+    if (amount === 0) continue;
+    if (seen.has(e.itemId)) continue;
+    seen.add(e.itemId);
+    normalized.push({ itemId: e.itemId, amount });
+  }
+
+  const itemIds = [...new Set(normalized.map((n) => n.itemId))];
+  const existingItems = await prisma.item.findMany({
+    where: { id: { in: itemIds } },
+    select: { id: true },
+  });
+  const existingIds = new Set(existingItems.map((i) => i.id));
+  if (itemIds.some((id) => !existingIds.has(id))) {
+    return { success: false, error: "無効なアイテムが含まれています。" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.facilityConstructionRecipeInput.deleteMany({
+      where: { facilityVariantId: variant.id },
+    });
+    if (normalized.length > 0) {
+      await tx.facilityConstructionRecipeInput.createMany({
+        data: normalized.map((n) => ({
+          facilityVariantId: variant.id,
+          itemId: n.itemId,
+          amount: n.amount,
+        })),
+      });
+    }
+  });
+  return { success: true };
+}
+
 // --- 設備生産レシピ編集（Recipe, spec/035）---
 
 export type AdminRecipeRow = {
@@ -2110,4 +2545,863 @@ export async function createAdminEnemy(
     });
   }
   return { success: true, enemyId: created.id };
+}
+
+// --- 探索テーマ・エリア編集（spec/049, docs/020）---
+
+/** 敵グループの code 一覧（通常戦雑魚用ドロップダウン） */
+export async function getAdminEnemyGroupCodeList(): Promise<{ code: string }[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.enemyGroup.findMany({
+    orderBy: { code: "asc" },
+    select: { code: true },
+  });
+  return rows;
+}
+
+// --- 敵グループ編集（spec/050）---
+
+export type AdminEnemyGroupRow = {
+  id: string;
+  code: string;
+  entryCount: number;
+};
+
+export async function getAdminEnemyGroupList(): Promise<AdminEnemyGroupRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.enemyGroup.findMany({
+    orderBy: { code: "asc" },
+    select: {
+      id: true,
+      code: true,
+      _count: { select: { entries: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    entryCount: r._count.entries,
+  }));
+}
+
+export type AdminEnemyGroupEditData = {
+  group: { id: string; code: string };
+  entries: AdminEnemyGroupEntryRow[];
+  enemies: { id: string; code: string; name: string }[];
+};
+
+export async function getAdminEnemyGroupEditData(
+  groupId: string
+): Promise<AdminEnemyGroupEditData | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const [group, enemies] = await Promise.all([
+    prisma.enemyGroup.findUnique({
+      where: { id: groupId },
+      include: {
+        entries: {
+          include: { enemy: { select: { id: true, code: true, name: true } } },
+        },
+      },
+    }),
+    prisma.enemy.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
+  ]);
+  if (!group) return null;
+  return {
+    group: { id: group.id, code: group.code },
+    entries: group.entries.map((e) => ({
+      id: e.id,
+      enemyId: e.enemyId,
+      enemyCode: e.enemy.code,
+      enemyName: e.enemy.name,
+      weight: e.weight,
+    })),
+    enemies,
+  };
+}
+
+export async function createAdminEnemyGroup(input: {
+  code: string;
+}): Promise<{ success: boolean; error?: string; enemyGroupId?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const code = input.code.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  const existing = await prisma.enemyGroup.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+  const created = await prisma.enemyGroup.create({
+    data: { code },
+    select: { id: true },
+  });
+  return { success: true, enemyGroupId: created.id };
+}
+
+export async function updateAdminEnemyGroup(
+  groupId: string,
+  input: { code: string }
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const group = await prisma.enemyGroup.findUnique({
+    where: { id: groupId },
+    select: { id: true },
+  });
+  if (!group) return { success: false, error: "敵グループが見つかりません。" };
+  const code = input.code.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  const existing = await prisma.enemyGroup.findFirst({
+    where: { code, id: { not: groupId } },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+  await prisma.enemyGroup.update({
+    where: { id: groupId },
+    data: { code },
+  });
+  return { success: true };
+}
+
+// --- 研究グループ編集（docs/054）---
+
+export type AdminResearchGroupRow = {
+  id: string;
+  code: string;
+  name: string;
+  displayOrder: number;
+  itemCount: number;
+  prerequisiteGroupCode: string | null;
+};
+
+export async function getAdminResearchGroupList(): Promise<
+  AdminResearchGroupRow[] | null
+> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.researchGroup.findMany({
+    orderBy: { displayOrder: "asc" },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      displayOrder: true,
+      prerequisiteGroupId: true,
+      prerequisiteGroup: { select: { code: true } },
+      _count: { select: { items: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    displayOrder: r.displayOrder,
+    itemCount: r._count.items,
+    prerequisiteGroupCode: r.prerequisiteGroup?.code ?? null,
+  }));
+}
+
+export type AdminResearchGroupItemRow = {
+  id: string;
+  targetType: "facility_type" | "craft_recipe";
+  targetId: string;
+  targetName: string;
+  isVariant: boolean;
+  displayOrder: number;
+  costs: { itemId: string; itemCode: string; itemName: string; amount: number }[];
+};
+
+export type AdminResearchGroupEditData = {
+  group: {
+    id: string;
+    code: string;
+    name: string;
+    displayOrder: number;
+    prerequisiteGroupId: string | null;
+  };
+  groupItems: AdminResearchGroupItemRow[];
+  facilityTypes: { id: string; name: string }[];
+  craftRecipes: { id: string; name: string }[];
+  items: { id: string; code: string; name: string }[];
+  researchGroups: { id: string; code: string; name: string }[];
+};
+
+export async function getAdminResearchGroupEditData(
+  groupId: string
+): Promise<AdminResearchGroupEditData | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+
+  const group = await prisma.researchGroup.findUnique({
+    where: { id: groupId },
+    include: {
+      items: { orderBy: { displayOrder: "asc" } },
+      prerequisiteGroup: { select: { id: true, code: true } },
+    },
+  });
+  if (!group) return null;
+
+  const facilityIds = group.items
+    .filter((i) => i.targetType === "facility_type")
+    .map((i) => i.targetId);
+  const recipeIds = group.items
+    .filter((i) => i.targetType === "craft_recipe")
+    .map((i) => i.targetId);
+
+  const [facilityNames, recipeNames, costRows, facilityTypes, craftRecipes, items, researchGroups] =
+    await Promise.all([
+      facilityIds.length
+        ? prisma.facilityType.findMany({
+            where: { id: { in: facilityIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+      recipeIds.length
+        ? prisma.craftRecipe.findMany({
+            where: { id: { in: recipeIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+      prisma.researchUnlockCost.findMany({
+        where: {
+          OR: [
+            ...(facilityIds.length
+              ? [{ targetType: "facility_type" as const, targetId: { in: facilityIds } }]
+              : []),
+            ...(recipeIds.length
+              ? [{ targetType: "craft_recipe" as const, targetId: { in: recipeIds } }]
+              : []),
+          ],
+        },
+        include: { item: { select: { id: true, code: true, name: true } } },
+      }),
+      prisma.facilityType.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+      prisma.craftRecipe.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      }),
+      prisma.item.findMany({
+        orderBy: [{ category: "asc" }, { code: "asc" }],
+        select: { id: true, code: true, name: true },
+      }),
+      prisma.researchGroup.findMany({
+        orderBy: { displayOrder: "asc" },
+        select: { id: true, code: true, name: true },
+      }),
+    ]);
+
+  const facilityNameMap = new Map(facilityNames.map((r) => [r.id, r.name]));
+  const recipeNameMap = new Map(recipeNames.map((r) => [r.id, r.name]));
+  const costByTarget = new Map<
+    string,
+    { itemId: string; itemCode: string; itemName: string; amount: number }[]
+  >();
+  for (const c of costRows) {
+    const key = `${c.targetType}:${c.targetId}`;
+    const arr = costByTarget.get(key) ?? [];
+    arr.push({
+      itemId: c.itemId,
+      itemCode: c.item.code,
+      itemName: c.item.name,
+      amount: c.amount,
+    });
+    costByTarget.set(key, arr);
+  }
+
+  const itemsWithCosts: AdminResearchGroupItemRow[] = group.items.map((it) => {
+    const targetName =
+      it.targetType === "facility_type"
+        ? facilityNameMap.get(it.targetId) ?? it.targetId
+        : recipeNameMap.get(it.targetId) ?? it.targetId;
+    return {
+      id: it.id,
+      targetType: it.targetType as "facility_type" | "craft_recipe",
+      targetId: it.targetId,
+      targetName,
+      isVariant: it.isVariant,
+      displayOrder: it.displayOrder,
+      costs: costByTarget.get(`${it.targetType}:${it.targetId}`) ?? [],
+    };
+  });
+
+  return {
+    group: {
+      id: group.id,
+      code: group.code,
+      name: group.name,
+      displayOrder: group.displayOrder,
+      prerequisiteGroupId: group.prerequisiteGroupId ?? group.prerequisiteGroup?.id ?? null,
+    },
+    groupItems: itemsWithCosts,
+    facilityTypes,
+    craftRecipes,
+    items,
+    researchGroups,
+  };
+}
+
+export async function createAdminResearchGroup(input: {
+  code: string;
+  name: string;
+  displayOrder?: number;
+  prerequisiteGroupId?: string | null;
+}): Promise<{ success: boolean; error?: string; researchGroupId?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+  const existing = await prisma.researchGroup.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+  const displayOrder =
+    typeof input.displayOrder === "number" && Number.isInteger(input.displayOrder)
+      ? input.displayOrder
+      : 0;
+  const created = await prisma.researchGroup.create({
+    data: {
+      code,
+      name,
+      displayOrder,
+      prerequisiteGroupId: input.prerequisiteGroupId?.trim() || null,
+    },
+    select: { id: true },
+  });
+  return { success: true, researchGroupId: created.id };
+}
+
+export async function updateAdminResearchGroup(
+  groupId: string,
+  input: {
+    code: string;
+    name: string;
+    displayOrder: number;
+    prerequisiteGroupId?: string | null;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const group = await prisma.researchGroup.findUnique({
+    where: { id: groupId },
+    select: { id: true },
+  });
+  if (!group) return { success: false, error: "研究グループが見つかりません。" };
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+  const existing = await prisma.researchGroup.findFirst({
+    where: { code, id: { not: groupId } },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+  const displayOrder =
+    typeof input.displayOrder === "number" && Number.isInteger(input.displayOrder)
+      ? input.displayOrder
+      : 0;
+  await prisma.researchGroup.update({
+    where: { id: groupId },
+    data: {
+      code,
+      name,
+      displayOrder,
+      prerequisiteGroupId: input.prerequisiteGroupId?.trim() || null,
+    },
+  });
+  return { success: true };
+}
+
+export async function saveAdminResearchGroupItems(
+  groupId: string,
+  items: { targetType: "facility_type" | "craft_recipe"; targetId: string; isVariant: boolean; displayOrder: number }[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const group = await prisma.researchGroup.findUnique({
+    where: { id: groupId },
+    select: { id: true },
+  });
+  if (!group) return { success: false, error: "研究グループが見つかりません。" };
+
+  const normalized = items
+    .filter((i) => i.targetType && i.targetId.trim())
+    .map((i, idx) => ({
+      targetType: i.targetType,
+      targetId: i.targetId.trim(),
+      isVariant: !!i.isVariant,
+      displayOrder: Number.isInteger(i.displayOrder) ? i.displayOrder : idx,
+    }));
+  const uniqueKeys = new Set(normalized.map((n) => `${n.targetType}:${n.targetId}`));
+  if (uniqueKeys.size !== normalized.length) {
+    return { success: false, error: "同一対象が重複しています。" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.researchGroupItem.deleteMany({ where: { researchGroupId: groupId } });
+    for (const it of normalized) {
+      await tx.researchGroupItem.create({
+        data: {
+          researchGroupId: groupId,
+          targetType: it.targetType,
+          targetId: it.targetId,
+          isVariant: it.isVariant,
+          displayOrder: it.displayOrder,
+        },
+      });
+    }
+  });
+  return { success: true };
+}
+
+export async function saveAdminResearchUnlockCosts(
+  targetType: "facility_type" | "craft_recipe",
+  targetId: string,
+  costs: { itemId: string; amount: number }[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  if (!targetType || !targetId.trim()) {
+    return { success: false, error: "対象が指定されていません。" };
+  }
+
+  const normalized = costs
+    .filter((c) => c.itemId.trim() && Number.isInteger(c.amount) && c.amount >= 1)
+    .map((c) => ({ itemId: c.itemId.trim(), amount: Math.max(1, c.amount) }));
+  const byItem = new Map<string, number>();
+  for (const c of normalized) byItem.set(c.itemId, (byItem.get(c.itemId) ?? 0) + c.amount);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.researchUnlockCost.deleteMany({
+      where: { targetType, targetId: targetId.trim() },
+    });
+    for (const [itemId, amount] of byItem.entries()) {
+      await tx.researchUnlockCost.create({
+        data: { targetType, targetId: targetId.trim(), itemId, amount },
+      });
+    }
+  });
+  return { success: true };
+}
+
+export type AdminExplorationThemeRow = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+  areas: { id: string; code: string; name: string }[];
+};
+
+export async function getAdminExplorationThemeList(): Promise<
+  AdminExplorationThemeRow[] | null
+> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.explorationTheme.findMany({
+    orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      displayOrder: true,
+      areas: {
+        orderBy: { name: "asc" },
+        select: { id: true, code: true, name: true },
+      },
+    },
+  });
+  return rows;
+}
+
+export async function getAdminExplorationTheme(
+  themeId: string
+): Promise<AdminExplorationThemeRow | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const row = await prisma.explorationTheme.findUnique({
+    where: { id: themeId },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      displayOrder: true,
+      areas: {
+        orderBy: { name: "asc" },
+        select: { id: true, code: true, name: true },
+      },
+    },
+  });
+  return row;
+}
+
+export type UpdateAdminExplorationThemeInput = {
+  code: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+};
+
+export async function updateAdminExplorationTheme(
+  themeId: string,
+  input: UpdateAdminExplorationThemeInput
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const theme = await prisma.explorationTheme.findUnique({
+    where: { id: themeId },
+    select: { id: true },
+  });
+  if (!theme) return { success: false, error: "テーマが見つかりません。" };
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  const existingCode = await prisma.explorationTheme.findFirst({
+    where: { code, id: { not: themeId } },
+    select: { id: true },
+  });
+  if (existingCode) return { success: false, error: "この code は既に使用されています。" };
+
+  const displayOrder =
+    typeof input.displayOrder === "number" && Number.isInteger(input.displayOrder)
+      ? input.displayOrder
+      : 0;
+
+  await prisma.explorationTheme.update({
+    where: { id: themeId },
+    data: {
+      code,
+      name,
+      description: input.description?.trim() || null,
+      displayOrder,
+    },
+  });
+  return { success: true };
+}
+
+export type CreateAdminExplorationThemeInput = UpdateAdminExplorationThemeInput;
+
+export async function createAdminExplorationTheme(
+  input: CreateAdminExplorationThemeInput
+): Promise<{ success: boolean; error?: string; themeId?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  const existing = await prisma.explorationTheme.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+
+  const displayOrder =
+    typeof input.displayOrder === "number" && Number.isInteger(input.displayOrder)
+      ? input.displayOrder
+      : 0;
+
+  const created = await prisma.explorationTheme.create({
+    data: {
+      code,
+      name,
+      description: input.description?.trim() || null,
+      displayOrder,
+    },
+    select: { id: true },
+  });
+  return { success: true, themeId: created.id };
+}
+
+export type AdminExplorationAreaDetail = {
+  id: string;
+  themeId: string;
+  themeName: string;
+  code: string;
+  name: string;
+  description: string | null;
+  difficultyRank: number;
+  recommendedLevel: number;
+  baseDropMin: number;
+  baseDropMax: number;
+  baseSkillEventRate: number;
+  skillCheckRequiredValue: number;
+  normalBattleCount: number;
+  normalEnemyGroupCode: string | null;
+  enemyCount1Rate: number;
+  enemyCount2Rate: number;
+  enemyCount3Rate: number;
+  strongEnemyEnemyId: string | null;
+  areaLordEnemyId: string | null;
+  areaLordAppearanceRate: number;
+};
+
+export type AdminEnemyGroupEntryRow = {
+  id: string;
+  enemyId: string;
+  enemyCode: string;
+  enemyName: string;
+  weight: number;
+};
+
+export type AdminNormalEnemyGroup = {
+  id: string;
+  code: string;
+  entries: AdminEnemyGroupEntryRow[];
+};
+
+export type AdminExplorationAreaEditData = {
+  area: AdminExplorationAreaDetail;
+  enemyGroupCodes: string[];
+  enemies: { id: string; code: string; name: string }[];
+  /** 通常戦で使うグループのメンバー（normalEnemyGroupCode が設定されていてグループが存在する場合のみ） */
+  normalEnemyGroup: AdminNormalEnemyGroup | null;
+};
+
+export async function getAdminExplorationAreaEditData(
+  areaId: string
+): Promise<AdminExplorationAreaEditData | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const area = await prisma.explorationArea.findUnique({
+    where: { id: areaId },
+    select: {
+      id: true,
+      themeId: true,
+      theme: { select: { name: true } },
+      code: true,
+      name: true,
+      description: true,
+      difficultyRank: true,
+      recommendedLevel: true,
+      baseDropMin: true,
+      baseDropMax: true,
+      baseSkillEventRate: true,
+      skillCheckRequiredValue: true,
+      normalBattleCount: true,
+      normalEnemyGroupCode: true,
+      enemyCount1Rate: true,
+      enemyCount2Rate: true,
+      enemyCount3Rate: true,
+      strongEnemyEnemyId: true,
+      areaLordEnemyId: true,
+      areaLordAppearanceRate: true,
+    },
+  });
+  if (!area) return null;
+
+  const [enemyGroupCodes, enemies, normalGroup] = await Promise.all([
+    prisma.enemyGroup.findMany({ orderBy: { code: "asc" }, select: { code: true } }),
+    prisma.enemy.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
+    !area.normalEnemyGroupCode
+      ? Promise.resolve(null)
+      : prisma.enemyGroup.findUnique({
+          where: { code: area.normalEnemyGroupCode },
+          include: {
+            entries: {
+              include: { enemy: { select: { id: true, code: true, name: true } } },
+            },
+          },
+        }).then((group) => {
+          if (!group) return null;
+          return {
+            id: group.id,
+            code: group.code,
+            entries: group.entries.map((e) => ({
+              id: e.id,
+              enemyId: e.enemyId,
+              enemyCode: e.enemy.code,
+              enemyName: e.enemy.name,
+              weight: e.weight,
+            })),
+          };
+        }),
+  ]);
+
+  const { theme, ...rest } = area;
+  return {
+    area: {
+      ...rest,
+      themeName: theme.name,
+    },
+    enemyGroupCodes: enemyGroupCodes.map((r) => r.code),
+    enemies: enemies,
+    normalEnemyGroup: normalGroup,
+  };
+}
+
+/** 通常戦雑魚グループのメンバーを一括更新（既存を削除して指定エントリで置き換え）。テストユーザー1のみ。 */
+export async function saveEnemyGroupEntries(
+  enemyGroupId: string,
+  entries: { enemyId: string; weight: number }[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const group = await prisma.enemyGroup.findUnique({
+    where: { id: enemyGroupId },
+    select: { id: true },
+  });
+  if (!group) return { success: false, error: "敵グループが見つかりません。" };
+
+  const valid = entries.filter(
+    (e) => e.enemyId.trim() && Number.isInteger(e.weight) && e.weight >= 1
+  );
+  const uniqueByEnemy = new Map<string, number>();
+  for (const e of valid) {
+    uniqueByEnemy.set(e.enemyId.trim(), Math.max(1, e.weight));
+  }
+
+  await prisma.$transaction([
+    prisma.enemyGroupEntry.deleteMany({ where: { enemyGroupId } }),
+    ...Array.from(uniqueByEnemy.entries()).map(([enemyId, weight]) =>
+      prisma.enemyGroupEntry.create({
+        data: { enemyGroupId, enemyId, weight },
+      })
+    ),
+  ]);
+  return { success: true };
+}
+
+export type UpdateAdminExplorationAreaInput = {
+  code: string;
+  name: string;
+  description: string | null;
+  difficultyRank: number;
+  recommendedLevel: number;
+  baseDropMin: number;
+  baseDropMax: number;
+  baseSkillEventRate: number;
+  skillCheckRequiredValue: number;
+  normalBattleCount: number;
+  normalEnemyGroupCode: string | null;
+  enemyCount1Rate: number;
+  enemyCount2Rate: number;
+  enemyCount3Rate: number;
+  strongEnemyEnemyId: string | null;
+  areaLordEnemyId: string | null;
+  areaLordAppearanceRate: number;
+};
+
+export async function updateAdminExplorationArea(
+  areaId: string,
+  input: UpdateAdminExplorationAreaInput
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const area = await prisma.explorationArea.findUnique({
+    where: { id: areaId },
+    select: { id: true },
+  });
+  if (!area) return { success: false, error: "エリアが見つかりません。" };
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  const existingCode = await prisma.explorationArea.findFirst({
+    where: { code, id: { not: areaId } },
+    select: { id: true },
+  });
+  if (existingCode) return { success: false, error: "この code は既に使用されています。" };
+
+  const r1 = Math.max(0, Math.min(100, Number(input.enemyCount1Rate) || 0));
+  const r2 = Math.max(0, Math.min(100, Number(input.enemyCount2Rate) || 0));
+  const r3 = Math.max(0, Math.min(100, Number(input.enemyCount3Rate) || 0));
+
+  await prisma.explorationArea.update({
+    where: { id: areaId },
+    data: {
+      code,
+      name,
+      description: input.description?.trim() || null,
+      difficultyRank: Math.max(1, Number(input.difficultyRank) || 1),
+      recommendedLevel: Math.max(1, Number(input.recommendedLevel) || 1),
+      baseDropMin: Math.max(0, Number(input.baseDropMin) ?? 3),
+      baseDropMax: Math.max(0, Number(input.baseDropMax) ?? 5),
+      baseSkillEventRate: Math.max(0, Math.min(100, Number(input.baseSkillEventRate) ?? 25)),
+      skillCheckRequiredValue: Math.max(1, Number(input.skillCheckRequiredValue) ?? 80),
+      normalBattleCount: Math.max(1, Number(input.normalBattleCount) ?? 5),
+      normalEnemyGroupCode: input.normalEnemyGroupCode?.trim() || null,
+      enemyCount1Rate: r1,
+      enemyCount2Rate: r2,
+      enemyCount3Rate: r3,
+      strongEnemyEnemyId: input.strongEnemyEnemyId?.trim() || null,
+      areaLordEnemyId: input.areaLordEnemyId?.trim() || null,
+      areaLordAppearanceRate: Math.max(0, Math.min(100, Number(input.areaLordAppearanceRate) ?? 50)),
+    },
+  });
+  return { success: true };
+}
+
+export type CreateAdminExplorationAreaInput = UpdateAdminExplorationAreaInput & {
+  themeId: string;
+};
+
+export async function createAdminExplorationArea(
+  input: CreateAdminExplorationAreaInput
+): Promise<{ success: boolean; error?: string; areaId?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const theme = await prisma.explorationTheme.findUnique({
+    where: { id: input.themeId },
+    select: { id: true },
+  });
+  if (!theme) return { success: false, error: "テーマが見つかりません。" };
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  const existing = await prisma.explorationArea.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+
+  const r1 = Math.max(0, Math.min(100, Number(input.enemyCount1Rate) || 0));
+  const r2 = Math.max(0, Math.min(100, Number(input.enemyCount2Rate) || 0));
+  const r3 = Math.max(0, Math.min(100, Number(input.enemyCount3Rate) || 0));
+
+  const created = await prisma.explorationArea.create({
+    data: {
+      themeId: input.themeId,
+      code,
+      name,
+      description: input.description?.trim() || null,
+      difficultyRank: Math.max(1, Number(input.difficultyRank) || 1),
+      recommendedLevel: Math.max(1, Number(input.recommendedLevel) || 1),
+      baseDropMin: Math.max(0, Number(input.baseDropMin) ?? 3),
+      baseDropMax: Math.max(0, Number(input.baseDropMax) ?? 5),
+      baseSkillEventRate: Math.max(0, Math.min(100, Number(input.baseSkillEventRate) ?? 25)),
+      skillCheckRequiredValue: Math.max(1, Number(input.skillCheckRequiredValue) ?? 80),
+      normalBattleCount: Math.max(1, Number(input.normalBattleCount) ?? 5),
+      normalEnemyGroupCode: input.normalEnemyGroupCode?.trim() || null,
+      enemyCount1Rate: r1,
+      enemyCount2Rate: r2,
+      enemyCount3Rate: r3,
+      strongEnemyEnemyId: input.strongEnemyEnemyId?.trim() || null,
+      areaLordEnemyId: input.areaLordEnemyId?.trim() || null,
+      areaLordAppearanceRate: Math.max(0, Math.min(100, Number(input.areaLordAppearanceRate) ?? 50)),
+    },
+    select: { id: true },
+  });
+  return { success: true, areaId: created.id };
 }

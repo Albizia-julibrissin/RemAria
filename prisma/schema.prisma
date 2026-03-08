@@ -63,6 +63,7 @@ model User {
   expeditions          Expedition[]
   userFacilityTypeUnlocks UserFacilityTypeUnlock[]
   userCraftRecipeUnlocks UserCraftRecipeUnlock[]
+  userTitleUnlocks       UserTitleUnlock[]
   userQuests UserQuest[]
 }
 
@@ -494,6 +495,36 @@ model UserCraftRecipeUnlock {
   @@unique([userId, craftRecipeId])
   @@index([userId])
   @@index([craftRecipeId])
+}
+
+/// spec/055: 称号マスタ。
+model Title {
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  name                 String
+  description          String?  // 称号の簡単な説明
+  unlockConditionMemo  String?  // 解放条件のメモ（運用用）
+  displayOrder         Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  userUnlocks UserTitleUnlock[]
+
+  @@index([displayOrder])
+}
+
+/// spec/055: ユーザの称号解放。
+model UserTitleUnlock {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  titleId   String
+  title     Title    @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, titleId])
+  @@index([userId])
+  @@index([titleId])
 }
 
 /// spec/046: クラフトレシピの入力（消費資源）。
@@ -998,6 +1029,8 @@ model ExplorationArea {
   areaLordEnemy            Enemy?   @relation("AreaLordEnemy", fields: [areaLordEnemyId], references: [id], onDelete: SetNull)
   strongEnemyEnemyGroupCode String?  // 非推奨。strongEnemyEnemyId を優先
   areaLordEnemyGroupCode   String?  // 非推奨。areaLordEnemyId を優先
+  /// 強敵勝利後の領域主出現率（0～100）。未設定時は 1。
+  areaLordAppearanceRate   Int      @default(1)
 
   /// 枠由来ごとのドロップテーブル紐づけ（報酬 Phase5）
   baseDropTableId          String?

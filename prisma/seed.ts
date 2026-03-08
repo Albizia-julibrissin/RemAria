@@ -2368,6 +2368,25 @@ async function seedInitialCraftRecipeUnlocks() {
   console.log("UserCraftRecipeUnlock: 全ユーザーに既存クラフトレシピを初期解放");
 }
 
+/** spec/055: 称号マスタ。プレ称号は「開拓者」のみ。 */
+async function seedTitles() {
+  await prisma.title.upsert({
+    where: { code: "kaitakusha" },
+    create: {
+      code: "kaitakusha",
+      name: "開拓者",
+      description: "惑星荒廃を生き延び、この星を再び開拓する者。",
+      unlockConditionMemo: null,
+      displayOrder: 0,
+    },
+    update: {
+      name: "開拓者",
+      description: "惑星荒廃を生き延び、この星を再び開拓する者。",
+    },
+  });
+  console.log("Title: 開拓者（kaitakusha）投入完了");
+}
+
 async function main() {
   for (const u of TEST_USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
@@ -2473,6 +2492,7 @@ async function main() {
   await seedQuests();
   await seedResearchGroups();
   await seedInitialCraftRecipeUnlocks();
+  await seedTitles();
 
   for (const u of TEST_USERS) {
     const user = await prisma.user.findUnique({ where: { email: u.email } });

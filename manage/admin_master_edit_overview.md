@@ -20,6 +20,10 @@
 | 遺物パッシブ効果 (RelicPassiveEffect) | `/dashboard/admin/relic-passive-effects` | code / name / description | — |
 | 遺物グループ設定 (RelicGroupConfig) | `/dashboard/admin/relic-groups` | groupCode / ステ補正範囲 / 耐性幅 / 抽選対象パッシブ | — |
 | 敵 (Enemy) | `/dashboard/admin/enemies` | code / name / 基礎ステ・配置・作戦スロット（最大10）。spec/050。 | — |
+| 敵グループ (EnemyGroup) | `/dashboard/admin/enemy-groups` | code（ユニーク）・メンバー（敵・重み）。通常戦雑魚用。探索エリアで「通常戦 雑魚グループ」にここで作った code を選ぶ。 | [admin_enemy_group_edit.md](./admin_enemy_group_edit.md) |
+| 探索テーマ・エリア (ExplorationTheme / ExplorationArea) | `/dashboard/admin/exploration-themes` | テーマ: code / name / 表示順。エリア: code / name / 敵グループ・体数確率・強敵・領域主・ドロップ・技能等。 | [admin_exploration_theme_area_edit.md](./admin_exploration_theme_area_edit.md) |
+| スキル (Skill) | `/dashboard/admin/skills` | name / category / 戦闘用項目（battleSkillType, powerMultiplier 等）。効果は**既存の effectType のみ**選択可。効果の説明一覧表示あり。 | [admin_skill_edit.md](./admin_skill_edit.md) |
+| 研究グループ (ResearchGroup / ResearchGroupItem / ResearchUnlockCost) | `/dashboard/admin/research-groups` | グループ code / name / 表示順 / 前提グループ。解放対象（設備型 or クラフトレシピ）・派生型フラグ・表示順。解放時の消費アイテム・個数。 | [admin_research_group_edit.md](./admin_research_group_edit.md) |
 
 ---
 
@@ -28,9 +32,6 @@
 コンテンツ管理ページで一覧表示されているが、現状は参照のみで編集できないマスタ。
 
 | マスタ | 説明 | 編集すると便利な項目 | 優先度の目安 |
-|--------|------|----------------------|--------------|
-| **スキル (Skill)** | 戦闘・効果と紐づく。一覧のみ。 | name / category / battleSkillType（表示用）。効果定義は seed や 042 と連動するため慎重に。 | 中（名前・表示用のみなら先行可） |
-| **探索テーマ・エリア (ExplorationTheme / ExplorationArea)** | 探索のテーマとエリア。 | テーマ名、エリアの code/name、通常戦・強敵・領域主の敵グループコード、体数確率（enemyCount1Rate 等）。 | **高** |
 
 ---
 
@@ -39,7 +40,6 @@
 | マスタ | 説明 | 編集すると便利な項目 | 優先度の目安 |
 |--------|------|----------------------|--------------|
 | **クエスト (Quest)** | spec/054。ストーリー・研究・一般。 | 達成条件・報酬・前提クエスト・表示メッセージ。 | 中 |
-| **研究グループ (ResearchGroup / ResearchGroupItem / ResearchUnlockCost)** | 研究解放の対象と消費。 | グループ名・解放対象（設備型/クラフトレシピ）・消費アイテム・個数。 | 中 |
 | **装備型 (EquipmentType)** | Item と別テーブル。クラフトで参照。 | 名前・スロット種別・ステ生成設定等。アイテムマスタと連動させる運用も可。 | 低〜中 |
 | **メカパーツ型 (MechaPartType)** | spec/044。メカパーツの種類。 | 名前・部位・ステ等。044 未実装部分あり。 | 低（他を優先したあと） |
 | **Tag** | 設備タグ等。 | 件数が少なければ seed のままでよい。 | 低 |

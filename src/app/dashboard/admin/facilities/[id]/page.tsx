@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
-import { getAdminFacilityType } from "@/server/actions/admin";
+import { getAdminFacilityTypeWithConstruction, getAdminRecipeOptions } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
 import { AdminFacilityTypeEditForm } from "./admin-facility-type-edit-form";
 
@@ -17,11 +17,16 @@ export default async function AdminFacilityTypeEditPage({
   }
 
   const { id } = await params;
-  const facility = await getAdminFacilityType(id);
+  const [facility, options] = await Promise.all([
+    getAdminFacilityTypeWithConstruction(id),
+    getAdminRecipeOptions(),
+  ]);
 
   if (!facility) {
     notFound();
   }
+
+  const items = options?.items ?? [];
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -45,7 +50,7 @@ export default async function AdminFacilityTypeEditPage({
         {facility.name}
       </p>
 
-      <AdminFacilityTypeEditForm facility={facility} />
+      <AdminFacilityTypeEditForm facility={facility} items={items} />
     </main>
   );
 }

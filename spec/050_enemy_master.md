@@ -38,7 +38,7 @@
 - **Enemy**
   - `id`, `code`（一意・安定参照用）, `name`, `iconFilename?`, `description?`
   - 基礎ステータス: `STR`, `INT`, `VIT`, `WIS`, `DEX`, `AGI`, `LUK`, `CAP`（Character と同様）
-  - **デフォルト配置**: `defaultBattleRow`（1～3）, `defaultBattleCol`（1～3）。**探索戦闘では使用しない**（探索では選出順で上から固定配置。§4.3）。練習戦闘など他コンテキストで参照する場合は利用可。
+  - **デフォルト配置**: `defaultBattleRow`（1～3）, `defaultBattleCol`（1～3）。**探索戦闘**では **row は選出順で上から固定**（§4.3）、**col は defaultBattleCol を参照**。練習戦闘などでは row/col とも default を利用可。
 - **EnemyTacticSlot**: 敵種ごとに最大10件。**主語・条件・行動の仕様は spec/039（作戦室）の TacticSlot と同一。** 実装では `src/app/dashboard/tactics/tactics-constants.ts` の選択肢を共有し、敵マスタ編集画面（`/dashboard/admin/enemies`）で編集する。作戦スロット関連のアップデート（条件種別追加・主語追加など）は spec/039 と本 spec の両方に影響しうる。まとめは `docs/14_tactics_slot_shared.md` を参照。
   - `enemyId`, `orderIndex`, `subject`, `conditionKind`, `conditionParam`, `actionType`, `skillId`
 - **使用スキル**: **Skill を共有**。敵専用スキル（前進突撃など）も既存 `Skill`（category=battle_active）に登録し、敵種は「使えるスキル」の紐づけだけ持つ。
@@ -80,17 +80,17 @@
 
 ### 4.3 配置（探索戦闘：上から埋まる）
 
-- **探索戦闘**では、選出された順に **スロット index 0, 1, 2** を割り当て、**選出順で上から固定位置に並べる**（敵種のデフォルト配置は使わない）。
-  - 1体目（index 0）→ 上段：`(row: 1, col: 2)`
-  - 2体目（index 1）→ 中段：`(row: 2, col: 2)`
-  - 3体目（index 2）→ 下段：`(row: 3, col: 2)`
-- これにより、同じ敵種が複数選ばれても被らず、体数に応じて上から順に埋まる。
-- 敵マスタの **`defaultBattleRow` / `defaultBattleCol`** は、探索戦闘の配置には用いない。練習戦闘など別コンテキストで「敵の初期位置」を参照する場合は利用してよい。
+- **探索戦闘**では、選出された順に **スロット index 0, 1, 2** を割り当て、**row は選出順で上から固定**する。**col は敵種の defaultBattleCol** をそのまま使う。
+  - 1体目（index 0）→ 上段：`row: 1`, col はその敵の `defaultBattleCol`
+  - 2体目（index 1）→ 中段：`row: 2`, col はその敵の `defaultBattleCol`
+  - 3体目（index 2）→ 下段：`row: 3`, col はその敵の `defaultBattleCol`
+- これにより、同じ敵種が複数選ばれても row が被らず、体数に応じて上から順に埋まる。列はマスタの設定に従う。
+- 敵マスタの **`defaultBattleRow`** は探索戦闘では使わない（row は選出順で上書き）。**`defaultBattleCol`** は探索でも参照する。練習戦闘などでは row/col とも default を利用可。
 
 ### 4.4 戦闘 API への渡し方
 
 - 選出結果を **体ごと** の配列で組み立て: 各要素に `base`, `tacticSlots`, `skills`, `displayName`, `iconFilename`, `position: { row, col }` を持たせる。長さは 1～3。
-- **探索戦闘**では `position` は選出順で上から固定（§4.3）とする。index 0 → (1,2)、index 1 → (2,2)、index 2 → (3,2)。
+- **探索戦闘**では `position.row` は選出順で上から固定（§4.3）、`position.col` は各敵の `defaultBattleCol`。
 - `runBattleWithParty` は「敵を体ごとの入力＋位置の配列」で受け取り、未使用枠は作らない。
 
 ---

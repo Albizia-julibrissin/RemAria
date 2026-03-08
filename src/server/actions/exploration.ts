@@ -877,6 +877,7 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
       area: {
         select: {
           name: true,
+          areaLordAppearanceRate: true,
           theme: {
             select: { name: true },
           },
@@ -961,7 +962,8 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     shouldReadyToFinish = true;
     nextExplorationState = { ...baseState };
   } else if (battleType === "strong_enemy") {
-    areaLordAppeared = Math.random() < 0.5;
+    const rate = Math.max(0, Math.min(100, expedition.area.areaLordAppearanceRate ?? 50)) / 100;
+    areaLordAppeared = Math.random() < rate;
     if (areaLordAppeared) {
       shouldReadyToFinish = false;
       nextExplorationState = { ...baseState, areaLordAvailable: true };

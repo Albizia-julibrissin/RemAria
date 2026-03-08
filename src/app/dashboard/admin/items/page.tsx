@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getAdminItemList } from "@/server/actions/admin";
+import { getAdminItemList, getAdminEquipmentTypeListForItemMaster } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
+import { AdminEquipmentTypeNameEdit } from "./admin-equipment-type-name-edit";
 
 const CATEGORY_LABELS: Record<string, string> = {
   material: "素材",
@@ -19,10 +20,14 @@ export default async function AdminItemsPage() {
     redirect("/dashboard");
   }
 
-  const items = await getAdminItemList();
+  const [items, equipmentTypes] = await Promise.all([
+    getAdminItemList(),
+    getAdminEquipmentTypeListForItemMaster(),
+  ]);
   if (!items) {
     redirect("/dashboard");
   }
+  const equipmentTypeList = equipmentTypes ?? [];
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -110,6 +115,16 @@ export default async function AdminItemsPage() {
         </table>
       </div>
       <p className="mt-2 text-xs text-text-muted">計 {items.length} 件</p>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold text-text-primary border-b border-base-border pb-2">
+          装備型（EquipmentType）
+        </h2>
+        <p className="mt-2 text-sm text-text-muted">
+          クラフトで製造する装備の種類。名前のみ編集できます。どの装備をレシピで作るかはクラフトレシピ編集で設定します。
+        </p>
+        <AdminEquipmentTypeNameEdit equipmentTypes={equipmentTypeList} />
+      </section>
     </main>
   );
 }

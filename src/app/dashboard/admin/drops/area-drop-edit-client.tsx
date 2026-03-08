@@ -75,6 +75,11 @@ function TableEditor({
     );
   };
 
+  const totalWeight = rows.reduce(
+    (sum, r) => sum + (typeof r.weight === "number" && r.weight >= 0 ? r.weight : Number(r.weight) || 0),
+    0
+  );
+
   const handleSave = () => {
     const valid = rows.filter(
       (r) =>
@@ -148,13 +153,16 @@ function TableEditor({
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
                 重み
               </th>
+              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
+                確率
+              </th>
               <th className="border border-base-border px-2 py-1.5 w-16" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="border border-base-border px-2 py-3 text-text-muted text-center">
+                <td colSpan={6} className="border border-base-border px-2 py-3 text-text-muted text-center">
                   エントリがありません。「行を追加」で追加してください。
                 </td>
               </tr>
@@ -207,6 +215,11 @@ function TableEditor({
                       }
                       className="w-full rounded border border-base-border bg-base-elevated px-2 py-1 text-text-primary"
                     />
+                  </td>
+                  <td className="border border-base-border px-2 py-1 text-text-muted text-sm">
+                    {totalWeight > 0
+                      ? `${(((Number(row.weight) || 0) / totalWeight) * 100).toFixed(1)}%`
+                      : "—"}
                   </td>
                   <td className="border border-base-border px-2 py-1 text-center">
                     <button

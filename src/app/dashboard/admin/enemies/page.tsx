@@ -42,7 +42,7 @@ export default async function AdminEnemiesPage() {
             <tr className="bg-base-elevated">
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">code</th>
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">name</th>
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">配置</th>
+              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">列</th>
               <th className="border border-base-border px-2 py-1.5 text-right text-text-muted font-medium">STR/INT/…</th>
               <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">操作</th>
             </tr>
@@ -52,7 +52,7 @@ export default async function AdminEnemiesPage() {
               <tr key={row.id} className="text-text-primary">
                 <td className="border border-base-border px-2 py-1.5 font-mono text-xs">{row.code}</td>
                 <td className="border border-base-border px-2 py-1.5">{row.name}</td>
-                <td className="border border-base-border px-2 py-1.5 text-text-muted">({row.defaultBattleRow},{row.defaultBattleCol})</td>
+                <td className="border border-base-border px-2 py-1.5 text-text-muted">{row.defaultBattleCol}</td>
                 <td className="border border-base-border px-2 py-1.5 text-right text-text-muted">{row.STR}/{row.INT}/{row.VIT}/…</td>
                 <td className="border border-base-border px-2 py-1.5 text-center">
                   <Link href={`/dashboard/admin/enemies/${row.id}`} className="text-brass hover:text-brass-hover">編集</Link>

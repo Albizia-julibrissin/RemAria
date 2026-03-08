@@ -83,53 +83,66 @@ function skillToBattleData(skill: {
   };
 }
 
-/** DB の Enemy を EnemyInput に変換 */
-function enemyToInput(enemy: {
-  id: string;
-  name: string;
-  iconFilename: string | null;
-  STR: number;
-  INT: number;
-  VIT: number;
-  WIS: number;
-  DEX: number;
-  AGI: number;
-  LUK: number;
-  CAP: number;
-  defaultBattleRow: number;
-  defaultBattleCol: number;
-  tacticSlots: Array<{
-    orderIndex: number;
-    subject: string;
-    conditionKind: string;
-    conditionParam: unknown;
-    actionType: string;
-    skillId: string | null;
-  }>;
-  enemySkills: Array<{
-    skill: {
-      id: string;
-      name: string;
-      battleSkillType: string | null;
-      powerMultiplier: unknown;
-      mpCostCapCoef: unknown;
-      mpCostFlat: number | null;
-      chargeCycles: number | null;
-      cooldownCycles: number | null;
-      hitsMin: number | null;
-      hitsMax: number | null;
-      resampleTargetPerHit: boolean | null;
-      targetScope: string | null;
-      attribute: string | null;
-      weightAddFront: unknown;
-      weightAddMid: unknown;
-      weightAddBack: unknown;
-      logMessage: string | null;
-      logMessageOnCondition: string | null;
-      skillEffects: Array<{ effectType: string; param: unknown }>;
-    };
-  }>;
-}): EnemyInput {
+/** spec/050 §4.3: 探索戦闘では選出順で上から row を固定。col はマスタの defaultBattleCol を使用。 */
+function explorationPositionByIndex(
+  index: number,
+  defaultCol: number
+): BattlePosition {
+  const row = Math.max(1, Math.min(3, index + 1)) as 1 | 2 | 3;
+  const col = Math.max(1, Math.min(3, defaultCol)) as 1 | 2 | 3;
+  return { row, col };
+}
+
+/** DB の Enemy を EnemyInput に変換。selectionIndex 指定時は探索用に選出順で上から埋める位置を使う。 */
+function enemyToInput(
+  enemy: {
+    id: string;
+    name: string;
+    iconFilename: string | null;
+    STR: number;
+    INT: number;
+    VIT: number;
+    WIS: number;
+    DEX: number;
+    AGI: number;
+    LUK: number;
+    CAP: number;
+    defaultBattleRow: number;
+    defaultBattleCol: number;
+    tacticSlots: Array<{
+      orderIndex: number;
+      subject: string;
+      conditionKind: string;
+      conditionParam: unknown;
+      actionType: string;
+      skillId: string | null;
+    }>;
+    enemySkills: Array<{
+      skill: {
+        id: string;
+        name: string;
+        battleSkillType: string | null;
+        powerMultiplier: unknown;
+        mpCostCapCoef: unknown;
+        mpCostFlat: number | null;
+        chargeCycles: number | null;
+        cooldownCycles: number | null;
+        hitsMin: number | null;
+        hitsMax: number | null;
+        resampleTargetPerHit: boolean | null;
+        targetScope: string | null;
+        attribute: string | null;
+        weightAddFront: unknown;
+        weightAddMid: unknown;
+        weightAddBack: unknown;
+        logMessage: string | null;
+        logMessageOnCondition: string | null;
+        skillEffects: Array<{ effectType: string; param: unknown }>;
+      };
+    }>;
+  },
+  selectionIndex?: number
+): EnemyInput {
   const base: BaseStats = {
     STR: enemy.STR,
     INT: enemy.INT,
@@ -155,16 +168,20 @@ function enemyToInput(enemy: {
       skillEffects: es.skill.skillEffects,
     });
   }
+  const position =
+    selectionIndex !== undefined
+      ? explorationPositionByIndex(selectionIndex, enemy.defaultBattleCol)
+      : {
+          row: Math.max(1, Math.min(3, enemy.defaultBattleRow)) as 1 | 2 | 3,
+          col: Math.max(1, Math.min(3, enemy.defaultBattleCol)) as 1 | 2 | 3,
+        };
   return {
     base,
     tacticSlots,
     skills,
     displayName: enemy.name,
     iconFilename: enemy.iconFilename,
-    position: {
-      row: Math.max(1, Math.min(3, enemy.defaultBattleRow)) as 1 | 2 | 3,
-      col: Math.max(1, Math.min(3, enemy.defaultBattleCol)) as 1 | 2 | 3,
-    },
+    position,
     enemyId: enemy.id,
   };
 }
@@ -224,7 +241,7 @@ export async function resolveEnemiesForExplorationBattle(
     for (let i = 0; i < count; i++) {
       const idx = weightedPick(group.entries);
       const entry = group.entries[idx];
-      if (entry?.enemy) inputs.push(enemyToInput(entry.enemy));
+      if (entry?.enemy) inputs.push(enemyToInput(entry.enemy, i));
     }
     return inputs;
   }
@@ -238,7 +255,7 @@ export async function resolveEnemiesForExplorationBattle(
   });
   if (!boss) return [];
 
-  const result: EnemyInput[] = [enemyToInput(boss)];
+  const result: EnemyInput[] = [enemyToInput(boss, 0)];
   const trashCount = count - 1;
   if (trashCount <= 0) return result;
 
@@ -258,7 +275,7 @@ export async function resolveEnemiesForExplorationBattle(
   for (let i = 0; i < trashCount; i++) {
     const idx = weightedPick(group.entries);
     const entry = group.entries[idx];
-    if (entry?.enemy) result.push(enemyToInput(entry.enemy));
+    if (entry?.enemy) result.push(enemyToInput(entry.enemy, result.length));
   }
   return result;
 }
