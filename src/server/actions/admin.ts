@@ -281,6 +281,7 @@ export type AdminUserRow = {
   accountStatus: string;
   createdAt: Date;
   lastLoginAt: Date | null;
+  lastActiveAt: Date | null;
   hasProtagonist: boolean;
 };
 
@@ -297,6 +298,7 @@ export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
       accountStatus: true,
       createdAt: true,
       lastLoginAt: true,
+      lastActiveAt: true,
       protagonistCharacterId: true,
     },
   });
@@ -308,6 +310,7 @@ export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
     accountStatus: r.accountStatus,
     createdAt: r.createdAt,
     lastLoginAt: r.lastLoginAt,
+    lastActiveAt: r.lastActiveAt ?? null,
     hasProtagonist: r.protagonistCharacterId != null,
   }));
 }

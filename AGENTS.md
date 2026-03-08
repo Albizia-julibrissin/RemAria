@@ -39,7 +39,7 @@
 
 | テーマ | Spec | 主な実装場所 |
 |--------|------|----------------|
-| 認証・セッション | spec/010_auth | `src/server/actions/auth.ts`, `src/lib/auth/session.ts`, `src/middleware.ts` |
+| 認証・セッション | spec/010_auth | `src/server/actions/auth.ts`, `src/lib/auth/session.ts`, `src/middleware.ts`, `src/server/lib/active-user.ts`（lastActiveAt・プレイ中人数）, `src/components/header.tsx` |
 | 主人公作成 | spec/015_protagonist_creation | `src/server/actions/protagonist.ts`, `src/app/character/create/`, `src/server/lib/protagonist-icons.ts` |
 | 練習戦闘・戦闘実行 | spec/020_test_battle | `src/server/actions/battle.ts`, `src/lib/battle/run-simple-battle.ts`, `src/lib/battle/run-battle-with-party.ts`, `src/lib/battle/default-enemy.ts` |
 | キャラ一覧 | spec/025_character_list | `src/app/dashboard/characters/`, `src/server/repositories/character-repository.ts` |

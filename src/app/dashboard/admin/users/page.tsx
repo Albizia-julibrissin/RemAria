@@ -64,6 +64,9 @@ export default async function AdminUsersPage() {
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
                 最終ログイン
               </th>
+              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
+                最終アクティブ
+              </th>
               <th className="border border-base-border px-2 py-1.5 text-center text-text-muted font-medium w-20">
                 主人公
               </th>
@@ -85,6 +88,9 @@ export default async function AdminUsersPage() {
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-text-muted text-xs">
                   {row.lastLoginAt ? formatDate(row.lastLoginAt) : "—"}
+                </td>
+                <td className="border border-base-border px-2 py-1.5 text-text-muted text-xs">
+                  {row.lastActiveAt ? formatDate(row.lastActiveAt) : "—"}
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-center text-text-muted">
                   {row.hasProtagonist ? "済" : "—"}

@@ -27,6 +27,7 @@
 | accountStatus | String | NOT NULL, default "active" | active / suspended / banned |
 | lastLoginAt | DateTime | NULL可 | 最終ログイン日時（※下記） |
 | firstLoginAt | DateTime | NULL可 | 初回ログイン日時（※下記） |
+| lastActiveAt | DateTime | NULL可 | 最終アクティブ日時（※下記）。直近5分のプレイ中人数・管理画面で参照。 |
 | locale | String | NULL可 | 表示言語 |
 | protagonistCharacterId | String | NULL可, UNIQUE, FK→Character.id | 主人公1体（category=protagonist）。登録時または初回キャラ作成時に設定。 |
 | companionHireCount | Int | NOT NULL, default 0 | 仲間雇用可能回数（購入で+1、仲間作成で-1）。spec/030。 |
@@ -49,7 +50,9 @@
   - 例: 2/1 にログイン → 2/7 にセッション切れ → lastLoginAt は 2/1 のまま。2/7 に再ログインしたらその時点で 2/7 に更新。
   - 負荷を抑えるため、リクエストごとの更新は行わない。
 - **firstLoginAt** ＝ 初回ログイン日時。初回ログイン（または登録時の自動ログイン）時に 1 回だけ設定し、以降は更新しない。
-- 「最後にプレイした日時」など活動ベースで見たい場合は、別途 lastActivityAt 等を用意し、更新は日単位など間引いて行う設計を検討する。
+- **lastActiveAt** ＝ **最終アクティブ日時**（保護パスへのアクセスなど「操作」があった日時）。
+  - spec/010_auth §11.6 に従い、ルート layout で認証済みユーザーの lastActiveAt を更新する。同一ユーザーは **1 分に 1 回まで** 更新（スロットリング）して DB 負荷を抑える。
+  - 「いま〇人がプレイ中」は `lastActiveAt >= NOW() - 5分` のユーザー数で表示。管理画面のユーザ一覧でも表示する。
 
 ---
 

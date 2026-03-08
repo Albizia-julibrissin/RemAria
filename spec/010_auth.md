@@ -18,6 +18,8 @@
 | login | ログイン | ログイン画面 |
 | logout | ログアウト | ヘッダー・設定等 |
 | getSession | セッション取得・検証 | 全保護画面（ミドルウェア／layout 経由） |
+| touchUserActivity | 最終アクティブ日時の更新（スロットリング付き） | ルート layout（認証済み時） |
+| getActiveUserCountLast5Min | 直近5分以内に操作があったユーザー数 | ルート layout（ヘッダー表示用） |
 
 **横断前提**：他 spec で「保護画面」を定義する場合、`010_auth の getSession が有効であること` を前提条件に記載する。
 
@@ -172,6 +174,7 @@
 
 - **User**（DB）
   - id, email, accountId（必須・一意）, passwordHash, name（必須。主人公の表示名もこれを使用）, createdAt, updatedAt
+  - **lastActiveAt**（DateTime, NULL可）：直近で「操作があった」とみなした日時。プレイ中人数表示・管理画面で参照。更新はスロットリング（同一ユーザーは最低 1 分間隔）で行う。
 - **セッション**（Cookie 内の暗号化データ）
   - userId（復号化して取得）
 
@@ -342,7 +345,19 @@
 
 ------------------------------------------------------------------------
 
-### 11.6 導線（一般的な遷移）
+### 11.6 アクティブユーザー数・最終アクティブ（lastActiveAt）
+
+| 項目 | 内容 |
+|------|------|
+| **目的** | 「いまゲームで遊んでいる人数」を直近5分以内に操作があったユーザー数で表示する。管理画面では各ユーザーの最終アクティブ日時を参照可能にする。 |
+| **User.lastActiveAt** | 保護パス（/dashboard, /character, /battle）へのアクセスなど「操作」があったときに更新する。同一ユーザーは **1 分に 1 回まで** 更新（スロットリング）して DB 負荷を抑える。 |
+| **更新タイミング** | ルート layout で getSession により userId が取れた場合に `touchUserActivity(userId)` を呼ぶ。 |
+| **人数取得** | `getActiveUserCountLast5Min()`：`lastActiveAt >= NOW() - INTERVAL 5 MINUTE` のユーザー数を返す。 |
+| **表示** | ヘッダーに「いま〇人がプレイ中」等を表示（未ログインでも表示してよい）。管理画面のユーザ一覧に「最終アクティブ」列を追加し lastActiveAt を表示する。 |
+
+------------------------------------------------------------------------
+
+### 11.7 導線（一般的な遷移）
 
 ```
 未ログイン状態:
@@ -377,6 +392,7 @@ model User {
   name         String   // 表示名（必須・重複可）。主人公の表示名もこの値を使用。
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  lastActiveAt DateTime?  // §11.6: 直近操作日時。プレイ中人数・管理画面で参照。
 
   // ... 他のリレーション
 }

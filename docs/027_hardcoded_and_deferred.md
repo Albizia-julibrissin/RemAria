@@ -44,6 +44,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 27 | `docs/041_skill_effects_implementation_prep.md` §9 | **logMessageOnCondition の表示**：条件達成時の追加メッセージをログにどう出すか要検討。現状は「決壊」等のインライン表示のみの可能性。 | spec/038 や 042 で表示仕様を決め、必要なら別行で条件達成メッセージを出す。 |
 | 28 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/` | **技能イベント後の消耗品使用**：戦闘後の消耗品使用 UI・HP/MP 回復は実装済み。技能イベントの**後**に消耗品を使う UI・効果適用は未実装（spec/049）。 | 技能イベント結果表示後に「消耗品を使う」ボタンと選択 UIを出し、使用後に次ステップへ進むフローを追加する。 |
 | 29 | `src/lib/constants/relic.ts` | **RELIC_GROUP_APPRAISAL_CONFIG**：遺物鑑定のステ・耐性・パッシブ抽選の既定値。 | 鑑定時は DB の RelicGroupConfig を優先し、該当 groupCode の設定が無い場合のみこの定数をフォールバックとして参照。管理画面で遺物グループ編集可能。 |
+| 30 | `src/app/battle/exploration/`（ExplorationNextButton 等） | **「次へ」ボタンの無効解除**：押下後に 1.5 秒の setTimeout で無効を解除している。 | サーバー応答／処理完了でボタンを戻す（例: サーバーから渡す key で remount、または Server Action + useFormStatus）。方法は本 doc または会話で検討済み。 |
 
 ---
 
