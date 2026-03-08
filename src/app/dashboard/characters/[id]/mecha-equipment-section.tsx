@@ -67,7 +67,7 @@ export function MechaEquipmentSection({
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
       <h2 className="text-lg font-medium text-text-primary">メカパーツ</h2>
       <p className="mt-1 text-sm text-text-muted">
-        各部位にパーツを装着できます。クラフトで作ったパーツはバッグに追加されます。
+        各部位にパーツを装着できます。クラフトで作ったパーツは倉庫に追加されます。
       </p>
       <ul className="mt-4 space-y-3">
         {slots.map((row) => {

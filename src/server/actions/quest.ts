@@ -124,7 +124,7 @@ export async function addQuestProgressAreaClear(
   for (const q of matching) {
     const uq = await prisma.userQuest.findUnique({
       where: { userId_questId: { userId, questId: q.id } },
-      select: { id: true, progress: true },
+      select: { id: true, progress: true, state: true },
     });
     if (!uq || uq.state === "completed") continue;
     const count = param(q)?.count ?? 1;

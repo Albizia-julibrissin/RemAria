@@ -336,6 +336,40 @@ export async function updateAdminEquipmentTypeName(
   return { success: true };
 }
 
+/**
+ * 装備型を削除する。装備個体は削除・装着は外し、クラフトレシピの出力は null にする。
+ */
+export async function deleteAdminEquipmentType(
+  equipmentTypeId: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const et = await prisma.equipmentType.findUnique({
+    where: { id: equipmentTypeId },
+    select: { id: true, code: true, name: true },
+  });
+  if (!et) return { success: false, error: "装備型が見つかりません。" };
+
+  const instances = await prisma.equipmentInstance.findMany({
+    where: { equipmentTypeId },
+    select: { id: true },
+  });
+  for (const inst of instances) {
+    await prisma.characterEquipment.updateMany({
+      where: { equipmentInstanceId: inst.id },
+      data: { equipmentInstanceId: null },
+    });
+  }
+  await prisma.equipmentInstance.deleteMany({ where: { equipmentTypeId } });
+  await prisma.craftRecipe.updateMany({
+    where: { outputEquipmentTypeId: equipmentTypeId },
+    data: { outputEquipmentTypeId: null },
+  });
+  await prisma.equipmentType.delete({ where: { id: equipmentTypeId } });
+  return { success: true };
+}
+
 export type AdminItemDetail = AdminItemRow;
 
 /**
@@ -734,6 +768,52 @@ export async function createAdminItem(
     select: { id: true },
   });
   return { success: true, itemId: created.id };
+}
+
+/**
+ * アイテムを削除。参照（所持・レシピ・ドロップ・研究コスト・設備レシピなど）がある場合は削除不可。
+ */
+export async function deleteAdminItem(
+  itemId: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const item = await prisma.item.findUnique({
+    where: { id: itemId },
+    select: { id: true, code: true, name: true },
+  });
+  if (!item) return { success: false, error: "アイテムが見つかりません。" };
+
+  const [inv, recipeInput, drop, research, facilityRecipe, recipeOutput, recipeInputCount] =
+    await Promise.all([
+      prisma.userInventory.count({ where: { itemId } }),
+      prisma.craftRecipeInput.count({ where: { itemId } }),
+      prisma.dropTableEntry.count({ where: { itemId } }),
+      prisma.researchUnlockCost.count({ where: { itemId } }),
+      prisma.facilityConstructionRecipeInput.count({ where: { itemId } }),
+      prisma.recipe.count({ where: { outputItemId: itemId } }),
+      prisma.recipeInput.count({ where: { itemId } }),
+    ]);
+
+  const blocks: string[] = [];
+  if (inv > 0) blocks.push(`所持アイテム（${inv}件）`);
+  if (recipeInput > 0) blocks.push(`クラフトレシピ素材（${recipeInput}件）`);
+  if (drop > 0) blocks.push(`ドロップテーブル（${drop}件）`);
+  if (research > 0) blocks.push(`研究解放コスト（${research}件）`);
+  if (facilityRecipe > 0) blocks.push(`設備建設レシピ（${facilityRecipe}件）`);
+  if (recipeOutput > 0) blocks.push(`レシピ出力（${recipeOutput}件）`);
+  if (recipeInputCount > 0) blocks.push(`レシピ素材（${recipeInputCount}件）`);
+
+  if (blocks.length > 0) {
+    return {
+      success: false,
+      error: `削除できません。${blocks.join("・")}で参照されています。`,
+    };
+  }
+
+  await prisma.item.delete({ where: { id: itemId } });
+  return { success: true };
 }
 
 // --- クラフトレシピ編集（spec/046）---

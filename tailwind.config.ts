@@ -7,6 +7,8 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  // 動的クラス名のアイコンが purge されないよう GRA 用歯車を明示
+  safelist: ["game-icons--gear-stick"],
   theme: {
     extend: {
       colors: {
@@ -23,6 +25,11 @@ const config: Config = {
         },
         "text-primary": "#e2e8f0",
         "text-muted": "#94a3b8",
+        // GRA（課金通貨）表示用ネオン青
+        gra: {
+          DEFAULT: "#00d4ff",
+          hover: "#33ddff",
+        },
         error: "#f87171",
         success: "#34d399",
       },

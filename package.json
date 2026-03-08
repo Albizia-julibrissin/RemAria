@@ -12,7 +12,10 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:seed:test": "cross-env SEED_TEST=1 prisma db seed",
+    "db:backup": "tsx prisma/db-backup.ts",
+    "db:restore": "tsx prisma/db-restore.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -26,6 +29,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "cross-env": "^7.0.3",
     "@eslint/eslintrc": "^3.0.0",
     "@iconify-json/game-icons": "^1.2.3",
     "@iconify/tailwind": "^1.2.0",

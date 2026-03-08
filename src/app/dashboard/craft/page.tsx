@@ -39,7 +39,7 @@ export default async function CraftPage() {
         レシピを選んで実行すると、必要な資源を消費して装備・消耗品を作成します。装備は個体ごとにステータスがランダムで決まります。
       </p>
       <p className="mt-1 text-sm text-text-muted">
-        <Link href="/dashboard/bag" className="text-brass hover:underline">バッグ</Link>
+        <Link href="/dashboard/bag" className="text-brass hover:underline">倉庫</Link>
         で所持数を確認できます。
       </p>
 

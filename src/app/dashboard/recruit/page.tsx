@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth/session";
 import { getProtagonist } from "@/server/actions/protagonist";
 import { getCompanionHireState } from "@/server/actions/recruit";
 import { RecruitPurchaseButtons } from "./recruit-purchase-buttons";
+import { GraDisplay } from "@/components/currency/gra-display";
 
 export default async function RecruitPage() {
   const session = await getSession();
@@ -36,12 +37,10 @@ export default async function RecruitPage() {
             <dd className="font-medium text-text-primary">{state.companionCount} / {state.companionMaxCount}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">ゲーム通貨</dt>
-            <dd className="font-medium text-text-primary">{state.gameCurrencyBalance}</dd>
-          </div>
-          <div>
-            <dt className="text-text-muted">課金通貨（無償+有償）</dt>
-            <dd className="font-medium text-text-primary">{state.premiumFreeBalance + state.premiumPaidBalance}</dd>
+            <dt className="text-text-muted">所持 GRA</dt>
+            <dd className="font-medium text-text-primary">
+              <GraDisplay free={state.premiumFreeBalance} paid={state.premiumPaidBalance} />
+            </dd>
           </div>
         </dl>
       </div>
@@ -49,10 +48,8 @@ export default async function RecruitPage() {
       <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
         <h2 className="text-lg font-medium text-text-primary mb-4">雇用可能回数を購入</h2>
         <RecruitPurchaseButtons
-          gameCurrencyBalance={state.gameCurrencyBalance}
           premiumFreeBalance={state.premiumFreeBalance}
           premiumPaidBalance={state.premiumPaidBalance}
-          priceGame={state.priceGame}
           pricePremium={state.pricePremium}
         />
       </div>

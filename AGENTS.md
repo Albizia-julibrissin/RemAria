@@ -8,7 +8,8 @@
 
 - **仕様変更は spec または正本 doc を先に更新してからコードを変更する。** チャットの会話だけに残さず、必ずファイルに反映する。
 - **データモデルの正本**: `prisma/schema.prisma`。説明・メモは `docs/08_database_schema.md`。
-- **マスタデータの投入**: `prisma/seed.ts`（`npm run db:seed`）。スキル・効果の具体値はここで定義。
+- **マスタデータ**: シードでは投入しない。管理画面で編集し、**バックアップ・復元**で環境を揃える（`npm run db:backup` / `db:restore`）。**DB 運営・バックアップ手順**は **`manage/DB_OPERATIONS.md`** と **`manage/BACKUP_RESTORE.md`** を参照。
+- **シード**: `prisma/seed.ts` は**テスト用データのみ**（test1/test2 ユーザー・主人公・仲間・通貨・所持品）。`npm run db:seed`。
 - **ドキュメント索引**: `docs/README.md` でテーマ別の一覧と参照先を確認できる。
 - **アーキテクチャ・ディレクトリ構成**: `docs/03_architecture_spec.md`。依存方向は UI → server(actions) → repositories → db。`lib/` は純粋ロジック。
 - **ハードコード・暫定実装**: 「後でちゃんと実装する」前提のコードは **`docs/027_hardcoded_and_deferred.md`** に一覧化する。新規に追加するときは一覧に 1 行追記し、解消したらその行を削除する。
@@ -84,7 +85,8 @@
 ## 6. コマンド・検証
 
 - **開発サーバ**: `npm run dev`
+- **DB 起動/停止**: `npm run db:start` / `npm run db:stop`
 - **DB マイグレーション**: `npm run db:migrate`（schema 変更後）
-- **シード投入**: `npm run db:seed`
+- **シード投入**: `npm run db:seed`（テスト用データのみ）。マスタはバックアップ復元で用意。詳細は **`manage/DB_OPERATIONS.md`** と **`manage/BACKUP_RESTORE.md`** 参照。
 - **Lint**: `npm run lint`
 - テストは未整備の場合は省略可。追加する場合は `docs/03_architecture_spec.md` の「8. テスト方針」に従う。

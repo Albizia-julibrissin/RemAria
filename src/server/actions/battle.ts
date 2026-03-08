@@ -395,7 +395,9 @@ export async function runBattle(
 
   const defeatedEnemyIds =
     battle.result === "player" && resolvedEnemyInputs
-      ? resolvedEnemyInputs.filter((e) => e.enemyId).map((e) => e.enemyId!)
+      ? resolvedEnemyInputs
+          .filter((e): e is typeof e & { enemyId: string } => "enemyId" in e && !!(e as { enemyId?: string }).enemyId)
+          .map((e) => e.enemyId)
       : undefined;
 
   return {

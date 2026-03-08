@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { startExploration } from "@/server/actions/exploration";
 import type { StackableItem } from "@/server/actions/inventory";
 
@@ -20,7 +21,8 @@ type Props = {
   themes: {
     themeId: string;
     name: string;
-    areas: { areaId: string; name: string }[];
+    description: string | null;
+    areas: { areaId: string; name: string; description: string | null; recommendedLevel: number }[];
   }[];
   partyPresets: {
     id: string;
@@ -43,15 +45,21 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
   /** 選択した種類の持ち込み個数（0 ～ その種類の上限） */
   const [carryQuantity, setCarryQuantity] = useState<number>(0);
 
-  const areaOptions: AreaOption[] = useMemo(() => {
+  const areaOptions: (AreaOption & { recommendedLevel: number; description: string | null })[] = useMemo(() => {
     const theme = themes.find((t) => t.themeId === selectedThemeId) ?? themes[0];
     if (!theme) return [];
     return theme.areas.map((a) => ({
       id: a.areaId,
       name: a.name,
       themeName: theme.name,
+      recommendedLevel: a.recommendedLevel,
+      description: a.description ?? null,
     }));
   }, [themes, selectedThemeId]);
+
+  const selectedTheme = selectedThemeId
+    ? themes.find((t) => t.themeId === selectedThemeId)
+    : null;
 
   const presetOptions: PartyPresetOption[] = useMemo(
     () =>
@@ -128,14 +136,18 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
     });
   };
 
+  const selectedArea = selectedAreaId
+    ? areaOptions.find((a) => a.id === selectedAreaId)
+    : null;
+
   return (
-    <div className="rounded-lg border border-dashed border-base-border bg-base-elevated/60 p-4">
-      <h3 className="text-sm font-medium text-text-muted">探索開始</h3>
-      <p className="mt-2 text-sm text-text-muted">
-        テーマ・エリアとパーティプリセットを選び、持ち込む消耗品の個数を指定して探索を開始します。
+    <div className="rounded-lg border border-base-border bg-base-elevated p-5 shadow-sm">
+      <h3 className="text-base font-semibold text-text-primary">探索を始める</h3>
+      <p className="mt-1 text-sm text-text-muted">
+        行き先・編成・持ち込みを選んで開始します。
       </p>
 
-      <div className="mt-3 space-y-2 text-sm">
+      <div className="mt-4 space-y-3 text-sm">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-text-muted">テーマ</label>
           <select
@@ -154,46 +166,65 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
               ))
             )}
           </select>
+          {selectedTheme?.description && (
+            <p className="mt-0.5 text-xs text-text-muted">{selectedTheme.description}</p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1">
           <label className="text-xs text-text-muted">エリア</label>
-          <select
-            className="rounded-md border border-base-border bg-base px-2 py-1 text-sm text-text-primary"
-            value={selectedAreaId ?? ""}
-            onChange={(e) => setSelectedAreaId(e.target.value || undefined)}
-            disabled={areaOptions.length === 0 || isPending}
-          >
-            {areaOptions.length === 0 ? (
-              <option value="">エリアがありません</option>
-            ) : (
-              areaOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.themeName} / {opt.name}
-                </option>
-              ))
+          <div className="flex items-center gap-2">
+            <select
+              className="rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary flex-1"
+              value={selectedAreaId ?? ""}
+              onChange={(e) => setSelectedAreaId(e.target.value || undefined)}
+              disabled={areaOptions.length === 0 || isPending}
+            >
+              {areaOptions.length === 0 ? (
+                <option value="">エリアがありません</option>
+              ) : (
+                areaOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.themeName} / {opt.name}
+                  </option>
+                ))
+              )}
+            </select>
+            {selectedArea && (
+              <span className="text-xs text-text-muted whitespace-nowrap">推奨Lv {selectedArea.recommendedLevel}</span>
             )}
-          </select>
+          </div>
+          {selectedArea?.description && (
+            <p className="mt-0.5 text-xs text-text-muted">{selectedArea.description}</p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1">
           <label className="text-xs text-text-muted">パーティプリセット</label>
-          <select
-            className="rounded-md border border-base-border bg-base px-2 py-1 text-sm text-text-primary"
-            value={selectedPresetId ?? ""}
-            onChange={(e) => setSelectedPresetId(e.target.value || undefined)}
-            disabled={presetOptions.length === 0 || isPending}
-          >
-            {presetOptions.length === 0 ? (
-              <option value="">プリセットがありません</option>
-            ) : (
-              presetOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))
-            )}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              className="rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary flex-1"
+              value={selectedPresetId ?? ""}
+              onChange={(e) => setSelectedPresetId(e.target.value || undefined)}
+              disabled={presetOptions.length === 0 || isPending}
+            >
+              {presetOptions.length === 0 ? (
+                <option value="">プリセットがありません</option>
+              ) : (
+                presetOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))
+              )}
+            </select>
+            <Link
+              href="/dashboard/tactics"
+              className="flex-shrink-0 rounded-md border border-base-border bg-base-elevated px-3 py-1.5 text-sm text-text-primary hover:border-brass hover:bg-base-elevated/90"
+            >
+              作戦室
+            </Link>
+          </div>
         </div>
 
         {consumablesWithLimit.length > 0 && (
@@ -242,7 +273,7 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
         type="button"
         onClick={handleStart}
         disabled={!canStart}
-        className="mt-3 inline-flex items-center rounded-md bg-brass px-4 py-2 text-sm font-medium text-base shadow-sm disabled:bg-base-border disabled:text-text-muted"
+        className="mt-4 w-full rounded-md bg-brass px-4 py-2.5 text-sm font-medium text-base shadow-sm disabled:bg-base-border disabled:text-text-muted hover:bg-brass/90"
       >
         {isPending ? "探索を開始中..." : "探索を開始"}
       </button>

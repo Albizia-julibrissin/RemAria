@@ -47,7 +47,7 @@ export const EQUIPMENT_STAT_GEN_BY_CODE: Record<string, EquipmentStatGenConfig> 
       { key: "PDEF", weightMin: 1, weightMax: 5 },
     ],
   },
-  cloth_armor: {
+  cotton_robe: {
     capMin: 50,
     capMax: 80,
     weights: [

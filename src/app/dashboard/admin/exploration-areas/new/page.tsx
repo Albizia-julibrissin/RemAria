@@ -61,7 +61,7 @@ export default async function AdminExplorationAreaNewPage({
       <AdminExplorationAreaCreateForm
         themes={themes}
         initialThemeId={themeId}
-        enemyGroupCodes={enemyGroupCodes ?? []}
+        enemyGroupCodes={(enemyGroupCodes ?? []).map((g) => g.code)}
         enemies={enemyList.map((e) => ({ id: e.id, code: e.code, name: e.name }))}
       />
     </main>

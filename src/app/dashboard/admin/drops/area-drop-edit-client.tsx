@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type {
   AreaDropEditData,
@@ -10,6 +10,14 @@ import type {
 import { saveDropTableEntries } from "@/server/actions/admin";
 
 type ItemOption = { id: string; code: string; name: string; category: string };
+
+const CATEGORY_LABELS: Record<string, string> = {
+  material: "素材",
+  consumable: "消耗品",
+  blueprint: "設計図",
+  skill_book: "スキル分析書",
+  paid: "有料",
+};
 
 type Props = {
   data: AreaDropEditData;
@@ -21,6 +29,7 @@ type LocalRow = SaveDropTableEntryInput & { tempId?: string };
 
 function TableEditor({
   table,
+  kindKey,
   kindLabel,
   items,
   onSaved,
@@ -39,8 +48,19 @@ function TableEditor({
       weight: e.weight,
     })) ?? []
   );
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  // カテゴリで絞り込み。選択中アイテムはフィルタに含まれていなくても候補に残す
+  const itemOptions = useMemo(() => {
+    const base = categoryFilter
+      ? items.filter((i) => i.category === categoryFilter)
+      : [...items];
+    const selectedIds = new Set(rows.map((r) => r.itemId).filter(Boolean));
+    const additional = items.filter((i) => selectedIds.has(i.id) && !base.some((b) => b.id === i.id));
+    return [...base, ...additional].sort((a, b) => a.code.localeCompare(b.code));
+  }, [items, categoryFilter, rows]);
 
   if (!table) {
     return (
@@ -112,7 +132,23 @@ function TableEditor({
         <h3 className="font-medium text-text-primary">
           {kindLabel} — {table.name}
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor={`drop-category-${kindKey}`} className="text-sm text-text-muted">
+            アイテム絞り込み
+          </label>
+          <select
+            id={`drop-category-${kindKey}`}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded border border-base-border bg-base px-2 py-1 text-sm text-text-primary"
+          >
+            <option value="">すべて</option>
+            {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             onClick={addRow}
@@ -176,7 +212,7 @@ function TableEditor({
                       className="w-full min-w-[140px] rounded border border-base-border bg-base-elevated px-2 py-1 text-text-primary"
                     >
                       <option value="">— 選択 —</option>
-                      {items.map((it) => (
+                      {itemOptions.map((it) => (
                         <option key={it.id} value={it.id}>
                           [{it.code}] {it.name}
                         </option>

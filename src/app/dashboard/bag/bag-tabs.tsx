@@ -1,6 +1,6 @@
 "use client";
 
-// spec/045, 051 - バッグの種別タブ・遺物
+// spec/045, 051 - 倉庫の種別タブ・遺物
 // spec/052 - スキル分析書の使用・キャラ選択
 
 import { useState } from "react";

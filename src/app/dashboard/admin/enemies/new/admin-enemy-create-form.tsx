@@ -16,7 +16,7 @@ import {
   ATTR_OPTIONS,
 } from "@/app/dashboard/tactics/tactics-constants";
 
-const CYCLE_CONDITION_VALUES = new Set(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
+const CYCLE_CONDITION_VALUES = new Set<string>(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
 
 const BASE_STATS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK", "CAP"] as const;
 

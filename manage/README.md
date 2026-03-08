@@ -6,6 +6,7 @@
 
 | ファイル | 説明 |
 |----------|------|
+| [DB_OPERATIONS.md](./DB_OPERATIONS.md) | **DB 運営**。起動・マイグレーション・シード（マスタ/テスト/エクスポート）の使い分け、編集内容の初期シード反映、管理画面との関係。 |
 | [MVP_PROGRESS.md](./MVP_PROGRESS.md) | MVP までの進捗ダッシュボード。`docs/01_features.md` の項目と spec/実装の対応を一覧化。進捗率・カテゴリ別状況・次のステップを記載。 |
 | [SECURITY_READINESS.md](./SECURITY_READINESS.md) | 認証・セッション・通貨・運用まわりのチェックリスト。商用リリースを意識した TODO を優先度付きで整理。 |
 | [ECONOMY_DESIGN.md](./ECONOMY_DESIGN.md) | **経済設計メモ**。課金通貨の統一方針（無償/有償のみ・表示1単位・無償から消費）、円→通貨の価格表、初期・ストーリー・デイリー付与。 |
@@ -21,6 +22,7 @@
 | [admin_facility_type_edit.md](./admin_facility_type_edit.md) | **管理者用** 設備種別編集。FacilityType の code / name 等。 |
 | [admin_facility_recipe_edit.md](./admin_facility_recipe_edit.md) | **管理者用** 設備生産レシピ編集。Recipe / RecipeInput。 |
 | [admin_craft_recipe_edit.md](./admin_craft_recipe_edit.md) | **管理者用** クラフトレシピ編集。CraftRecipe / CraftRecipeInput。 |
+| [TYPE_MISMATCH_INSPECTION.md](./TYPE_MISMATCH_INSPECTION.md) | **型ずれ**。seed と Prisma 型の不整合の原因・対処（db:generate、TS 再起動、Item skillId 等）。 |
 
 ## 使い方
 

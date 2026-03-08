@@ -3,15 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminEquipmentTypeRow } from "@/server/actions/admin";
-import { updateAdminEquipmentTypeName } from "@/server/actions/admin";
+import {
+  updateAdminEquipmentTypeName,
+  deleteAdminEquipmentType,
+} from "@/server/actions/admin";
 
 type Props = {
   equipmentTypes: AdminEquipmentTypeRow[];
 };
 
-export function AdminEquipmentTypeNameEdit({ equipmentTypes }: Props) {
+export function AdminEquipmentTypeList({ equipmentTypes }: Props) {
   const router = useRouter();
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [localNames, setLocalNames] = useState<Record<string, string>>(() =>
     Object.fromEntries(equipmentTypes.map((et) => [et.id, et.name]))
@@ -38,23 +42,39 @@ export function AdminEquipmentTypeNameEdit({ equipmentTypes }: Props) {
     if (result.success) router.refresh();
   };
 
+  const handleDelete = async (id: string, code: string, name: string) => {
+    if (!confirm(`装備型「${code}」（${name}）を削除しますか？\n装備個体は削除され、クラフトレシピの出力は未設定になります。`)) {
+      return;
+    }
+    setDeletingId(id);
+    setMessage(null);
+    const result = await deleteAdminEquipmentType(id);
+    setDeletingId(null);
+    setMessage(
+      result.success
+        ? { type: "ok", text: "削除しました。" }
+        : { type: "error", text: result.error ?? "削除に失敗しました。" }
+    );
+    if (result.success) router.refresh();
+  };
+
   if (equipmentTypes.length === 0) {
     return (
-      <p className="mt-2 text-sm text-text-muted">
+      <p className="mt-4 text-sm text-text-muted">
         装備型が登録されていません。クラフトレシピで装備を出力すると作成されます。
       </p>
     );
   }
 
   return (
-    <div className="mt-3">
+    <div className="mt-6">
       {message && (
-        <p className={`mb-2 text-sm ${message.type === "ok" ? "text-success" : "text-error"}`}>
+        <p className={`mb-3 text-sm ${message.type === "ok" ? "text-success" : "text-error"}`}>
           {message.text}
         </p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[320px] text-sm border-collapse border border-base-border">
+        <table className="w-full min-w-[360px] text-sm border-collapse border border-base-border">
           <thead>
             <tr className="bg-base-elevated">
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
@@ -63,8 +83,11 @@ export function AdminEquipmentTypeNameEdit({ equipmentTypes }: Props) {
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
                 name（編集可）
               </th>
-              <th className="border border-base-border px-2 py-1.5 w-20 text-center text-text-muted font-medium">
+              <th className="border border-base-border px-2 py-1.5 w-24 text-center text-text-muted font-medium">
                 操作
+              </th>
+              <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">
+                削除
               </th>
             </tr>
           </thead>
@@ -94,12 +117,22 @@ export function AdminEquipmentTypeNameEdit({ equipmentTypes }: Props) {
                     {savingId === et.id ? "保存中…" : "保存"}
                   </button>
                 </td>
+                <td className="border border-base-border px-2 py-1.5 text-center">
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(et.id, et.code, et.name)}
+                    disabled={deletingId === et.id}
+                    className="text-error hover:underline text-sm disabled:opacity-50"
+                  >
+                    {deletingId === et.id ? "削除中…" : "削除"}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-1 text-xs text-text-muted">計 {equipmentTypes.length} 件</p>
+      <p className="mt-2 text-xs text-text-muted">計 {equipmentTypes.length} 件</p>
     </div>
   );
 }

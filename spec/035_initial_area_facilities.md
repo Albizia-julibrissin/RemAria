@@ -26,9 +26,9 @@
 ## 1. 目的
 
 - ゲーム開始時点で**設置枠 5・コスト上限 200**とする。
-- **川探索拠点・浄水施設・小麦畑・小麦製粉器・携帯食料包装**の 5 設備を**強制配置**する。プレイヤーは解体・変更できない。
+- **川探索・浄水施設・小麦畑・小麦製粉器・携帯食料包装**の 5 設備を**強制配置**する。プレイヤーは解体・変更できない。
 - 設備は**配備がなくても基礎生産力で稼働**する。生産チェーンは以下とする。
-  - 川探索拠点：60分で 水 600
+  - 川探索：60分で 水 600
   - 浄水施設：20分ごとに 水 200 → 飲料水 100
   - 小麦畑：120分で 小麦 200
   - 小麦製粉器：30分ごとに 小麦 50 → 小麦粉 150
@@ -109,7 +109,7 @@
 ## 4. ルール
 
 - **新規アカウント登録時（register）** に **ensureInitialFacilities(userId)** を呼び、強制配置 5 設備を作成する。industrialMaxSlots / industrialMaxCost は 5 / 200 で初期化する（User または Factory に持たせる場合）。
-- 工業画面の初回表示時（getIndustrial）にも同処理を呼ぶ（冪等）。設備は 川探索拠点・浄水施設・小麦畑・小麦製粉器・携帯食料包装 の順で displayOrder 1〜5、isForced=true。
+- 工業画面の初回表示時（getIndustrial）にも同処理を呼ぶ（冪等）。設備は 川探索・浄水施設・小麦畑・小麦製粉器・携帯食料包装 の順で displayOrder 1〜5、isForced=true。
 - 強制配置の 5 設備は削除・変更不可（API では更新・削除を許可しない）。画面では建設・解体ボタンを出さない（枠に余裕ができた場合は追加設備用に建設 UI を出す）。
 - 生産計算は本 spec では「レシピと周期が参照できること」まで。実際の受け取り・在庫増減は **036_production_receive**（019 準拠）で扱う。
 
@@ -120,7 +120,7 @@
 ### ensureInitialFacilities(userId)
 
 1. userId に紐づく FacilityInstance のうち **isForced=true** の件数を取得。
-2. 5 件未満なら、不足分を 川探索拠点・浄水施設・小麦畑・小麦製粉器・携帯食料包装 の facilityTypeId で作成（variantCode='base', displayOrder 1〜5, isForced=true）。既存がある場合は facilityType 名でマッチして並びのみ補正してもよい。最低限「5 件無ければ 5 件作成」でよい。
+2. 5 件未満なら、不足分を 川探索・浄水施設・小麦畑・小麦製粉器・携帯食料包装 の facilityTypeId で作成（variantCode='base', displayOrder 1〜5, isForced=true）。既存がある場合は facilityType 名でマッチして並びのみ補正してもよい。最低限「5 件無ければ 5 件作成」でよい。
 3. User または Factory の industrialMaxSlots / industrialMaxCost が未設定なら 5 / 200 をセットする。
 
 ### getIndustrial(userId)
@@ -154,7 +154,7 @@
 ## 8. エラー条件・定数
 
 - **強制配置 5 設備名の正本**：`src/lib/constants/initial-area.ts` の `INITIAL_FACILITY_NAMES`。ensureInitialFacilities・getIndustrial・seed はこの定数を参照する。
-- facilityType が seed に無い（川探索拠点等の名前不一致）：seed の FACILITY_TYPES の先頭 5 件は INITIAL_FACILITY_NAMES と一致させる。
+- facilityType が seed に無い（川探索等の名前不一致）：seed の FACILITY_TYPES の先頭 5 件は INITIAL_FACILITY_NAMES と一致させる。
 
 ------------------------------------------------------------------------
 

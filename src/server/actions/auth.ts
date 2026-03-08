@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { userRepository } from "@/server/repositories/user-repository";
 import { getSession } from "@/lib/auth/session";
-import { ensureInitialFacilities } from "@/server/actions/initial-area";
+import { ensureInitialFacilities, ensureGameStartGrants } from "@/server/actions/initial-area";
 
 // --- バリデーション（spec 5.4） ---
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -97,6 +97,13 @@ export async function register(formData: FormData): Promise<AuthResult> {
     await ensureInitialFacilities(user.id);
   } catch {
     // 工業設備の初期作成に失敗しても登録は成功させる
+  }
+
+  // ゲーム開始時付与：500 GRA と携帯食料 1000 個（manage/ECONOMY_DESIGN.md）
+  try {
+    await ensureGameStartGrants(user.id);
+  } catch {
+    // 付与に失敗しても登録は成功させる
   }
 
   const session = await getSession();

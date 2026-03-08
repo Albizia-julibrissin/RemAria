@@ -21,10 +21,11 @@ export interface GameIconProps {
 
 /**
  * Game Icons を表示する。色は className の text-* で指定（デフォルトは currentColor）。
+ * addIconSelectors の既定: iconSelector は .{prefix}--{name}、表示には maskSelector .iconify が必要。
  */
 export function GameIcon({ name, className = "", ariaHidden = true }: GameIconProps) {
-  // Iconify Tailwind プラグインが i-game-icons-* を生成。名前の . は - に変換される
-  const iconClass = `i-game-icons-${name.replace(/\./g, "-")} ${className}`.trim();
+  const iconName = name.replace(/\./g, "-");
+  const iconClass = `game-icons--${iconName} iconify ${className}`.trim();
   return (
     <span
       className={iconClass}

@@ -1,0 +1,406 @@
+{
+  "exportedAt": "2026-03-08T08:16:50.851Z",
+  "TAGS": [
+    {
+      "code": "craft",
+      "name": "製造"
+    },
+    {
+      "code": "food",
+      "name": "食糧"
+    },
+    {
+      "code": "fuel",
+      "name": "燃料"
+    },
+    {
+      "code": "intellect",
+      "name": "知力"
+    },
+    {
+      "code": "life",
+      "name": "生活"
+    },
+    {
+      "code": "machine",
+      "name": "機械"
+    },
+    {
+      "code": "magic",
+      "name": "魔術"
+    },
+    {
+      "code": "metal",
+      "name": "金属"
+    },
+    {
+      "code": "ore",
+      "name": "鉱石"
+    },
+    {
+      "code": "preserve",
+      "name": "保存"
+    },
+    {
+      "code": "smelt",
+      "name": "精錬"
+    },
+    {
+      "code": "steam",
+      "name": "蒸気"
+    },
+    {
+      "code": "training",
+      "name": "訓練"
+    },
+    {
+      "code": "water",
+      "name": "水"
+    }
+  ],
+  "FACILITY_TYPES": [
+    {
+      "name": "小麦畑",
+      "kind": "resource_exploration",
+      "description": "小麦を栽培・採取。output 小麦。",
+      "cost": 40
+    },
+    {
+      "name": "小麦製粉器",
+      "kind": "industrial",
+      "description": "小麦を製粉。output 小麦粉。",
+      "cost": 40
+    },
+    {
+      "name": "山探索",
+      "kind": "resource_exploration",
+      "description": "山で鉄鉱石などを探索・採取。output 銅。",
+      "cost": 30
+    },
+    {
+      "name": "川探索",
+      "kind": "resource_exploration",
+      "description": "川で水を探索・採取。output 水。",
+      "cost": 40
+    },
+    {
+      "name": "携帯食料包装",
+      "kind": "industrial",
+      "description": "飲料水と小麦粉で携帯食料を生産。",
+      "cost": 40
+    },
+    {
+      "name": "浄水施設",
+      "kind": "industrial",
+      "description": "水を input に飲用・工業用水を生成。output 飲料水。",
+      "cost": 40
+    },
+    {
+      "name": "綿繰り機",
+      "kind": "industrial",
+      "description": "綿花→綿。",
+      "cost": 30
+    },
+    {
+      "name": "綿花畑",
+      "kind": "industrial",
+      "description": "綿花を生産。綿になる想定。",
+      "cost": 30
+    },
+    {
+      "name": "鉄精錬炉",
+      "kind": "industrial",
+      "description": "鉄鉱石 → 純鉄。",
+      "cost": 30
+    }
+  ],
+  "FACILITY_TYPE_TAG_CODES": {
+    "川探索": [
+      "water"
+    ],
+    "浄水施設": [
+      "water",
+      "life"
+    ],
+    "小麦畑": [
+      "food"
+    ],
+    "小麦製粉器": [
+      "food",
+      "craft"
+    ],
+    "携帯食料包装": [
+      "food",
+      "life"
+    ],
+    "山探索": [
+      "ore"
+    ],
+    "鉄精錬炉": [
+      "smelt",
+      "metal"
+    ]
+  },
+  "ITEMS": [
+    {
+      "code": "blueprint_water_search_alpha",
+      "name": "川探索α型設計図",
+      "category": "blueprint"
+    },
+    {
+      "code": "broken_parts",
+      "name": "おんぼろ部品",
+      "category": "material"
+    },
+    {
+      "code": "consumable_hp_10",
+      "name": "メディポーション",
+      "category": "consumable",
+      "consumableEffect": {
+        "type": "hp_percent",
+        "value": 10
+      },
+      "maxCarryPerExpedition": 2
+    },
+    {
+      "code": "consumable_mp_10",
+      "name": "マギポーション",
+      "category": "consumable",
+      "consumableEffect": {
+        "type": "mp_percent",
+        "value": 10
+      },
+      "maxCarryPerExpedition": 2
+    },
+    {
+      "code": "cotton",
+      "name": "綿",
+      "category": "material"
+    },
+    {
+      "code": "cotton_equip_part",
+      "name": "綿の装備部品",
+      "category": "material"
+    },
+    {
+      "code": "cotton_plant",
+      "name": "綿花",
+      "category": "material"
+    },
+    {
+      "code": "drinkable_water",
+      "name": "飲料水",
+      "category": "material"
+    },
+    {
+      "code": "flour",
+      "name": "小麦粉",
+      "category": "material"
+    },
+    {
+      "code": "flower_of_magica",
+      "name": "マジカの花",
+      "category": "material"
+    },
+    {
+      "code": "flower_of_medica",
+      "name": "メディカの花",
+      "category": "material"
+    },
+    {
+      "code": "iron",
+      "name": "鉄",
+      "category": "material"
+    },
+    {
+      "code": "iron_equip_part",
+      "name": "鉄の装備部品",
+      "category": "material"
+    },
+    {
+      "code": "iron_ore",
+      "name": "鉄鉱石",
+      "category": "material"
+    },
+    {
+      "code": "portable_ration",
+      "name": "携帯食料",
+      "category": "material"
+    },
+    {
+      "code": "relic_group_a_token",
+      "name": "謎の紋章",
+      "category": "material"
+    },
+    {
+      "code": "skill_book_アイススパイク",
+      "name": "アイススパイクの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kds002abqgkpu9dhsoj"
+    },
+    {
+      "code": "skill_book_ウィンドブラスト",
+      "name": "ウィンドブラストの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kdz002gbqgkf1v0ldwk"
+    },
+    {
+      "code": "skill_book_エンドオブモーゼ",
+      "name": "エンドオブモーゼの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kef002rbqgk23fpk5an"
+    },
+    {
+      "code": "skill_book_カースドブレス",
+      "name": "カースドブレスの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0ke6002mbqgk9kyo4cok"
+    },
+    {
+      "code": "skill_book_クエイクバースト",
+      "name": "クエイクバーストの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0ke3002jbqgkx7bp5b9r"
+    },
+    {
+      "code": "skill_book_ファイアボルト",
+      "name": "ファイアボルトの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kdq0029bqgkw0r6x4lm"
+    },
+    {
+      "code": "skill_book_ホーリーランス",
+      "name": "ホーリーランスの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0ked002qbqgkjrq8j2wl"
+    },
+    {
+      "code": "skill_book_ポイズンホール",
+      "name": "ポイズンホールの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kem002wbqgkcrg7zcie"
+    },
+    {
+      "code": "skill_book_メテオスォーム",
+      "name": "メテオスォームの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0ke8002nbqgk10wglq3m"
+    },
+    {
+      "code": "skill_book_ライトニングストーム",
+      "name": "ライトニングストームの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kdv002dbqgks0ut4lin"
+    },
+    {
+      "code": "skill_book_前進突撃",
+      "name": "前進突撃の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kdm0026bqgkqzt78cf7"
+    },
+    {
+      "code": "skill_book_宵闇ノ奈落",
+      "name": "宵闇ノ奈落の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kd2001rbqgkdyh2raoi"
+    },
+    {
+      "code": "skill_book_強行突破",
+      "name": "強行突破の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kcq001kbqgkpl32tkxc"
+    },
+    {
+      "code": "skill_book_感覚深化",
+      "name": "感覚深化の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kew0034bqgkj7mrmiep"
+    },
+    {
+      "code": "skill_book_掌底撃",
+      "name": "掌底撃の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kd9001xbqgkkbemba9u"
+    },
+    {
+      "code": "skill_book_旋回斬",
+      "name": "旋回斬の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kdd0020bqgk3enqcm2v"
+    },
+    {
+      "code": "skill_book_浄化の祈り",
+      "name": "浄化の祈りの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kf30039bqgkavvyjnuc"
+    },
+    {
+      "code": "skill_book_癒しの光",
+      "name": "癒しの光の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kes0031bqgkxsga6isz"
+    },
+    {
+      "code": "skill_book_砦の構え",
+      "name": "砦の構えの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kf8003ebqgkektuk3um"
+    },
+    {
+      "code": "skill_book_萎縮の呪い",
+      "name": "萎縮の呪いの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kfe003jbqgkdcre0evc"
+    },
+    {
+      "code": "skill_book_虎挟ミ",
+      "name": "虎挟ミの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kcm001jbqgk6ggg6z8y"
+    },
+    {
+      "code": "skill_book_血ノ嘆キ",
+      "name": "血ノ嘆キの分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kd6001ubqgkc9a2m4qm"
+    },
+    {
+      "code": "skill_book_襲双連斬",
+      "name": "襲双連斬の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kcz001qbqgkr641w2bo"
+    },
+    {
+      "code": "skill_book_連装射弓",
+      "name": "連装射弓の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kdh0023bqgkwcdocy81"
+    },
+    {
+      "code": "skill_book_閃槍",
+      "name": "閃槍の分析書",
+      "category": "skill_book",
+      "skillId": "cmmhg0kcv001nbqgkuwnkpd64"
+    },
+    {
+      "code": "stone",
+      "name": "石材",
+      "category": "material"
+    },
+    {
+      "code": "timber",
+      "name": "木材",
+      "category": "material"
+    },
+    {
+      "code": "water",
+      "name": "水",
+      "category": "material"
+    },
+    {
+      "code": "wheat",
+      "name": "小麦",
+      "category": "material"
+    }
+  ]
+}

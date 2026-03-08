@@ -5,7 +5,12 @@
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import { INITIAL_FACILITY_NAMES } from "@/lib/constants/initial-area";
+import {
+  INITIAL_FACILITY_NAMES,
+  INITIAL_GRA_AMOUNT,
+  INITIAL_PORTABLE_RATION_AMOUNT,
+  PORTABLE_RATION_ITEM_CODE,
+} from "@/lib/constants/initial-area";
 import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 
 export type IndustrialFacility = {
@@ -81,6 +86,41 @@ export async function ensureInitialFacilities(userId: string): Promise<void> {
       industrialMaxSlots: 5,
       industrialMaxCost: 200,
     },
+  });
+}
+
+/**
+ * ゲーム開始時付与：500 GRA（無償）と携帯食料 1000 個。
+ * 新規登録時に 1 回だけ呼ぶ。manage/ECONOMY_DESIGN.md。
+ */
+export async function ensureGameStartGrants(userId: string): Promise<void> {
+  const item = await prisma.item.findUnique({
+    where: { code: PORTABLE_RATION_ITEM_CODE },
+    select: { id: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { premiumCurrencyFreeBalance: { increment: INITIAL_GRA_AMOUNT } },
+    });
+    await tx.currencyTransaction.create({
+      data: {
+        userId,
+        currencyType: "premium_free",
+        amount: INITIAL_GRA_AMOUNT,
+        reason: "game_start",
+        referenceType: "user",
+        referenceId: userId,
+      },
+    });
+    if (item) {
+      await tx.userInventory.upsert({
+        where: { userId_itemId: { userId, itemId: item.id } },
+        create: { userId, itemId: item.id, quantity: INITIAL_PORTABLE_RATION_AMOUNT },
+        update: { quantity: { increment: INITIAL_PORTABLE_RATION_AMOUNT } },
+      });
+    }
   });
 }
 

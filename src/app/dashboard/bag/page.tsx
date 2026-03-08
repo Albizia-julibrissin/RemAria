@@ -1,4 +1,4 @@
-// spec/045, 051 - バッグ（所持一覧・種別タブ・遺物）
+// spec/045, 051 - 倉庫（所持一覧・種別タブ・遺物。旧バッグ）
 
 import Link from "next/link";
 import {
@@ -29,7 +29,7 @@ export default async function BagPage() {
   if (!data) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">バッグ</h1>
+        <h1 className="text-2xl font-bold text-text-primary">倉庫</h1>
         <p className="mt-4 text-text-muted">ログインしてください。</p>
         <Link href="/login" className="mt-4 inline-block text-brass hover:underline">
           ログインへ
@@ -52,7 +52,7 @@ export default async function BagPage() {
           ← ダッシュボード
         </Link>
       </div>
-      <h1 className="text-2xl font-bold text-text-primary">バッグ</h1>
+      <h1 className="text-2xl font-bold text-text-primary">倉庫</h1>
       <p className="mt-2 text-text-muted">
         所持アイテムを種別ごとに確認できます。消費は各機能画面（工業・クラフト等）で行います。
       </p>

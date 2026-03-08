@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ITEM_CATEGORIES } from "@/lib/constants/item-categories";
 import type { AdminItemDetail, UpdateAdminItemInput } from "@/server/actions/admin";
-import { updateAdminItem } from "@/server/actions/admin";
+import { updateAdminItem, deleteAdminItem } from "@/server/actions/admin";
 
 const CATEGORY_LABELS: Record<string, string> = {
   material: "素材",
@@ -22,6 +22,7 @@ type Props = {
 export function AdminItemEditForm({ item, skills }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const [code, setCode] = useState(item.code);
@@ -58,6 +59,22 @@ export function AdminItemEditForm({ item, skills }: Props) {
           : { type: "error", text: result.error ?? "保存に失敗しました。" }
       );
       if (result.success) router.refresh();
+    });
+  };
+
+  const handleDelete = () => {
+    if (!confirm(`アイテム「${item.code}」（${item.name}）を削除しますか？\n参照（所持・レシピ・ドロップ等）がある場合は削除できません。`)) {
+      return;
+    }
+    setIsDeleting(true);
+    setMessage(null);
+    deleteAdminItem(item.id).then((result) => {
+      setIsDeleting(false);
+      if (result.success) {
+        router.push("/dashboard/admin/items");
+        return;
+      }
+      setMessage({ type: "error", text: result.error ?? "削除に失敗しました。" });
     });
   };
 
@@ -164,13 +181,21 @@ export function AdminItemEditForm({ item, skills }: Props) {
         />
       </div>
 
-      <div className="flex gap-4 pt-4">
+      <div className="flex flex-wrap items-center gap-4 pt-4">
         <button
           type="submit"
           disabled={isPending}
           className="rounded bg-brass px-4 py-2 text-base font-medium text-white hover:bg-brass-hover disabled:opacity-50"
         >
           {isPending ? "保存中…" : "保存"}
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className="rounded border border-error bg-transparent px-4 py-2 text-base font-medium text-error hover:bg-error/10 disabled:opacity-50"
+        >
+          {isDeleting ? "削除中…" : "削除"}
         </button>
       </div>
     </form>

@@ -67,7 +67,7 @@ export function CharacterEquipmentSection({
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
       <h2 className="text-lg font-medium text-text-primary">装備</h2>
       <p className="mt-1 text-sm text-text-muted">
-        各スロットに装備を装着できます。クラフトで作った装備はバッグに追加されます。
+        各スロットに装備を装着できます。クラフトで作った装備は倉庫に追加されます。
       </p>
       <ul className="mt-4 space-y-3">
         {slots.map((row) => {

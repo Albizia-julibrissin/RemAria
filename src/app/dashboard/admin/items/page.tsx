@@ -2,17 +2,9 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getAdminItemList, getAdminEquipmentTypeListForItemMaster } from "@/server/actions/admin";
+import { getAdminItemList } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
-import { AdminEquipmentTypeNameEdit } from "./admin-equipment-type-name-edit";
-
-const CATEGORY_LABELS: Record<string, string> = {
-  material: "素材",
-  consumable: "消耗品",
-  blueprint: "設計図",
-  skill_book: "スキル分析書",
-  paid: "有料",
-};
+import { AdminItemListClient } from "./admin-item-list-client";
 
 export default async function AdminItemsPage() {
   const allowed = await isTestUser1();
@@ -20,14 +12,10 @@ export default async function AdminItemsPage() {
     redirect("/dashboard");
   }
 
-  const [items, equipmentTypes] = await Promise.all([
-    getAdminItemList(),
-    getAdminEquipmentTypeListForItemMaster(),
-  ]);
+  const items = await getAdminItemList();
   if (!items) {
     redirect("/dashboard");
   }
-  const equipmentTypeList = equipmentTypes ?? [];
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -43,6 +31,12 @@ export default async function AdminItemsPage() {
           className="text-sm text-text-muted hover:text-brass"
         >
           実装済み一覧
+        </Link>
+        <Link
+          href="/dashboard/admin/equipment-types"
+          className="text-sm text-text-muted hover:text-brass"
+        >
+          装備型編集
         </Link>
       </div>
 
@@ -61,70 +55,13 @@ export default async function AdminItemsPage() {
         </Link>
       </div>
 
-      <div className="mt-6 overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm border-collapse border border-base-border">
-          <thead>
-            <tr className="bg-base-elevated">
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
-                code
-              </th>
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
-                name
-              </th>
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-28">
-                category
-              </th>
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
-                スキル（skill_book時）
-              </th>
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
-                持ち込み上限
-              </th>
-              <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">
-                操作
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((row) => (
-              <tr key={row.id} className="text-text-primary">
-                <td className="border border-base-border px-2 py-1.5 font-mono text-xs">
-                  {row.code}
-                </td>
-                <td className="border border-base-border px-2 py-1.5">{row.name}</td>
-                <td className="border border-base-border px-2 py-1.5 text-text-muted">
-                  {CATEGORY_LABELS[row.category] ?? row.category}
-                </td>
-                <td className="border border-base-border px-2 py-1.5 text-text-muted text-xs">
-                  {row.skillName ?? "—"}
-                </td>
-                <td className="border border-base-border px-2 py-1.5 text-text-muted">
-                  {row.maxCarryPerExpedition != null ? row.maxCarryPerExpedition : "—"}
-                </td>
-                <td className="border border-base-border px-2 py-1.5 text-center">
-                  <Link
-                    href={`/dashboard/admin/items/${row.id}`}
-                    className="text-brass hover:text-brass-hover"
-                  >
-                    編集
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-2 text-xs text-text-muted">計 {items.length} 件</p>
+      <AdminItemListClient items={items} />
 
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold text-text-primary border-b border-base-border pb-2">
-          装備型（EquipmentType）
-        </h2>
-        <p className="mt-2 text-sm text-text-muted">
-          クラフトで製造する装備の種類。名前のみ編集できます。どの装備をレシピで作るかはクラフトレシピ編集で設定します。
-        </p>
-        <AdminEquipmentTypeNameEdit equipmentTypes={equipmentTypeList} />
-      </section>
+      <p className="mt-6 text-sm text-text-muted">
+        <Link href="/dashboard/admin/equipment-types" className="text-brass hover:text-brass-hover">
+          装備型（EquipmentType）の編集はこちら
+        </Link>
+      </p>
     </main>
   );
 }

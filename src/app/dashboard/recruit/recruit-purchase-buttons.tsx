@@ -1,33 +1,31 @@
 "use client";
 
-// spec/030: 雇用可能回数購入ボタン（ゲーム通貨 / 課金通貨）
+// spec/030: 雇用可能回数購入（GRA 課金通貨のみ）。manage/ECONOMY_DESIGN.md
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { purchaseCompanionHire, type PurchaseCompanionHireResult } from "@/server/actions/recruit";
+import { GameIcon } from "@/components/icons/game-icon";
+import { PREMIUM_CURRENCY_DISPLAY_NAME, PREMIUM_CURRENCY_ICON_NAME } from "@/lib/constants/currency";
 
 type Props = {
-  gameCurrencyBalance: number;
   premiumFreeBalance: number;
   premiumPaidBalance: number;
-  priceGame: number;
   pricePremium: number;
 };
 
 export function RecruitPurchaseButtons({
-  gameCurrencyBalance,
   premiumFreeBalance,
   premiumPaidBalance,
-  priceGame,
   pricePremium,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const totalPremium = premiumFreeBalance + premiumPaidBalance;
 
-  function handlePurchase(paymentType: "game" | "premium") {
+  function handlePurchase() {
     startTransition(async () => {
-      const result: PurchaseCompanionHireResult = await purchaseCompanionHire(paymentType);
+      const result: PurchaseCompanionHireResult = await purchaseCompanionHire("premium");
       if (result.success) {
         router.refresh();
       } else {
@@ -39,29 +37,21 @@ export function RecruitPurchaseButtons({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-text-muted">雇用可能回数を 1 購入（決済後、名前・アイコンは後で設定できます）</p>
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
         <button
           type="button"
-          onClick={() => handlePurchase("game")}
-          disabled={isPending || gameCurrencyBalance < priceGame}
-          className="rounded bg-brass hover:bg-brass-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 transition-colors"
-        >
-          ゲーム通貨で購入（{priceGame}）
-        </button>
-        <button
-          type="button"
-          onClick={() => handlePurchase("premium")}
+          onClick={handlePurchase}
           disabled={isPending || totalPremium < pricePremium}
-          className="rounded bg-base-border hover:bg-base-border/80 disabled:opacity-50 disabled:cursor-not-allowed text-text-primary font-medium py-2 px-4 transition-colors border border-base-border"
+          className="inline-flex items-center gap-2 rounded bg-brass hover:bg-brass-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 transition-colors"
         >
-          課金通貨で購入（{pricePremium}）
+          <GameIcon name={PREMIUM_CURRENCY_ICON_NAME} className="w-5 h-5" ariaHidden={true} />
+          {PREMIUM_CURRENCY_DISPLAY_NAME}で購入（{pricePremium}）
         </button>
       </div>
-      {gameCurrencyBalance < priceGame && (
-        <p className="text-sm text-error">ゲーム通貨が足りません（あと {priceGame - gameCurrencyBalance} 必要）</p>
-      )}
       {totalPremium < pricePremium && (
-        <p className="text-sm text-error">課金通貨が足りません（あと {pricePremium - totalPremium} 必要）</p>
+        <p className="text-sm text-error">
+          {PREMIUM_CURRENCY_DISPLAY_NAME}が足りません（あと {pricePremium - totalPremium} 必要）
+        </p>
       )}
     </div>
   );
