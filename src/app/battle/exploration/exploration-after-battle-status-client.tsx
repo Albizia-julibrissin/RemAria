@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { CarriedConsumableChoice, ExplorationPartyMemberChoice } from "@/server/actions/exploration";
 import { ExplorationConsumableUseClient } from "./exploration-consumable-use-client";
-import { ExplorationNextButton } from "./exploration-next-button";
 
 type Props = {
   partyDisplayNames: string[];
@@ -70,7 +69,6 @@ export function ExplorationAfterBattleStatusClient({
 
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <span className="text-xs text-text-muted">残り戦闘数: {remainingAfter}</span>
-        <ExplorationNextButton href="/battle/exploration?step=next" />
       </div>
 
       <ExplorationConsumableUseClient
