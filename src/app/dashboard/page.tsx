@@ -11,6 +11,7 @@ import { getConsumableStacksForExploration } from "@/server/actions/inventory";
 import { TEST_USER_1_EMAIL } from "@/lib/constants/admin";
 import { ExplorationStartClient } from "./exploration-start-client";
 import { ExplorationAbortClient } from "./exploration-abort-client";
+import { CharacterSummaryCard } from "./character-summary-card";
 import { GameIcon } from "@/components/icons/game-icon";
 
 export default async function DashboardPage() {
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
     partyPresetListResult,
     consumableStacksResult,
     currentExpedition,
+    charactersForSummary,
   ] = await Promise.all([
     session?.userId
       ? prisma.user.findUnique({
@@ -38,9 +40,30 @@ export default async function DashboardPage() {
     getPartyPresetListForExploration(),
     getConsumableStacksForExploration(),
     getCurrentExpeditionSummary(),
+    session?.userId
+      ? prisma.character.findMany({
+          where: { userId: session.userId, category: { in: ["protagonist", "companion"] } },
+          select: {
+            id: true,
+            category: true,
+            displayName: true,
+            iconFilename: true,
+            level: true,
+            experiencePoints: true,
+          },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const showAdminContent = userForDashboard?.email === TEST_USER_1_EMAIL;
+  const balances =
+    userForDashboard != null
+      ? {
+          premiumFree: userForDashboard.premiumCurrencyFreeBalance,
+          premiumPaid: userForDashboard.premiumCurrencyPaidBalance,
+        }
+      : null;
 
   const explorationThemes =
     explorationMenuResult.success === true ? explorationMenuResult.themes : [];
@@ -69,7 +92,7 @@ export default async function DashboardPage() {
       <div className="max-w-5xl mx-auto">
         {/* 2カラム：左 = ぱっと見たい情報 / 右 = メニュー */}
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          {/* 左カラム：探索・キャラサマリ・通知 */}
+          {/* 左カラム：探索・キャラサマリ */}
           <div className="space-y-6">
             {/* 探索（進行中があれば「再開」＋「撤退」、なければ新規開始） */}
             <section>
@@ -83,33 +106,26 @@ export default async function DashboardPage() {
               </div>
             </section>
 
-            {/* キャラサマリ（主人公/仲間の成長をざっくり確認） */}
-            <section className="rounded-lg border border-base-border bg-base-elevated p-4">
-              <p className="mt-2 text-sm text-text-muted">
-                主人公や仲間のレベル・ステータス割り振り状況をここでざっくり確認できるようにしていきます。
-                詳細なステータス割り振りや装備変更は「居住区」から行えます。
-              </p>
-            </section>
+            {/* キャラサマリ（主人公/仲間のアイコン・レベル・経験値、ドロップダウンで切り替え） */}
+            {charactersForSummary.length > 0 && (
+              <CharacterSummaryCard
+                characters={charactersForSummary as any}
+                balances={balances}
+              />
+            )}
 
-            {/* 通知（割り振りポイントなどの重要なお知らせ） */}
-            <section className="rounded-lg border border-base-border bg-base-elevated p-4">
-              <p className="mt-2 text-sm text-text-muted">
-                ステータス割り振りポイントが余っているキャラクターや、完了した研究・受け取り待ちの報酬など、
-                重要なお知らせをここに表示していく想定です。現在は表示する通知はありません。
-              </p>
-            </section>
           </div>
 
           {/* 右カラム：機能メニュー（居住区・人材局・機工区・研究局・工房・物資庫・開拓任務・作戦室 など） */}
           <div className="space-y-4">
             <section>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {subMenuLinks.map(({ href, label, sub, icon }) => (
                   <Link
                     key={href}
                     href={href}
                     title={sub}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-4 py-2 text-sm text-text-primary transition-colors hover:border-brass hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-3 py-1.5 text-sm text-text-primary whitespace-nowrap transition-colors hover:border-brass hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
                   >
                     {icon && (
                       <GameIcon

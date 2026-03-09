@@ -10,7 +10,23 @@ export async function getProtagonistByUserId(userId: string) {
     where: { id: userId },
     select: {
       name: true,
-      protagonistCharacter: true,
+      protagonistCharacter: {
+        select: {
+          id: true,
+          iconFilename: true,
+          STR: true,
+          INT: true,
+          VIT: true,
+          WIS: true,
+          DEX: true,
+          AGI: true,
+          LUK: true,
+          CAP: true,
+          level: true,
+          experiencePoints: true,
+          createdAt: true,
+        },
+      },
     },
   });
   if (!user?.protagonistCharacter) return null;
@@ -26,6 +42,8 @@ export async function getProtagonistByUserId(userId: string) {
     AGI: user.protagonistCharacter.AGI,
     LUK: user.protagonistCharacter.LUK,
     CAP: user.protagonistCharacter.CAP,
+     level: user.protagonistCharacter.level,
+     experiencePoints: user.protagonistCharacter.experiencePoints,
     createdAt: user.protagonistCharacter.createdAt,
   };
 }

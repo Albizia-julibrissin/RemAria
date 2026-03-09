@@ -1,54 +1,123 @@
+"use client";
+
 // spec/010_auth - ヘッダー（ログアウト配置・アクティブユーザー数）
 // docs/07_ui_guidelines 準拠
 
 import Link from "next/link";
+import Image from "next/image";
+import { useState } from "react";
 import { logoutAndRedirect } from "@/server/actions/auth";
-import { GraDisplay } from "@/components/currency/gra-display";
+import { GameIcon } from "@/components/icons/game-icon";
 
 interface HeaderProps {
   isLoggedIn: boolean;
   activeUserCount?: number;
-  balances?: { premiumFree: number; premiumPaid: number } | null;
 }
 
-export function Header({ isLoggedIn, activeUserCount, balances }: HeaderProps) {
+export function Header({ isLoggedIn, activeUserCount }: HeaderProps) {
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const closeAll = () => {
+    setHelpOpen(false);
+    setSettingsOpen(false);
+  };
+
   return (
     <header className="bg-base-elevated border-b border-base-border">
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-lg font-semibold text-text-primary hover:text-brass transition-colors">
-            RE:mAria
+          <Link
+            href={isLoggedIn ? "/dashboard" : "/"}
+            className="flex items-center hover:text-brass transition-colors"
+            aria-label="RE:mAria ダッシュボードへ"
+          >
+            <Image
+              src="/images/logo-remaria.png"
+              alt="RE:mAria"
+              width={660}
+              height={220}
+              className="h-10 w-auto"
+              priority
+            />
           </Link>
-          {balances != null && (
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-base-border bg-base px-3 py-1.5">
-              <span className="text-xs text-text-muted">所持通貨</span>
-              <GraDisplay free={balances.premiumFree} paid={balances.premiumPaid} />
-            </div>
-          )}
-        </div>
-        <nav className="flex items-center gap-4">
           {typeof activeUserCount === "number" && (
-            <span className="text-text-muted text-sm" title="直近5分以内に操作があった人数">
-              いま{activeUserCount}人がプレイ中
+            <span
+              className="hidden sm:inline text-text-muted text-sm"
+              title="直近5分以内に操作があった人数"
+            >
+              現在
+              <span className="mx-0.5 text-success font-semibold">
+                {activeUserCount}
+              </span>
+              人が開拓中
             </span>
           )}
-          <Link href="/guide" className="text-text-muted hover:text-brass transition-colors">
-            遊び方
-          </Link>
-          {isLoggedIn ? (
-            <>
-              <Link href="/dashboard" className="text-text-muted hover:text-brass transition-colors">
-                ダッシュボード
-              </Link>
-              <form action={logoutAndRedirect}>
-                <button
-                  type="submit"
-                  className="text-text-muted hover:text-brass transition-colors text-sm"
+        </div>
+        <nav className="relative flex items-center gap-4">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-full border border-base-border bg-base px-2 py-1 text-text-muted hover:text-brass hover:border-brass transition-colors"
+            title="通知を表示（準備中）"
+          >
+            <GameIcon name="scroll-quill" className="w-4 h-4" />
+          </button>
+
+          {/* ヘルプメニュー */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setHelpOpen((v) => !v);
+                setSettingsOpen(false);
+              }}
+              className="text-text-muted hover:text-brass transition-colors text-sm"
+            >
+              ヘルプ
+            </button>
+            {helpOpen && (
+              <div className="absolute right-0 mt-2 w-40 rounded-md border border-base-border bg-base-elevated shadow-lg z-40">
+                <Link
+                  href="/guide"
+                  onClick={closeAll}
+                  className="block px-3 py-2 text-xs text-text-primary hover:bg-base"
                 >
-                  ログアウト
-                </button>
-              </form>
-            </>
+                  遊び方ガイド
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* 設定メニュー */}
+          {isLoggedIn ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsOpen((v) => !v);
+                  setHelpOpen(false);
+                }}
+                className="text-text-muted hover:text-brass transition-colors text-sm"
+              >
+                設定
+              </button>
+              {settingsOpen && (
+                <div className="absolute right-0 mt-2 w-40 rounded-md border border-base-border bg-base-elevated shadow-lg z-40">
+                  <form
+                    action={logoutAndRedirect}
+                    className="border-b border-base-border last:border-b-0"
+                    onSubmit={closeAll}
+                  >
+                    <button
+                      type="submit"
+                      className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-base"
+                    >
+                      ログアウト
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <Link href="/login" className="text-text-muted hover:text-brass transition-colors">
@@ -64,3 +133,4 @@ export function Header({ isLoggedIn, activeUserCount, balances }: HeaderProps) {
     </header>
   );
 }
+
