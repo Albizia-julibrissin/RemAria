@@ -978,7 +978,21 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
   }
 
   const nextState = shouldReadyToFinish ? ("ready_to_finish" as const) : ("in_progress" as const);
-  const explorationState = nextExplorationState;
+
+  // 案 B（059）: 探索中のみ戦闘結果を一時保持（04・027 の例外ポリシー）。表示ページが read-only で読む用。
+  const lastBattlePayload = {
+    themeName: expedition.area.theme.name,
+    areaName: expedition.area.name,
+    remainingNormalBattlesBefore: expedition.remainingNormalBattles,
+    result,
+    battleType,
+    areaLordAppeared,
+    stateAfter: nextState,
+  };
+  const explorationState = {
+    ...nextExplorationState,
+    lastBattle: lastBattlePayload,
+  } as typeof nextExplorationState & { lastBattle: typeof lastBattlePayload };
 
   const updateData: {
     currentHpMp: Record<string, { hp: number; mp: number }>;
@@ -1017,6 +1031,130 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     battleType,
     areaLordAppeared,
     stateAfter: nextState,
+  };
+}
+
+// --- 探索進行フロー用：1 ステップ進める Server Action（059 Phase 1b） ---
+
+/** advanceExplorationStep が 1 回の呼び出しで返す「進めた結果」の型 */
+export type AdvanceExplorationStep =
+  | {
+      kind: "battle";
+      battle: RunExplorationBattleResult;
+    }
+  | {
+      kind: "skill_check";
+      themeName: string;
+      areaName: string;
+      eventMessage: string;
+      partyDisplayNames: string[];
+      partyIconFilenames: (string | null)[];
+      partyPositions: { row: number; col: number }[];
+      partyHp: number[];
+      partyMp: number[];
+      partyMaxHp: number[];
+      partyMaxMp: number[];
+    };
+
+export type AdvanceExplorationStepResult =
+  | { success: true; step: AdvanceExplorationStep }
+  | { success: false; error: string; message: string };
+
+/**
+ * 探索の「次の 1 ステップ」を進める Server Action。
+ * getNextExplorationStep で抽選し、戦闘系（通常・強敵・領域主）なら runExplorationBattle を実行して結果を返す。
+ * 技能イベントなら抽選結果の表示用データをそのまま返す（実際の判定は resolveExplorationSkillEvent で行う）。
+ */
+export async function advanceExplorationStep(): Promise<AdvanceExplorationStepResult> {
+  const next = await getNextExplorationStep();
+  if (!next.success) {
+    return {
+      success: false,
+      error: next.error,
+      message: next.message,
+    };
+  }
+
+  const step = next.step;
+
+  // 戦闘系（通常・強敵・領域主）→ 1 回戦闘を実行して返す
+  if (
+    step.kind === "battle" ||
+    step.kind === "strong_enemy_challenge" ||
+    step.kind === "area_lord_challenge"
+  ) {
+    const battle = await runExplorationBattle();
+    if (!battle.success) {
+      return {
+        success: false,
+        error: battle.error,
+        message: battle.message,
+      };
+    }
+    return {
+      success: true,
+      step: { kind: "battle", battle },
+    };
+  }
+
+  // 技能イベント → 抽選結果の表示用データをそのまま返す（DB は未更新、ユーザーがステータス選択後に resolveExplorationSkillEvent で進む）
+  return {
+    success: true,
+    step: {
+      kind: "skill_check",
+      themeName: step.themeName,
+      areaName: step.areaName,
+      eventMessage: step.eventMessage,
+      partyDisplayNames: step.partyDisplayNames,
+      partyIconFilenames: step.partyIconFilenames,
+      partyPositions: step.partyPositions,
+      partyHp: step.partyHp,
+      partyMp: step.partyMp,
+      partyMaxHp: step.partyMaxHp,
+      partyMaxMp: step.partyMaxMp,
+    },
+  };
+}
+
+// --- 表示用：explorationState.lastBattle から戦闘結果を読む（059 Phase 2a・案 B） ---
+
+/**
+ * 進行中探索の直近 1 戦結果を explorationState.lastBattle から取得する。
+ * advanceExplorationStep 実行後にリダイレクトした表示ページで、戦闘結果を read-only 表示するために使う。
+ * lastBattle が無い（まだ 1 戦もしていない／技能のみ等）場合は null を返す。
+ */
+export async function getExplorationLastBattleDisplay(): Promise<RunExplorationBattleResult | null> {
+  const session = await getSession();
+  if (!session.userId) return null;
+
+  const expedition = await prisma.expedition.findFirst({
+    where: { userId: session.userId, state: "in_progress" },
+    select: { explorationState: true },
+  });
+
+  if (!expedition?.explorationState) return null;
+  const raw = expedition.explorationState as {
+    lastBattle?: {
+      themeName: string;
+      areaName: string;
+      remainingNormalBattlesBefore: number;
+      result: RunExplorationBattleResult extends { success: true } ? RunExplorationBattleResult["result"] : never;
+      battleType: ExplorationBattleType;
+      areaLordAppeared?: boolean;
+      stateAfter: "in_progress" | "ready_to_finish";
+    };
+  } | null;
+  const lb = raw?.lastBattle;
+  if (!lb || !lb.themeName || !lb.areaName || !lb.result) return null;
+  return {
+    success: true as const,
+    themeName: lb.themeName,
+    areaName: lb.areaName,
+    remainingNormalBattlesBefore: lb.remainingNormalBattlesBefore,
+    result: lb.result,
+    battleType: lb.battleType,
+    areaLordAppeared: lb.areaLordAppeared,
+    stateAfter: lb.stateAfter,
   };
 }
 
