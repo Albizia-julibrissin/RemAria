@@ -26,12 +26,12 @@
 
 **制約・前提**
 
-- `docs/027_hardcoded_and_deferred.md` #18 の方針：  
-  探索戦闘の **詳細ログは永続化しない**。`runExplorationBattle` の戻り値を **同一リクエスト内で描画**している。
-- そのため、「進行専用リクエスト」と「結果表示リクエスト」を完全に分離してリダイレクトする場合、  
-  - ログをどこかに一時保存する（＝ #18 方針を見直す）  
-  - もしくは「進行専用」は **Server Action** として UI から直接叩き、そのレスポンスを同一画面で描画する  
-  などのいずれかの設計判断が必要になる。
+- **永続化方針**（`docs/04_persistence_principles.md` §2、`docs/027_hardcoded_and_deferred.md` #18 経緯）：  
+  原則として戦闘ログを長期履歴として蓄積しない。一方で、**探索ライフサイクル中に限り** `lastBattle`（直近 1 戦）や `pendingSkillEvent`（未解決の技能イベント）などを一時保持する例外を許容している（探索終了時に削除）。本リファクタはこの方針を前提とする。
+- 責務分離の実現方法として、  
+  - **案 A**: 進行は Server Action で行い、戻り値を同一画面で描画（一時保存に頼らない）  
+  - **案 B**: 進行時に `explorationState` へ一時ログを書き、表示ページは read-only で読むだけ（04・027 の例外ポリシーに沿う）  
+  のいずれかを選択する。
 
 ### 3. 現状フローの整理（2026-03 時点）
 
@@ -77,70 +77,66 @@
 - Cons: 現在の Server Component ベースの探索戦闘ページを、  
   **クライアント主体 + Server Action 呼び出し型**に寄せる必要があり、影響範囲がやや大きい。
 
-案 B: **一時的なログ永続＋リダイレクト方式**
+案 B: **一時ログ保持＋リダイレクト方式**
 
 - `advanceExplorationStep` 実行時に、
-  - 戦闘結果ログを `explorationState.lastBattle` 等に一時保存する（#18 の方針を更新）。
+  - 戦闘結果ログを `explorationState.lastBattle` 等に一時保存する（04・027 で定めた「探索中のみ一時保持」の例外ポリシーに沿う）。
   - 進行が終わったら `/battle/exploration` にリダイレクト。
 - `/battle/exploration` は「現在の `explorationState` から lastBattle を読んで表示する」だけにする。
-- Pros: 現在の `page.tsx` の構造を大きく変えずに責務分離しやすい。
-- Cons: ログを永続（少なくとも探索中は保持）する設計に切り替える必要があり、  
-  #18 の「ログ非永続」方針を見直す必要がある。
+- Pros: 現在の `page.tsx` の構造を大きく変えずに責務分離しやすい。04 の例外ポリシーと整合する。
+- Cons: 実装で `lastBattle` 等の書き込み・探索終了時の削除を確実に行う必要がある。
 
 本リファクタ doc では、**どちらの案に寄せるかを検討したうえで実装フェーズに進む**。
 
 ### 5. 実装フェーズ案
 
+**方針**: 各フェーズは「1 回の実装セッション（AI がコンテキストを保持して修正するまとまり）で完了できる単位」を目安にする。長くなりそうな場合はサブフェーズに分割して進める。
+
 #### Phase 0: 方針確定
 
-- 案 A（Server Action + クライアント描画）と案 B（一時ログ永続＋リダイレクト）のどちらを採用するか決める。
-- 027 #18（探索ログ非永続）の扱いを再確認し、必要なら 027 / 関連 spec を更新する。
+- 04・027 で定めた「探索中のみ一時ログ保持」の例外ポリシーを前提に、案 A（Server Action + クライアント描画）と案 B（一時ログ保持＋リダイレクト）のどちらを採用するか決める。
+- 必要なら spec/049 等の関連 spec を更新する。
 
-#### Phase 1: サーバー側進行ロジックの抽出
+#### Phase 1a: advanceExplorationStep の骨格と「通常戦闘」のみ実装
 
-- `src/server/actions/exploration.ts` に `advanceExplorationStep`（仮）を追加。
-  - 引数: （必要最小限。基本はセッションから userId を取る）
-  - 戻り値: 「今回 1 ステップ進めた結果」を表す discriminated union（例）:
-    - `{ kind: "battle"; result: RunBattleSuccessLike; remainingNormalBattles: number; ... }`
-    - `{ kind: "skill_event"; event: ... }`
-    - `{ kind: "finished"; ... }`
-  - 中身は現状の `getNextExplorationStep` の「進行部分」をほぼ丸ごと移植する。
-- `getNextExplorationStep` は将来削除 or ラッパーにする前提で、まずは極力薄くする。
+- `src/server/actions/exploration.ts` に `advanceExplorationStep` を新設する。
+  - 戻り値型: 今回 1 ステップ進めた結果の discriminated union（`{ kind: "battle"; ... }` / `{ kind: "skill_event"; ... }` / `{ kind: "finished"; ... }` 等）を定義。
+  - 中身は **通常戦闘の 1 ステップ**だけ実装（`runExplorationBattle` を呼び、DB 更新し、上記型で返す）。技能・強敵・領域主・終了はまだ触れない。
+- `getNextExplorationStep` はこの段階では変更しない。page は従来どおり `?step=next` で動いたままにする（動作変更なし＝1a 完了時点で既存挙動が壊れていないことを確認しやすい）。
 
-#### Phase 2: 表示用データ取得の整理
+#### Phase 1b: advanceExplorationStep に技能・強敵・領域主・終了を統合
 
-- `/battle/exploration` ページから副作用を取り除き、  
-  「今表示すべきもの」を読むための関数を整理する。
-  - 案 A の場合: Server Action の戻り値をクライアント state に保持し、それを描画。
-  - 案 B の場合: `explorationState.lastBattle` や `currentHpMp` から表示用データを組み立てる関数を用意。
-- `getExplorationResumeSummary` も含め、「復帰」「戦闘後の状況」「技能イベント表示」などの**表示ケース**を網羅できるようにする。
+- `advanceExplorationStep` 内で、抽選結果に応じて技能イベント・強敵戦闘・領域主・探索終了を処理するようにする（現状の `getNextExplorationStep` の進行部分を移す）。
+- 完了後、`getNextExplorationStep` を `advanceExplorationStep` の薄いラッパーにするか、呼び出し元を `advanceExplorationStep` に切り替える準備まで行う。
+
+#### Phase 2a: 表示用データ取得の整理（戦闘結果）
+
+- 「戦闘結果を表示する」ために必要なデータを、案 A なら Server Action 戻り値から、案 B なら `explorationState.lastBattle` / `currentHpMp` から組み立てる関数を用意する。
+- この段階では page の**呼び出し関係はまだ変えず**、表示用データの形と取得方法だけを整える（次の 2b で page の分岐を差し替える）。
+
+#### Phase 2b: 探索ページの「進行」を advanceExplorationStep に差し替え
+
+- `/battle/exploration` の `step=next`（および強敵・領域主）分岐で、これまで `getNextExplorationStep` 等を直接呼んでいた部分をやめ、**進行は `advanceExplorationStep` に一本化**する。
+  - 案 A: クライアントで `advanceExplorationStep()` を呼び、戻り値を state に持って描画する構成に変更。
+  - 案 B: Server Action 実行後にリダイレクトし、表示は 2a で用意した「表示用データ取得」で `explorationState` から読むだけにする。
+- 復帰・技能イベント・終了画面など、他の表示ケースもこのデータソースに揃える。
 
 #### Phase 3: 「次へ」ボタンの更新
 
-- `ExplorationNextButton` を、URL ではなく **`advanceExplorationStep` を叩く役割**に変更する。
-  - 案 A:
-    - `onClick` で `await advanceExplorationStep()` → 親コンポーネントに結果を渡して描画更新。
-    - URL は固定（`/battle/exploration` のまま）。
-  - 案 B:
-    - `await advanceExplorationStep()` 実行後に `router.replace("/battle/exploration")` または `redirect`。
-- 連打ガードは現状同様に維持（`isNavigating` フラグや useTransition 等）。
+- `ExplorationNextButton` を、`router.push(href)` ではなく **`advanceExplorationStep` を叩く**ように変更する。
+  - 案 A: `onClick` で `await advanceExplorationStep()` → 親に結果を渡して描画。URL は `/battle/exploration` 固定。
+  - 案 B: `await advanceExplorationStep()` のあと `router.replace("/battle/exploration")`。
+- 連打ガード（`isNavigating` や useTransition）は維持する。
 
 #### Phase 4: 「探索開始」ボタンの UX 改善
 
-- ダッシュボード側の「探索を開始」ボタンの挙動を整理する。
-  - 最終的な理想像:
-    - `startExploration` 成功後に **即座に 1 回だけ `advanceExplorationStep` を実行**し、その結果を 1 戦目ログとして表示。
-    - ユーザー視点では「探索開始 → いきなり 1 戦目」に見える。
-  - 実装上は、Phase 1〜3 が完了してから切り替える。
+- ダッシュボードの「探索を開始」押下後、`startExploration` 成功時に **1 回だけ `advanceExplorationStep` を実行**し、その結果を 1 戦目として表示する（ユーザーからは「探索開始 → いきなり 1 戦目」に見える）。Phase 1〜3 完了後に実施。
 
 #### Phase 5: 旧コード・spec の整理
 
-- `getNextExplorationStep` が不要になった場合は削除、または `advanceExplorationStep` の薄いラッパーにする。
-- 027 (#18, #32) および関連 spec（spec/049_exploration など）を、最終的な挙動と整合するように更新する。
-- テスト観点（手動動作確認メモ）:
-  - 新規探索開始直後の HP/MP が常に最大から始まること。
-  - 「探索開始」1 回につき、裏で戦闘が 2 回以上進まないこと。
-  - 「次へ」連打やブラウザバック／リロードで、探索進行が重複しないこと。
+- `getNextExplorationStep` を削除するか、`advanceExplorationStep` のラッパーとして残すかを決めて整理する。
+- 027 (#18, #32) と spec/049 等を、最終挙動に合わせて更新する。
+- 手動確認メモ: 新規探索開始時 HP/MP が最大から始まること。「探索開始」1 回で裏で 2 戦進まないこと。「次へ」連打・バック・リロードで進行が重複しないこと。
 
 ### 6. メモ
 
