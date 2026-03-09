@@ -5,8 +5,10 @@ import { redirect } from "next/navigation";
 import { getAdminUserList } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
 
+/** DBのUTC日時を日本時間（JST）で表示 */
 function formatDate(d: Date): string {
   return new Date(d).toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
