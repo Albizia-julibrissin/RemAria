@@ -32,7 +32,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 12 | `prisma/seed.ts` | **test1 の設備枠・コスト上限**：industrialMaxSlots: 20, industrialMaxCost: 1000 を test1 だけ上書き。 | テスト用として明示的に「テスト用シード」であることをコメントで残す。本番は進行で解放する想定なので、この箇所は「テスト用」のままでよい。 |
 | 13 | `prisma/seed.ts` | **建設レシピ・クラフトレシピ・設備型・解放**：素材の種類・数量・設備名・レシピ名などはすべて seed 内の配列で定義。 | コンテンツが増えたら「マスタ CSV / 管理画面」から投入する運用を検討。現状は seed がマスタの役割。 |
 | 14 | `src/server/lib/resolve-exploration-enemies.ts` | **探索エリアごとの敵編成**：敵マスタ（Enemy / EnemyGroup）と ExplorationArea の紐づけは実装済み。敵の作戦・スキルは run-battle と resolve で対応済み（#24 解消）。 | 敵マスタにスキル・作戦を登録すれば探索戦闘で使用される。未登録の敵は従来どおり通常攻撃のみ。 |
-| 15 | `src/server/actions/exploration.ts`, `src/app/dashboard/exploration-log-client.tsx` | **continueExploration（仮）**：探索本流は `getNextExplorationStep` + `runExplorationBattle` / `resolveExplorationSkillEvent` で実装済み。`continueExploration` はダッシュボードの exploration-log-client からのみ呼ばれ、ログ行とカウンタの更新だけを行う仮実装のまま。 | ダッシュボードの「探索ログ」用途を整理し、continueExploration を削除するか別用途に統合する。 |
+| 15 | `src/server/actions/exploration.ts`, `src/app/dashboard/exploration-log-client.tsx` | **continueExploration（仮）**：探索本流は `advanceExplorationStep`（内部で getNextExplorationStep + runExplorationBattle / pendingSkillEvent 保存）と表示用 getExplorationLastBattleDisplay / getExplorationPendingSkillDisplay で実装済み。`continueExploration` はダッシュボードの exploration-log-client からのみ呼ばれ、ログ行とカウンタの更新だけを行う仮実装のまま。 | ダッシュボードの「探索ログ」用途を整理し、continueExploration を削除するか別用途に統合する。 |
 | 16 | （解消済み） | **探索中の HP/MP 持ち回り**：戦闘結果の HP/MP を Expedition に書き戻し次の戦闘に渡す処理は実装済み（runTestBattle の initialHpMpByCharacterId、runExplorationBattle での currentHpMp 更新）。 | — |
 | 17 | （解消済み） | **探索終了時の経験値・ドロップ付与**：UserInventory へのドロップ加算・参加キャラへの経験値付与（grantCharacterExp）は実装済み。 | — |
 | 19 | `src/server/actions/exploration.ts` | **技能イベントの発生時メッセージ**：`getNextExplorationStep` 内で `eventMessage` を "何かが起きた…。どう対処する？" と固定している。 | エリア別・イベント種別でマスタ（または explorationState の種別）にメッセージを持たせ、表示時に参照する。 |
@@ -46,7 +46,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 29 | `src/lib/constants/relic.ts` | **RELIC_GROUP_APPRAISAL_CONFIG**：遺物鑑定のステ・耐性・パッシブ抽選の既定値。 | 鑑定時は DB の RelicGroupConfig を優先し、該当 groupCode の設定が無い場合のみこの定数をフォールバックとして参照。管理画面で遺物グループ編集可能。 |
 | 30 | `src/app/battle/exploration/`（ExplorationNextButton 等） | **「次へ」ボタンの無効解除**：押下後に 1.5 秒の setTimeout で無効を解除している。 | サーバー応答／処理完了でボタンを戻す（例: サーバーから渡す key で remount、または Server Action + useFormStatus）。方法は本 doc または会話で検討済み。 |
 | 31 | `src/components/header.tsx`（通知ベル） | **通知機能本体は未実装**：ヘッダー右上に通知ベルの UI のみ配置。Notification テーブル・未読件数 API・通知一覧 UI は未実装。 | Notification テーブルを追加し、未読件数を返すダッシュボード用 API と、通知ドロップダウン（最新 N 件＋既読制御）を実装する。割り振りポイントなど恒常状態は別フラグで扱う。 |
-| 32 | `src/app/dashboard/exploration-start-client.tsx`, `src/app/battle/exploration/page.tsx` | **探索開始直後の「復帰画面」最終手段案**：安全性のため「探索開始」で直接 `?step=next` に飛ばさず、まず現在 HP/MP と残り回数だけを出す準備画面を挟み、そこから「探索を開始する」（= 最初の `?step=next`）ボタンを押してもらう案。 | UX を検討しつつ、二重リクエストの影響を受けない 1 戦目開始フローを実装する。最終手段としてこの準備画面フローを採用する場合は、文言（新規探索と本当の復帰の出し分け）とボタンラベルを正式仕様として固める。 |
+| 32 | （解消済み） | **探索開始直後の「復帰画面」最終手段案**：059 Phase 4 で advanceExplorationStep を探索開始直後に 1 回だけ呼ぶフローを実装し、「探索開始 → いきなり 1 戦目」を安全に実現済み。 | — |
 
 ---
 
@@ -69,6 +69,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 - **#23 解消**：targetScope: enemy_all を対応。列指定（damage_target_columns）がない場合も敵生存者全員を対象にする分岐を追加。
 - **#24 解消**：敵のスキル・AI は実装済み。run-battle-with-party で敵ターンに evaluateTacticsFromSpec・スキル実行・CT 管理を実装。探索敵は resolve-exploration-enemies で tacticSlots・enemySkills を渡す。
 - **#1・#2 解消**：装備・メカパーツのステ生成をマスタに移行（docs/053）。EquipmentType.statGenConfig / MechaPartType.statGenConfig を追加。クラフト実行時はマスタの config のみ参照し、未設定ならエラー。seed で鉄の剣・布の鎧・おんぼろシリーズに statGenConfig を投入し、おんぼろ 6 種のクラフトレシピを追加。
+- **#32 解消**：059 Phase 4 で探索開始直後に advanceExplorationStep を 1 回呼ぶフローを実装。復帰画面の「最終手段案」は不要になったため解消済みとした。
 
 ---
 

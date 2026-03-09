@@ -305,7 +305,7 @@
   - 途中でページを離れ、あとから探索を再開する場合：
     - `/battle/exploration` では直近バトルの詳細ログは再現せず、
     - 下部の現在 HP/MP と「次へ」ボタンだけを表示する。
-- **復帰の実装**：`/battle/exploration` に `?step=next` なしでアクセスすると「復帰」画面（サマリ＋次へのみ）を表示。`?step=next` のときのみ次ステップを抽選・実行。ダッシュボードの「探索を続ける」は復帰用（step なし）。探索開始後のリダイレクトと、戦闘/技能後の「次へ」は `?step=next` で次を実行。
+- **復帰の実装**：`/battle/exploration` は進行を進めず、表示のみ（lastBattle / pendingSkillEvent / 復帰サマリ）。次ステップの進行は `advanceExplorationStep` Server Action で行い、実行後に同一 URL へリダイレクト（059 案 B）。ダッシュボードの「探索を続ける」は復帰用。探索開始直後も `advanceExplorationStep` を 1 回呼んでから遷移し、1 戦目 or 技能から表示。
 
 ### 8.3 技能イベント表示（戦闘画面流用）
 
@@ -386,12 +386,12 @@
 
 | 項目 | 状態 | 備考 |
 |------|------|------|
-| 戦闘の前に技能イベント発生判定（エリア baseSkillEventRate） | ✅ | getNextExplorationStep で各表示時に抽選 |
+| 戦闘の前に技能イベント発生判定（エリア baseSkillEventRate） | ✅ | advanceExplorationStep 内で getNextExplorationStep により抽選。結果は lastBattle または pendingSkillEvent で表示 |
 | 技能イベント画面（STR/VIT 等選択・判定） | ✅ | ExplorationSkillEventBlock（戦闘ログ同様1ブロック＋ログにメッセージ・選択UI） |
 | 成功時ドロップ枠加算・explorationState.logs 追記 | ✅ | resolveExplorationSkillEvent で skillSuccessCount と logs 更新 |
 
 **Phase 3 実装の前提（決めごと）**  
-- **次ステップの抽選**：`/battle/exploration` で in_progress のとき、表示前に「今回のステップは戦闘か技能か」を `baseSkillEventRate` で抽選。戦闘なら現行どおり `runExplorationBattle`、技能なら技能イベント用 UI を表示し、ユーザーがステータス選択後に `resolveExplorationSkillEvent(stat)` で判定・更新してから同一ページへリダイレクト（次の抽選へ）。  
+- **次ステップの抽選**：`advanceExplorationStep` 内で getNextExplorationStep により「今回のステップは戦闘か技能か」を `baseSkillEventRate` で抽選。戦闘系なら `runExplorationBattle` を実行し結果を lastBattle に保存、技能なら pendingSkillEvent に保存してからリダイレクト。表示ページは lastBattle / pendingSkillEvent を read-only で表示。技能はユーザーがステータス選択後に `resolveExplorationSkillEvent(stat)` で判定・更新し、その後「次へ」で advanceExplorationStep を再度呼ぶ。  
 - **判定ロジック（MVP）**：docs/020 の「エリア基準値×イベント補正」は MVP では簡略化し、**エリアごと1つの必要値（全ステ共通）** で判定する。パーティ内で選択したステが最高のキャラのその基礎ステを使い、必要値以上なら確定成功、未満なら成功率＝そのステ／必要値でランダム判定。必要値は `ExplorationArea.skillCheckRequiredValue`（default 80）で持つ（後でエリア別・ステ別に拡張可能）。  
 - **ログ**：技能イベントの結果（どのステで挑んだか・成功/失敗）を `explorationState.logs` に 1 行追記。
 
@@ -414,8 +414,8 @@
 
 | 項目 | 状態 | 備考 |
 |------|------|------|
-| 規定の通常戦闘後の「強敵へ挑む」表示・強敵戦 1 回実行 | ✅ | getNextExplorationStep で strong_enemy_challenge 返却。戦闘ログ直下に「強敵へ挑む」ボタン。step=strong_enemy_battle で runExplorationBattle |
-| 強敵撃破後の領域主出現抽選・「領域主へ挑む」表示・領域主戦 | ✅ | 強敵勝利時にエリアの areaLordAppearanceRate（0～100％）で抽選、当たれば areaLordAvailable。area_lord_challenge / step=area_lord_battle で領域主戦。専用枠は finishExploration で付与 |
+| 規定の通常戦闘後の「強敵へ挑む」表示・強敵戦 1 回実行 | ✅ | advanceExplorationStep で strong_enemy_challenge 時に runExplorationBattle 実行。表示は lastBattle から read-only。ボタン「強敵へ挑む」で同様に advanceExplorationStep → リダイレクト（059 案 B） |
+| 強敵撃破後の領域主出現抽選・「領域主へ挑む」表示・領域主戦 | ✅ | 強敵勝利時にエリアの areaLordAppearanceRate（0～100％）で抽選、当たれば areaLordAvailable。advanceExplorationStep で area_lord_challenge 時に runExplorationBattle 実行。専用枠は finishExploration で付与（059 案 B） |
 | エリア別敵編成（normalEnemyGroupCode 等）とマスタ連携 | 🔶 | spec/050・resolve-exploration-enemies で normal/strong_enemy/area_lord を取得。**敵の配置**は 050 §4.3：探索では **row は選出順で上から固定**（1体目＝上段、2体目＝中段、3体目＝下段）、**col はマスタの defaultBattleCol**。050 マスタ拡張で差し替え可能 |
 
 ### 9.9 更新ルール（このセクション）

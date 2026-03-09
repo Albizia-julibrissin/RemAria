@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { startExploration } from "@/server/actions/exploration";
+import { advanceExplorationStep, startExploration } from "@/server/actions/exploration";
 import type { StackableItem } from "@/server/actions/inventory";
 import { ExplorationAbortClient } from "./exploration-abort-client";
 
@@ -129,9 +129,14 @@ export function ExplorationStartClient({
         alert(`探索開始に失敗しました: ${result.message}`);
         return;
       }
-      // step=next にしない: ここで飛ぶと同一URLが二重リクエストされたときに
-      // 1戦目が裏で実行され2戦目の画面だけ描画される不具合を防ぐ。
-      // 復帰画面（サマリ＋「次へ」）を出し、ユーザーが「次へ」を押したときだけ戦闘を実行する。
+      // 探索開始直後に 1 ステップだけ進行させる（advanceExplorationStep）。
+      // runExplorationBattle / skill_check の結果は explorationState.lastBattle / pendingSkillEvent に書き込まれるため、
+      // /battle/exploration 側では read-only にそれを表示する。
+      const step = await advanceExplorationStep();
+      if (!step.success) {
+        alert(`探索開始直後のイベント実行に失敗しました: ${step.message}`);
+        return;
+      }
       router.push("/battle/exploration");
     });
   };

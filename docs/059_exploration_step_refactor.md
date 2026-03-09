@@ -132,14 +132,14 @@
 
 - ダッシュボードの「探索を開始」押下後、`startExploration` 成功時に **1 回だけ `advanceExplorationStep` を実行**し、その結果を 1 戦目として表示する（ユーザーからは「探索開始 → いきなり 1 戦目」に見える）。Phase 1〜3 完了後に実施。
 
-#### Phase 5: 旧コード・spec の整理
+#### Phase 5: 旧コード・spec の整理（実施済み）
 
-- `getNextExplorationStep` を削除するか、`advanceExplorationStep` のラッパーとして残すかを決めて整理する。
-- 027 (#18, #32) と spec/049 等を、最終挙動に合わせて更新する。
+- **getNextExplorationStep**：削除せず、`advanceExplorationStep` の内部でのみ呼ぶ形で維持。JSDoc で「内部用・呼び出しは advanceExplorationStep に限定」と明記した。
+- **027**：#32 を解消済み（059 Phase 4 で探索開始直後に advanceExplorationStep を 1 回呼ぶフロー実装済み）。#15 の文言を「探索本流は advanceExplorationStep ＋表示用 getExplorationLastBattleDisplay / getExplorationPendingSkillDisplay」に更新した。
+- **spec/049_exploration.md**：復帰の実装・次ステップの抽選・強敵・領域主の備考を、advanceExplorationStep と lastBattle / pendingSkillEvent 表示に合わせて更新した。
 - 手動確認メモ: 新規探索開始時 HP/MP が最大から始まること。「探索開始」1 回で裏で 2 戦進まないこと。「次へ」連打・バック・リロードで進行が重複しないこと。
 
 ### 6. メモ
 
-- 現状の暫定 UX（探索開始 → 復帰画面 → 次へ）は、027 #32 に「最終手段案」として記載済み。  
-  本リファクタで安全なフローが確立できたら、#32 の内容を更新または削除する。
+- 027 #32（探索開始直後の復帰画面「最終手段案」）は、Phase 4 で advanceExplorationStep による 1 戦目突入を実装したため解消済みとして整理した。
 

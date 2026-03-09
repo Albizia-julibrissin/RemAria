@@ -187,7 +187,7 @@ export function ExplorationSkillEventBlock({
             </p>
             <div className="pt-2 flex flex-wrap items-center gap-3">
               <ExplorationNextButton
-                href="/battle/exploration?step=next"
+                useAdvanceAction
                 className="inline-flex items-center justify-center rounded border border-base-border bg-base-elevated px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50 disabled:opacity-50 disabled:pointer-events-none"
               />
             </div>

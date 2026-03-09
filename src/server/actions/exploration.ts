@@ -459,8 +459,9 @@ export type GetNextExplorationStepResult =
   | { success: false; error: string; message: string };
 
 /**
- * 進行中探索の「次の1ステップ」を抽選する。
- * 各イベント終了ごとに抽選する方式（§5）。DB は更新しない。
+ * 進行中探索の「次の1ステップ」を抽選する（DB は更新しない）。
+ * 内部用：呼び出しは advanceExplorationStep に限定する。UI や page からは直接呼ばない。
+ * 各イベント終了ごとに抽選する方式（spec/049 §5）。
  */
 export async function getNextExplorationStep(): Promise<GetNextExplorationStepResult> {
   const session = await getSession();
@@ -718,7 +719,8 @@ export async function resolveExplorationSkillEvent(
     ? `R${roundIndex}: 技能判定（${stat}）成功。`
     : `R${roundIndex}: 技能判定（${stat}）失敗。`;
 
-  const rawState = (expedition.explorationState ?? {}) as unknown as { logs?: unknown };
+  const rawState = (expedition.explorationState ?? {}) as unknown as { logs?: unknown; pendingSkillEvent?: unknown };
+  const { pendingSkillEvent: _dropped, ...stateWithoutPending } = rawState;
   const logs: string[] = Array.isArray(rawState.logs) && rawState.logs.every((x) => typeof x === "string")
     ? (rawState.logs as string[])
     : [];
@@ -728,7 +730,7 @@ export async function resolveExplorationSkillEvent(
     where: { id: expedition.id },
     data: {
       skillSuccessCount: expedition.skillSuccessCount + (isSuccess ? 1 : 0),
-      explorationState: { ...rawState, logs },
+      explorationState: { ...stateWithoutPending, logs },
     },
   });
 
@@ -1007,7 +1009,7 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     remainingNormalBattles: nextRemaining,
     battleWinCount: expedition.battleWinCount + (isPlayerWin ? 1 : 0),
     state: nextState,
-    explorationState: explorationState as Prisma.InputJsonValue,
+    explorationState: explorationState as unknown as Prisma.InputJsonValue,
   };
   if (battleType === "strong_enemy" && isPlayerWin) updateData.strongEnemyCleared = true;
   if (battleType === "area_lord" && isPlayerWin) updateData.areaLordCleared = true;
@@ -1097,21 +1099,38 @@ export async function advanceExplorationStep(): Promise<AdvanceExplorationStepRe
     };
   }
 
-  // 技能イベント → 抽選結果の表示用データをそのまま返す（DB は未更新、ユーザーがステータス選択後に resolveExplorationSkillEvent で進む）
+  // 技能イベント → explorationState に pendingSkillEvent を保存し、リダイレクト先で表示できるようにする（059 案 B）
+  const expedition = await prisma.expedition.findFirst({
+    where: { userId: (await getSession()).userId!, state: "in_progress" },
+    select: { id: true, explorationState: true },
+  });
+  if (!expedition) {
+    return { success: false, error: "NO_EXPEDITION", message: "進行中の探索がありません。" };
+  }
+  const rawState = (expedition.explorationState ?? {}) as Record<string, unknown>;
+  const pendingSkillEvent = {
+    themeName: step.themeName,
+    areaName: step.areaName,
+    eventMessage: step.eventMessage,
+    partyDisplayNames: step.partyDisplayNames,
+    partyIconFilenames: step.partyIconFilenames,
+    partyPositions: step.partyPositions,
+    partyHp: step.partyHp,
+    partyMp: step.partyMp,
+    partyMaxHp: step.partyMaxHp,
+    partyMaxMp: step.partyMaxMp,
+  };
+  await prisma.expedition.update({
+    where: { id: expedition.id },
+    data: {
+      explorationState: { ...rawState, pendingSkillEvent } as Prisma.InputJsonValue,
+    },
+  });
   return {
     success: true,
     step: {
       kind: "skill_check",
-      themeName: step.themeName,
-      areaName: step.areaName,
-      eventMessage: step.eventMessage,
-      partyDisplayNames: step.partyDisplayNames,
-      partyIconFilenames: step.partyIconFilenames,
-      partyPositions: step.partyPositions,
-      partyHp: step.partyHp,
-      partyMp: step.partyMp,
-      partyMaxHp: step.partyMaxHp,
-      partyMaxMp: step.partyMaxMp,
+      ...pendingSkillEvent,
     },
   };
 }
@@ -1128,7 +1147,10 @@ export async function getExplorationLastBattleDisplay(): Promise<RunExplorationB
   if (!session.userId) return null;
 
   const expedition = await prisma.expedition.findFirst({
-    where: { userId: session.userId, state: "in_progress" },
+    where: {
+      userId: session.userId,
+      state: { in: ["in_progress", "ready_to_finish"] },
+    },
     select: { explorationState: true },
   });
 
@@ -1156,6 +1178,46 @@ export async function getExplorationLastBattleDisplay(): Promise<RunExplorationB
     areaLordAppeared: lb.areaLordAppeared,
     stateAfter: lb.stateAfter,
   };
+}
+
+// --- 表示用：explorationState.pendingSkillEvent から技能イベントを読む（059 Phase 2b・案 B） ---
+
+export type PendingSkillEventDisplay = {
+  themeName: string;
+  areaName: string;
+  eventMessage: string;
+  partyDisplayNames: string[];
+  partyIconFilenames: (string | null)[];
+  partyPositions: { row: number; col: number }[];
+  partyHp: number[];
+  partyMp: number[];
+  partyMaxHp: number[];
+  partyMaxMp: number[];
+};
+
+/**
+ * 進行中探索の未解決技能イベントを explorationState.pendingSkillEvent から取得する。
+ * リダイレクト先で技能選択 UI を表示するために使う。無い場合は null。
+ */
+export async function getExplorationPendingSkillDisplay(): Promise<PendingSkillEventDisplay | null> {
+  const session = await getSession();
+  if (!session.userId) return null;
+
+  const expedition = await prisma.expedition.findFirst({
+    where: { userId: session.userId, state: "in_progress" },
+    select: { explorationState: true },
+  });
+  const raw = (expedition?.explorationState ?? {}) as { pendingSkillEvent?: PendingSkillEventDisplay };
+  const ev = raw.pendingSkillEvent;
+  if (
+    !ev ||
+    !ev.themeName ||
+    !ev.areaName ||
+    !Array.isArray(ev.partyDisplayNames) ||
+    !Array.isArray(ev.partyHp)
+  )
+    return null;
+  return ev;
 }
 
 // --- ラウンド後の消耗品使用用：持ち込み消耗品一覧とパーティメンバー ---
