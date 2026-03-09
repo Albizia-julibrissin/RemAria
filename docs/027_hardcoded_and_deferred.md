@@ -65,7 +65,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 - **#7・#8 解消**：PRODUCTION_CAP_MINUTES を `src/lib/constants/production.ts` に一元化。initial-area.ts と receive-production.ts は同定数を参照。docs/019 で「貯められるのは最大24時間分まで」と明文化。
 - **#6 解消**：INITIAL_FACILITY_NAMES を `src/lib/constants/initial-area.ts` に一元化。initial-area.ts は同定数を import。seed は同定数を import し INITIAL_AREA_FACILITY_NAMES を削除。
 - **#11 解消**：ステータス再配分をクライアントコンポーネント（CharacterStatAllocationForm）に切り出し、allocateCharacterStats の成功/失敗メッセージを画面に表示。送信中はボタン無効化と「送信中…」表示。
-- **#18 解消**：戦闘ログを永続化しない方針に変更。runExplorationBattle の戻り値を同一リクエストで表示し、ready_to_finish 時は getLastExplorationBattle を廃止。explorationState に lastBattle を書かず、報酬受け取りまで探索終了にしない現行フローで戦闘結果はメモリ上のみ。
+- **#18 解消 + 後続方針変更**：当初は「戦闘ログを永続化しない」方針とし、runExplorationBattle の戻り値を同一リクエストで表示、ready_to_finish 時は getLastExplorationBattle を廃止し、explorationState に lastBattle を書かないことで、戦闘結果をメモリ上のみで扱っていた。その後、探索中の UX と中断復帰を成立させるため、「長期履歴として戦闘ログを貯めない」ことを原則としつつ、探索ライフサイクル中に限っては直近 1 戦分のログ（lastBattle）や未解決技能イベント（pendingSkillEvent）など最小限の情報を explorationState 等に一時的に保持してよい、という例外ルールを追加した（探索終了時には必ず削除する）。
 - **#23 解消**：targetScope: enemy_all を対応。列指定（damage_target_columns）がない場合も敵生存者全員を対象にする分岐を追加。
 - **#24 解消**：敵のスキル・AI は実装済み。run-battle-with-party で敵ターンに evaluateTacticsFromSpec・スキル実行・CT 管理を実装。探索敵は resolve-exploration-enemies で tacticSlots・enemySkills を渡す。
 - **#1・#2 解消**：装備・メカパーツのステ生成をマスタに移行（docs/053）。EquipmentType.statGenConfig / MechaPartType.statGenConfig を追加。クラフト実行時はマスタの config のみ参照し、未設定ならエラー。seed で鉄の剣・布の鎧・おんぼろシリーズに statGenConfig を投入し、おんぼろ 6 種のクラフトレシピを追加。

@@ -13,6 +13,8 @@
 - **ドキュメント索引**: `docs/README.md` でテーマ別の一覧と参照先を確認できる。
 - **アーキテクチャ・ディレクトリ構成**: `docs/03_architecture_spec.md`。依存方向は UI → server(actions) → repositories → db。`lib/` は純粋ロジック。
 - **ハードコード・暫定実装**: 「後でちゃんと実装する」前提のコードは **`docs/027_hardcoded_and_deferred.md`** に一覧化する。新規に追加するときは一覧に 1 行追記し、解消したらその行を削除する。
+- **MVP 以降の方針**: MVP 版を公開したあとは、「とりあえず動けばよい」その場しのぎの実装は避け、将来の拡張を見据えた素直で読みやすい設計を優先する。バグ対応や暫定策を入れる場合も、必ず docs/spec（例: `docs/059_exploration_step_refactor.md`）に方針を残し、後で必ずリファクタや設計の整理につなげる。
+- **Server Action の責務分離**: `src/server/actions/*` では、1 関数の中に「状態遷移ロジック」「DB 更新」「ビュー用データ組み立て」を過度に詰め込まない。可能な限り、状態遷移ロジックは `lib/` などの純粋関数として切り出し、Server Action は「入力の検証 → リポジトリ呼び出し → 状態遷移ロジック呼び出し → 更新結果をレスポンス型に整形する」薄いオーケストレーターとして実装する。`runExplorationBattle` / `getNextExplorationStep` / `finishExploration` なども、この方針に沿って段階的に整理していく。
 
 ### docs / spec / content-guides の役割
 
