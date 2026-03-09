@@ -7,7 +7,7 @@ import { ChatFloating } from "@/components/chat/ChatFloating";
 
 export const metadata: Metadata = {
   title: "RE:mAria",
-  description: "スチームパンク × ハイファンタジー",
+  description: "????????????",
 };
 
 export default async function RootLayout({
