@@ -10,7 +10,6 @@ import { getPartyPresetListForExploration } from "@/server/actions/tactics";
 import { getConsumableStacksForExploration } from "@/server/actions/inventory";
 import { TEST_USER_1_EMAIL } from "@/lib/constants/admin";
 import { ExplorationStartClient } from "./exploration-start-client";
-import { ExplorationAbortClient } from "./exploration-abort-client";
 import { CharacterSummaryCard } from "./character-summary-card";
 import { GameIcon } from "@/components/icons/game-icon";
 
@@ -109,7 +108,7 @@ export default async function DashboardPage() {
             {/* キャラサマリ（主人公/仲間のアイコン・レベル・経験値、ドロップダウンで切り替え） */}
             {charactersForSummary.length > 0 && (
               <CharacterSummaryCard
-                characters={charactersForSummary as any}
+                characters={charactersForSummary}
                 balances={balances}
               />
             )}
