@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { getRequiredExpForLevel } from "@/lib/level";
@@ -9,7 +7,8 @@ import { GraDisplay } from "@/components/currency/gra-display";
 
 type CharacterSummary = {
   id: string;
-  category: "protagonist" | "companion";
+  // Prisma 側では string 型だが、実際の値は "protagonist" | "companion" を想定
+  category: string;
   displayName: string;
   iconFilename: string | null;
   level: number | null;
