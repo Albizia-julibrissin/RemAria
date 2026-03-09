@@ -175,7 +175,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
           {battleResult.themeName} / {battleResult.areaName} での戦闘結果です。
         </p>
         <div className="mt-4">
-          <BattleFullView data={battleResult.result} />
+          <BattleFullView data={battleResult.result} hideSummaryTop />
         </div>
         <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-4 space-y-2">
           {!isNowReadyToFinish && !battleResult.areaLordAppeared && (
@@ -303,10 +303,9 @@ export default async function ExplorationBattlePage(props: PageProps) {
     const totalMp = stepResult.step.partyMp.reduce((sum, v) => sum + v, 0);
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
-        <p className="mt-2 text-text-muted">
-          {current.themeName} / {current.areaName} — 技能イベント
-        </p>
+        <h1 className="text-2xl font-bold text-text-primary">
+          開拓者たちは困難に遭遇した…！
+        </h1>
         <div className="mt-4">
           <ExplorationSkillEventBlock
             eventMessage={stepResult.step.eventMessage}
@@ -392,13 +391,12 @@ export default async function ExplorationBattlePage(props: PageProps) {
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
-      <p className="mt-2 text-text-muted">
-        {battleResult.themeName} / {battleResult.areaName} での戦闘結果です。
-      </p>
+      <h1 className="text-2xl font-bold text-text-primary">
+        開拓者たちは敵性存在と接触した…！
+      </h1>
 
       <div className="mt-4">
-        <BattleFullView data={battleResult.result} />
+        <BattleFullView data={battleResult.result} hideSummaryTop />
       </div>
 
       {/* 戦闘後の現在HP/MPサマリと次アクション */}

@@ -872,6 +872,7 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
       remainingNormalBattles: true,
       strongEnemyCleared: true,
       battleWinCount: true,
+      skillSuccessCount: true,
       currentHpMp: true,
       explorationState: true,
       area: {
@@ -894,8 +895,7 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
     };
   }
 
-  const initialHpMpByCharacterId =
-    (expedition.currentHpMp as Record<string, { hp: number; mp: number }> | null) ?? undefined;
+  const initialHpMpByCharacterId = (expedition.currentHpMp as Record<string, { hp: number; mp: number }> | null) ?? undefined;
 
   const battleType: ExplorationBattleType =
     expedition.remainingNormalBattles > 0

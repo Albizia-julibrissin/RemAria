@@ -45,6 +45,8 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 28 | `src/server/actions/exploration.ts`, `src/app/battle/exploration/` | **技能イベント後の消耗品使用**：戦闘後の消耗品使用 UI・HP/MP 回復は実装済み。技能イベントの**後**に消耗品を使う UI・効果適用は未実装（spec/049）。 | 技能イベント結果表示後に「消耗品を使う」ボタンと選択 UIを出し、使用後に次ステップへ進むフローを追加する。 |
 | 29 | `src/lib/constants/relic.ts` | **RELIC_GROUP_APPRAISAL_CONFIG**：遺物鑑定のステ・耐性・パッシブ抽選の既定値。 | 鑑定時は DB の RelicGroupConfig を優先し、該当 groupCode の設定が無い場合のみこの定数をフォールバックとして参照。管理画面で遺物グループ編集可能。 |
 | 30 | `src/app/battle/exploration/`（ExplorationNextButton 等） | **「次へ」ボタンの無効解除**：押下後に 1.5 秒の setTimeout で無効を解除している。 | サーバー応答／処理完了でボタンを戻す（例: サーバーから渡す key で remount、または Server Action + useFormStatus）。方法は本 doc または会話で検討済み。 |
+| 31 | `src/components/header.tsx`（通知ベル） | **通知機能本体は未実装**：ヘッダー右上に通知ベルの UI のみ配置。Notification テーブル・未読件数 API・通知一覧 UI は未実装。 | Notification テーブルを追加し、未読件数を返すダッシュボード用 API と、通知ドロップダウン（最新 N 件＋既読制御）を実装する。割り振りポイントなど恒常状態は別フラグで扱う。 |
+| 32 | `src/app/dashboard/exploration-start-client.tsx`, `src/app/battle/exploration/page.tsx` | **探索開始直後の「復帰画面」最終手段案**：安全性のため「探索開始」で直接 `?step=next` に飛ばさず、まず現在 HP/MP と残り回数だけを出す準備画面を挟み、そこから「探索を開始する」（= 最初の `?step=next`）ボタンを押してもらう案。 | UX を検討しつつ、二重リクエストの影響を受けない 1 戦目開始フローを実装する。最終手段としてこの準備画面フローを採用する場合は、文言（新規探索と本当の復帰の出し分け）とボタンラベルを正式仕様として固める。 |
 
 ---
 

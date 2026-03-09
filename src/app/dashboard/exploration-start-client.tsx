@@ -129,7 +129,10 @@ export function ExplorationStartClient({
         alert(`探索開始に失敗しました: ${result.message}`);
         return;
       }
-      router.push("/battle/exploration?step=next");
+      // step=next にしない: ここで飛ぶと同一URLが二重リクエストされたときに
+      // 1戦目が裏で実行され2戦目の画面だけ描画される不具合を防ぐ。
+      // 復帰画面（サマリ＋「次へ」）を出し、ユーザーが「次へ」を押したときだけ戦闘を実行する。
+      router.push("/battle/exploration");
     });
   };
 

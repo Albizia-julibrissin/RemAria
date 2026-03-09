@@ -231,18 +231,24 @@ function resultText(winner: "player" | "enemy" | "draw"): string {
 
 interface BattleFullViewProps {
   data: RunBattleSuccess;
+  /** true のとき、結果サマリ行（結果: 勝利 / 最終HP）は非表示にする */
+  hideSummaryTop?: boolean;
 }
 
-export function BattleFullView({ data }: BattleFullViewProps) {
+export function BattleFullView({ data, hideSummaryTop = false }: BattleFullViewProps) {
   return (
     <div className="mt-6 space-y-6">
-      <p className="text-text-primary font-medium">
-        結果: {resultText(data.summary.winner)}（{data.summary.totalCycles} サイクル）
-      </p>
-      <p className="text-sm text-text-muted">
-        味方の最終HP: {(data.summary.partyDisplayNames ?? ["味方"]).map((name, i) => `${name}=${data.summary.partyHpFinals?.[i] ?? data.summary.playerHpFinal}`).join(", ")} / 敵の最終HP:{" "}
-        {data.summary.enemyHpFinals.map((hp, i) => `${(data.enemyDisplayNames ?? [])[i] ?? `${DEFAULT_ENEMY_NAME}${i + 1}`}=${hp}`).join(", ")}
-      </p>
+      {!hideSummaryTop && (
+        <>
+          <p className="text-text-primary font-medium">
+            結果: {resultText(data.summary.winner)}（{data.summary.totalCycles} サイクル）
+          </p>
+          <p className="text-sm text-text-muted">
+            味方の最終HP: {(data.summary.partyDisplayNames ?? ["味方"]).map((name, i) => `${name}=${data.summary.partyHpFinals?.[i] ?? data.summary.playerHpFinal}`).join(", ")} / 敵の最終HP:{" "}
+            {data.summary.enemyHpFinals.map((hp, i) => `${(data.enemyDisplayNames ?? [])[i] ?? `${DEFAULT_ENEMY_NAME}${i + 1}`}=${hp}`).join(", ")}
+          </p>
+        </>
+      )}
 
       <div className="space-y-6">
         {groupLogByTurn(data.log).map(({ cycle, turn, entries }) => {
