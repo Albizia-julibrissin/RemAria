@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { startExploration } from "@/server/actions/exploration";
 import type { StackableItem } from "@/server/actions/inventory";
+import { ExplorationAbortClient } from "./exploration-abort-client";
 
 type AreaOption = {
   id: string;
@@ -27,9 +28,16 @@ type Props = {
   /** プリセット一覧（id と name のみ。ダッシュボード用の軽量データ） */
   partyPresets: { id: string; name: string | null }[];
   consumableStacks: StackableItem[];
+  /** 進行中の探索があるか（ダッシュボード側から渡す） */
+  hasOngoingExpedition?: boolean;
 };
 
-export function ExplorationStartClient({ themes, partyPresets, consumableStacks }: Props) {
+export function ExplorationStartClient({
+  themes,
+  partyPresets,
+  consumableStacks,
+  hasOngoingExpedition = false,
+}: Props) {
   const router = useRouter();
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined>(
     themes[0]?.themeId
@@ -131,40 +139,49 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
 
   return (
     <div className="rounded-lg border border-base-border bg-base-elevated p-5 shadow-sm">
-      <h3 className="text-base font-semibold text-text-primary">探索を始める</h3>
-      <p className="mt-1 text-sm text-text-muted">
-        行き先・編成・持ち込みを選んで開始します。
-      </p>
-
-      <div className="mt-4 space-y-3 text-sm">
+      <div className="space-y-3 text-sm">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-text-muted">テーマ</label>
-          <select
-            className="rounded-md border border-base-border bg-base px-2 py-1 text-sm text-text-primary"
-            value={selectedThemeId ?? ""}
-            onChange={(e) => setSelectedThemeId(e.target.value || undefined)}
-            disabled={themes.length === 0 || isPending}
-          >
-            {themes.length === 0 ? (
-              <option value="">テーマがありません</option>
-            ) : (
-              themes.map((t) => (
-                <option key={t.themeId} value={t.themeId}>
-                  {t.name}
-                </option>
-              ))
-            )}
-          </select>
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="exploration-theme"
+              className="w-16 text-xs text-text-muted"
+            >
+              Theme
+            </label>
+            <select
+              id="exploration-theme"
+              className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
+              value={selectedThemeId ?? ""}
+              onChange={(e) => setSelectedThemeId(e.target.value || undefined)}
+              disabled={themes.length === 0 || isPending}
+            >
+              {themes.length === 0 ? (
+                <option value="">テーマがありません</option>
+              ) : (
+                themes.map((t) => (
+                  <option key={t.themeId} value={t.themeId}>
+                    {t.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
           {selectedTheme?.description && (
             <p className="mt-0.5 text-xs text-text-muted">{selectedTheme.description}</p>
           )}
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-text-muted">エリア</label>
           <div className="flex items-center gap-2">
+            <label
+              htmlFor="exploration-area"
+              className="w-16 text-xs text-text-muted"
+            >
+              Area
+            </label>
             <select
-              className="rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary flex-1"
+              id="exploration-area"
+              className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
               value={selectedAreaId ?? ""}
               onChange={(e) => setSelectedAreaId(e.target.value || undefined)}
               disabled={areaOptions.length === 0 || isPending}
@@ -174,14 +191,11 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
               ) : (
                 areaOptions.map((opt) => (
                   <option key={opt.id} value={opt.id}>
-                    {opt.themeName} / {opt.name}
+                    {opt.name}
                   </option>
                 ))
               )}
             </select>
-            {selectedArea && (
-              <span className="text-xs text-text-muted whitespace-nowrap">推奨Lv {selectedArea.recommendedLevel}</span>
-            )}
           </div>
           {selectedArea?.description && (
             <p className="mt-0.5 text-xs text-text-muted">{selectedArea.description}</p>
@@ -189,10 +203,16 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-text-muted">パーティプリセット</label>
           <div className="flex items-center gap-2">
+            <label
+              htmlFor="exploration-preset"
+              className="w-16 text-xs text-text-muted"
+            >
+              Preset
+            </label>
             <select
-              className="rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary flex-1"
+              id="exploration-preset"
+              className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
               value={selectedPresetId ?? ""}
               onChange={(e) => setSelectedPresetId(e.target.value || undefined)}
               disabled={presetOptions.length === 0 || isPending}
@@ -218,27 +238,35 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
 
         {consumablesWithLimit.length > 0 && (
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-text-muted">持ち込む消耗品（一種類まで）</label>
-            <select
-              className="rounded-md border border-base-border bg-base px-2 py-1 text-sm text-text-primary"
-              value={selectedConsumableItemId}
-              onChange={(e) => {
-                const id = e.target.value || "";
-                setSelectedConsumableItemId(id);
-                setCarryQuantity(0);
-              }}
-              disabled={isPending}
-            >
-              <option value="">持たない</option>
-              {consumablesWithLimit.map((s) => (
-                <option key={s.itemId} value={s.itemId}>
-                  {s.name}（所持: {s.quantity}、上限: {s.maxCarry}個）
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="exploration-consumable"
+                className="w-16 text-xs text-text-muted"
+              >
+                Item
+              </label>
+              <select
+                id="exploration-consumable"
+                className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
+                value={selectedConsumableItemId}
+                onChange={(e) => {
+                  const id = e.target.value || "";
+                  setSelectedConsumableItemId(id);
+                  setCarryQuantity(0);
+                }}
+                disabled={isPending}
+              >
+                <option value="">持たない</option>
+                {consumablesWithLimit.map((s) => (
+                  <option key={s.itemId} value={s.itemId}>
+                    {s.name}（所持: {s.quantity}、上限: {s.maxCarry}個）
+                  </option>
+                ))}
+              </select>
+            </div>
             {selectedConsumable && (
               <div className="flex items-center gap-2">
-                <label className="text-xs text-text-muted">個数</label>
+                <span className="w-16 text-xs text-text-muted">Qty</span>
                 <input
                   type="number"
                   min={0}
@@ -248,7 +276,7 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
                     const v = parseInt(e.target.value, 10);
                     setCarryQuantity(Number.isNaN(v) ? 0 : Math.max(0, Math.min(selectedConsumable.maxCarry, v)));
                   }}
-                  className="w-14 rounded border border-base-border bg-base px-2 py-1 text-right text-sm tabular-nums text-text-primary"
+                  className="w-16 rounded border border-base-border bg-base px-2 py-1 text-right text-sm tabular-nums text-text-primary"
                   disabled={isPending}
                 />
                 <span className="text-xs text-text-muted">個（最大{selectedConsumable.maxCarry}個）</span>
@@ -258,14 +286,28 @@ export function ExplorationStartClient({ themes, partyPresets, consumableStacks 
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={handleStart}
-        disabled={!canStart}
-        className="mt-4 w-full rounded-md bg-brass px-4 py-2.5 text-sm font-medium text-base shadow-sm disabled:bg-base-border disabled:text-text-muted hover:bg-brass/90"
-      >
-        {isPending ? "探索を開始中..." : "探索を開始"}
-      </button>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        {hasOngoingExpedition ? (
+          <>
+            <Link
+              href="/battle/exploration"
+              className="inline-flex flex-1 items-center justify-center rounded-md bg-brass px-4 py-2.5 text-sm font-medium text-base shadow-sm hover:bg-brass/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+            >
+              探索を再開
+            </Link>
+            <ExplorationAbortClient />
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={!canStart}
+            className="w-full rounded-md bg-brass px-4 py-2.5 text-sm font-medium text-base shadow-sm disabled:bg-base-border disabled:text-text-muted hover:bg-brass/90"
+          >
+            {isPending ? "探索を開始中..." : "探索を開始"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

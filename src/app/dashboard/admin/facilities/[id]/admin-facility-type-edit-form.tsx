@@ -229,7 +229,7 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
         <section className="border-t border-base-border pt-8">
           <h2 className="text-lg font-medium text-text-primary">建設材料（型ごと）</h2>
           <p className="mt-1 text-sm text-text-muted">
-            この設備には型が登録されていません。工業エリアで建設するには「基本型」が必要です。
+            この設備には型が登録されていません。機工区で建設するには「基本型」が必要です。
           </p>
           <button
             type="button"
@@ -245,7 +245,7 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
         <section className="border-t border-base-border pt-8">
           <h2 className="text-lg font-medium text-text-primary">建設材料（型ごと）</h2>
           <p className="mt-1 text-sm text-text-muted">
-            設備を設置するときに消費するアイテム。工業エリアの設置画面で参照されます。
+            設備を設置するときに消費するアイテム。機工区の設置画面で参照されます。
           </p>
           {facility.variants.map((v) => (
             <div key={v.facilityVariantId} className="mt-4 rounded border border-base-border bg-base-elevated p-4">

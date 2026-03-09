@@ -11,7 +11,7 @@ import { getConsumableStacksForExploration } from "@/server/actions/inventory";
 import { TEST_USER_1_EMAIL } from "@/lib/constants/admin";
 import { ExplorationStartClient } from "./exploration-start-client";
 import { ExplorationAbortClient } from "./exploration-abort-client";
-import { GraDisplay } from "@/components/currency/gra-display";
+import { GameIcon } from "@/components/icons/game-icon";
 
 export default async function DashboardPage() {
   // セッション取得後、ダッシュボード表示に必要なデータだけを並列取得
@@ -40,13 +40,6 @@ export default async function DashboardPage() {
     getCurrentExpeditionSummary(),
   ]);
 
-  const balances =
-    userForDashboard != null
-      ? {
-          premiumFree: userForDashboard.premiumCurrencyFreeBalance,
-          premiumPaid: userForDashboard.premiumCurrencyPaidBalance,
-        }
-      : null;
   const showAdminContent = userForDashboard?.email === TEST_USER_1_EMAIL;
 
   const explorationThemes =
@@ -55,111 +48,105 @@ export default async function DashboardPage() {
   const consumableStacks = consumableStacksResult ?? [];
 
   const subMenuLinks = [
-    { href: "/dashboard/characters", label: "宿舎", sub: "キャラクター一覧" },
-    { href: "/dashboard/recruit", label: "雇用斡旋所", sub: "仲間を雇用する" },
-    { href: "/dashboard/facilities", label: "工業エリア", sub: "設備配置（spec/035）" },
-    { href: "/dashboard/research", label: "研究", sub: "設備・レシピ解放（docs/054）" },
-    { href: "/dashboard/craft", label: "アイテムクラフト", sub: "装備・消耗品を製作（spec/046）" },
-    { href: "/dashboard/bag", label: "倉庫", sub: "所持アイテム（種別タブ）spec/045" },
-    { href: "/dashboard/quests", label: "クエスト", sub: "ストーリー・研究クエスト進捗（docs/054）" },
-  ];
+    // 居住区: spec/025_character_list.md
+    { href: "/dashboard/characters", label: "居住区", sub: "キャラクター一覧・詳細", icon: "three-friends" },
+    // 人材局: spec/030_companion_employment.md
+    { href: "/dashboard/recruit", label: "人材局", sub: "仲間を雇用・解雇する", icon: "scroll-quill" },
+    // 機工区: spec/035_initial_area_facilities.md, 036_production
+    { href: "/dashboard/facilities", label: "機工区", sub: "設備配置と生産の管理", icon: "factory" },
+    // 研究局: spec/047_research_unlock_construction.md
+    { href: "/dashboard/research", label: "研究局", sub: "設備やレシピを解放する", icon: "microscope" },
+    // 工房: spec/046_item_craft.md
+    { href: "/dashboard/craft", label: "工房", sub: "装備や消耗品を製作する", icon: "anvil-impact" },
+    // 物資庫: spec/045_inventory_and_items.md
+    { href: "/dashboard/bag", label: "物資庫", sub: "所持アイテムの確認", icon: "wooden-crate" },
+    // 開拓任務: spec/054_quests.md
+    { href: "/dashboard/quests", label: "開拓任務", sub: "ストーリーや研究クエストの進捗", icon: "feather" },
+  ] as const;
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-text-primary">ダッシュボード</h1>
-        {balances != null && (
-          <div className="rounded-lg border border-base-border bg-base-elevated px-4 py-2">
-            <span className="text-xs text-text-muted mr-2">所持通貨</span>
-            <GraDisplay free={balances.premiumFree} paid={balances.premiumPaid} />
+      <div className="max-w-5xl mx-auto">
+        {/* 2カラム：左 = ぱっと見たい情報 / 右 = メニュー */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {/* 左カラム：探索・キャラサマリ・通知 */}
+          <div className="space-y-6">
+            {/* 探索（進行中があれば「再開」＋「撤退」、なければ新規開始） */}
+            <section>
+              <div className="max-w-md">
+                <ExplorationStartClient
+                  themes={explorationThemes}
+                  partyPresets={partyPresets}
+                  consumableStacks={consumableStacks}
+                  hasOngoingExpedition={currentExpedition != null}
+                />
+              </div>
+            </section>
+
+            {/* キャラサマリ（主人公/仲間の成長をざっくり確認） */}
+            <section className="rounded-lg border border-base-border bg-base-elevated p-4">
+              <p className="mt-2 text-sm text-text-muted">
+                主人公や仲間のレベル・ステータス割り振り状況をここでざっくり確認できるようにしていきます。
+                詳細なステータス割り振りや装備変更は「居住区」から行えます。
+              </p>
+            </section>
+
+            {/* 通知（割り振りポイントなどの重要なお知らせ） */}
+            <section className="rounded-lg border border-base-border bg-base-elevated p-4">
+              <p className="mt-2 text-sm text-text-muted">
+                ステータス割り振りポイントが余っているキャラクターや、完了した研究・受け取り待ちの報酬など、
+                重要なお知らせをここに表示していく想定です。現在は表示する通知はありません。
+              </p>
+            </section>
           </div>
-        )}
-      </div>
 
-      {/* 上部バー：押すと展開するメニュー（宿舎・雇用・工業・研究・クラフト・倉庫・クエスト） */}
-      <details className="mt-6 rounded-lg border border-base-border bg-base-elevated overflow-hidden">
-        <summary className="cursor-pointer px-4 py-3 text-text-primary font-medium list-none flex items-center justify-between gap-2">
-          <span>メニュー</span>
-          <span className="text-sm text-text-muted font-normal">宿舎・雇用・工業・研究・クラフト・倉庫・クエスト</span>
-        </summary>
-        <div className="border-t border-base-border px-4 py-3 flex flex-wrap gap-2">
-          {subMenuLinks.map(({ href, label, sub }) => (
-            <Link
-              key={href}
-              href={href}
-              className="inline-flex flex-col rounded-lg border border-base-border bg-base px-4 py-3 text-text-primary transition-colors hover:border-brass hover:bg-base-elevated min-w-[10rem]"
-            >
-              <span className="font-medium">{label}</span>
-              <span className="text-sm text-text-muted mt-0.5">{sub}</span>
-            </Link>
-          ))}
-        </div>
-      </details>
+          {/* 右カラム：機能メニュー（居住区・人材局・機工区・研究局・工房・物資庫・開拓任務・作戦室 など） */}
+          <div className="space-y-4">
+            <section>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {subMenuLinks.map(({ href, label, sub, icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    title={sub}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-4 py-2 text-sm text-text-primary transition-colors hover:border-brass hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                  >
+                    {icon && (
+                      <GameIcon
+                        name={icon}
+                        className="w-4 h-4 text-brass"
+                      />
+                    )}
+                    <span className="font-medium">{label}</span>
+                  </Link>
+                ))}
 
-      {/* 探索・作戦室をすぐ見えるように前面に */}
-      <div className="mt-6 flex flex-col lg:flex-row gap-6 max-w-5xl">
-        {/* 探索（メイン） */}
-        <section className="flex-1 min-w-0">
-          <h2 className="text-xl font-semibold text-text-primary">探索</h2>
-          <p className="mt-2 text-sm text-text-muted">
-            テーマ・エリア・パーティプリセット・持ち込み消耗品を選んで探索を開始します。戦闘が発生する場合は
-            探索戦闘画面に遷移し、そこでログと現在HP/MPを確認できます。
-          </p>
+                {/* 作戦室：探索前の準備として常に見えるようにメニュー側にも配置 */}
+                <Link
+                  href="/dashboard/tactics"
+                  title="パーティプリセットと作戦スロットの設定"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-4 py-2 text-sm text-text-primary transition-colors hover:border-brass hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                >
+                  <GameIcon name="battle-gear" className="w-4 h-4 text-brass" />
+                  <span className="font-medium">作戦室</span>
+                </Link>
+              </div>
+            </section>
 
-          {currentExpedition && (
-          <div className="mt-4 rounded-lg border border-base-border bg-base-elevated p-4 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-medium text-text-muted">進行中の探索</h3>
-              <ExplorationAbortClient />
-              <Link
-                href="/battle/exploration"
-                className="text-sm text-brass hover:text-brass-hover"
-              >
-                探索を続ける →
-              </Link>
-            </div>
-            <p className="mt-1 text-sm text-text-primary">
-              {currentExpedition.themeName} / {currentExpedition.areaName}
-            </p>
-            <p className="mt-1 text-xs text-text-muted">
-              {currentExpedition.state === "in_progress"
-                ? "進行中"
-                : currentExpedition.state === "ready_to_finish"
-                ? "結果確定待ち"
-                : currentExpedition.state}
-              ・{currentExpedition.rounds} ラウンド
-            </p>
+            {showAdminContent && (
+              <section className="rounded-lg border border-base-border bg-base-elevated p-4 text-sm">
+                <Link
+                  href="/dashboard/admin/content"
+                  className="flex flex-col text-text-primary transition-colors hover:text-brass"
+                >
+                  <span className="font-medium">コンテンツ管理（管理者用）</span>
+                  <span className="mt-1 text-xs text-text-muted">
+                    アイテム・スキル・敵・探索テーマ/エリアなどのマスタ編集。
+                  </span>
+                </Link>
+              </section>
+            )}
           </div>
-          )}
-
-          {/* 探索開始：テーマ・エリア・プリセット・消耗品はすべてフォーム内の選択で完結 */}
-          <div className="mt-6 max-w-md">
-            <ExplorationStartClient
-              themes={explorationThemes}
-              partyPresets={partyPresets}
-              consumableStacks={consumableStacks}
-            />
-          </div>
-        </section>
-
-        {/* 作戦室（常時見える） */}
-        <div className="lg:w-64 flex-shrink-0 space-y-4">
-          <Link
-            href="/dashboard/tactics"
-            className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-6 text-text-primary shadow-sm transition-colors hover:border-brass hover:bg-base-elevated/90 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base h-full min-h-[8rem]"
-          >
-            <span className="text-lg font-medium">作戦室</span>
-            <span className="mt-1 text-sm text-text-muted">パーティプリセットと作戦スロットの設定</span>
-          </Link>
-          {showAdminContent && (
-            <Link
-              href="/dashboard/admin/content"
-              className="flex flex-col rounded-lg border border-base-border bg-base-elevated p-4 text-text-primary transition-colors hover:border-brass hover:bg-base-elevated/90 text-sm"
-            >
-              <span className="font-medium">コンテンツ管理</span>
-              <span className="mt-0.5 text-xs text-text-muted">管理者用</span>
-            </Link>
-          )}
         </div>
       </div>
     </main>

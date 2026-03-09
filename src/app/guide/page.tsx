@@ -6,19 +6,19 @@ import Link from "next/link";
 
 const menuItems: { href: string; label: string; desc: string; wip?: boolean }[] = [
   { href: "/dashboard", label: "ダッシュボード", desc: "探索の開始・進行中探索の続き・メニューへの入口。作戦室へのショートカット。" },
-  { href: "/dashboard/characters", label: "宿舎", desc: "キャラクター一覧・詳細。ステータス割り振り・装備・遺物の装着・スキルレベル。" },
-  { href: "/dashboard/recruit", label: "雇用斡旋所", desc: "仲間の雇用・解雇。" },
-  { href: "/dashboard/facilities", label: "工業エリア", desc: "設備の配置・製造一括受け取り・建設・解体。" },
-  { href: "/dashboard/research", label: "研究", desc: "設備やレシピの解放（研究グループ・研究ポイント）。" },
-  { href: "/dashboard/craft", label: "アイテムクラフト", desc: "装備・消耗品・メカパーツの製作。" },
-  { href: "/dashboard/bag", label: "倉庫", desc: "所持アイテムの確認（種別タブ：資源・装備・遺物・スキル分析書など）。" },
-  { href: "/dashboard/quests", label: "クエスト", desc: "ストーリー・研究クエストの進捗と達成。", wip: true },
+  { href: "/dashboard/characters", label: "居住区", desc: "キャラクター一覧・詳細。ステータス割り振り・装備・遺物の装着・スキルレベル。" },
+  { href: "/dashboard/recruit", label: "人材局", desc: "仲間の雇用・解雇。" },
+  { href: "/dashboard/facilities", label: "機工区", desc: "設備の配置・製造一括受け取り・建設・解体。" },
+  { href: "/dashboard/research", label: "研究局", desc: "設備やレシピの解放（研究グループ・研究ポイント）。" },
+  { href: "/dashboard/craft", label: "工房", desc: "装備・消耗品・メカパーツの製作。" },
+  { href: "/dashboard/bag", label: "物資庫", desc: "所持アイテムの確認（種別タブ：資源・装備・遺物・スキル分析書など）。" },
+  { href: "/dashboard/quests", label: "開拓任務", desc: "ストーリー・研究クエストの進捗と達成。", wip: true },
   { href: "/dashboard/tactics", label: "作戦室", desc: "パーティプリセットの作成・編集。各プリセットの「作戦スロット」で、条件とスキルを設定。" },
 ];
 
 const terms: { term: string; desc: string }[] = [
   { term: "アカウントキャラ（主人公）", desc: "プレイヤー本人のキャラ。1アカウント1体。" },
-  { term: "仲間", desc: "雇用斡旋所で雇うパーティ枠のキャラ。1体まで所持。" },
+  { term: "仲間", desc: "人材局で雇うパーティ枠のキャラ。1体まで所持。" },
   { term: "メカ", desc: "追従する機械ユニット。パーツでスキル・性能が変わる。" },
   { term: "遺物", desc: "探索で入手するハクスラ系装備。4枠まで装着可。" },
   { term: "作戦 / 作戦スロット", desc: "戦闘時に「条件に合ったらこのスキルを使う」とあらかじめ設定するルール。" },
@@ -60,12 +60,12 @@ export default function GuidePage() {
           <h2 className="text-xl font-semibold text-text-primary border-b border-base-border pb-2">2. 1日の基本の流れ（推奨ループ）</h2>
           <ol className="mt-3 list-decimal list-inside space-y-2 text-text-primary text-sm">
             <li><strong>ログイン</strong> → ダッシュボードを開く。</li>
-            <li><strong>製造の受け取り</strong>：工業エリアで、完了した製造を「一括受け取り」する。</li>
+            <li><strong>製造の受け取り</strong>：機工区で、完了した製造を「一括受け取り」する。</li>
             <li><strong>探索に出撃</strong>：ダッシュボードの「探索」で、テーマ・エリア・パーティプリセット・持ち込み消耗品を選んで「探索を開始」。戦闘や技能イベントが発生したら、画面の指示に従って「次へ」を押して進める。</li>
             <li><strong>帰還</strong>：探索を終えたら「帰還」で報酬（素材・遺物・経験値など）を受け取る。</li>
-            <li><strong>育成の見直し</strong>：レベルアップしている場合は「宿舎」でキャラを選び、ステータス割り振りをする。装備や遺物の変更もここで。</li>
+            <li><strong>育成の見直し</strong>：レベルアップしている場合は「居住区」でキャラを選び、ステータス割り振りをする。装備や遺物の変更もここで。</li>
             <li><strong>作戦の確認</strong>：「作戦室」でパーティプリセットと作戦スロット（誰がどの条件でどのスキルを使うか）を設定する。</li>
-            <li><strong>工業で次の製造を依頼</strong>：クラフトで装備・消耗品を、工業エリアで設備の建設・製造を依頼してからログアウト。</li>
+            <li><strong>工業で次の製造を依頼</strong>：クラフトで装備・消耗品を、機工区で設備の建設・製造を依頼してからログアウト。</li>
           </ol>
         </section>
 
@@ -110,8 +110,8 @@ export default function GuidePage() {
         <section className="mt-8">
           <h2 className="text-xl font-semibold text-text-primary border-b border-base-border pb-2">6. 育成のポイント</h2>
           <ul className="mt-3 list-disc list-inside space-y-1 text-text-primary text-sm">
-            <li><strong>レベルアップ</strong>：探索やクエストで経験値を得るとレベルが上がり、<strong>CAP（総合ポイント）</strong> が増えます。増えた分の一部は自動でステータスに振られ、残りは <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover">宿舎 → キャラ詳細</Link> で手動で割り振れます（各ステには上限・下限あり）。</li>
-            <li><strong>装備</strong>：クラフトで装備を製作し、宿舎のキャラ詳細で装着。武器・防具など枠ごとに装備可能。</li>
+            <li><strong>レベルアップ</strong>：探索やクエストで経験値を得るとレベルが上がり、<strong>CAP（総合ポイント）</strong> が増えます。増えた分の一部は自動でステータスに振られ、残りは <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover">居住区 → キャラ詳細</Link> で手動で割り振れます（各ステには上限・下限あり）。</li>
+            <li><strong>装備</strong>：クラフトで装備を製作し、居住区のキャラ詳細で装着。武器・防具など枠ごとに装備可能。</li>
             <li><strong>遺物</strong>：探索で手に入る「遺物」は最大4枠まで装着可能。鑑定後に装着し、戦闘での耐性などに影響します。</li>
             <li><strong>スキル分析書</strong>：倉庫の「スキル分析書」タブで使用し、対象キャラに渡すとスキル習得・スキルレベルアップに使えます。</li>
           </ul>

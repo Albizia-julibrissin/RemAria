@@ -24,9 +24,9 @@ export function ExplorationAbortClient() {
       type="button"
       onClick={handleAbort}
       disabled={isPending}
-      className="ml-auto inline-flex items-center rounded-md border border-red-700/60 px-3 py-1.5 text-xs font-medium text-red-300 bg-red-900/30 hover:bg-red-900/50 transition-colors disabled:opacity-60"
+      className="inline-flex items-center justify-center rounded-md border border-red-700/60 px-4 py-2 text-xs sm:text-sm font-medium text-red-200 bg-red-900/40 hover:bg-red-900/60 transition-colors disabled:opacity-60"
     >
-      {isPending ? "破棄中…" : "探索を強制破棄（テスト用）"}
+      {isPending ? "撤退処理中…" : "探索から撤退"}
     </button>
   );
 }

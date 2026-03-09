@@ -7,8 +7,19 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  // 動的クラス名のアイコンが purge されないよう GRA 用歯車を明示
-  safelist: ["game-icons--gear-stick"],
+  // 動的クラス名のアイコンが purge されないよう、使用するアイコン名を明示
+  safelist: [
+    "game-icons--gear-stick", // 既存用途（必要なら残す）
+    "game-icons--big-gear", // 通貨アイコン
+    "game-icons--three-friends", // 居住区
+    "game-icons--scroll-quill", // 人材局
+    "game-icons--factory", // 機工区
+    "game-icons--microscope", // 研究局
+    "game-icons--anvil-impact", // 工房
+    "game-icons--wooden-crate", // 物資庫
+    "game-icons--feather", // 開拓任務
+    "game-icons--battle-gear", // 作戦室
+  ],
   theme: {
     extend: {
       colors: {

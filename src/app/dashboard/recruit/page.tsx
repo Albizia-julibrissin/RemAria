@@ -1,4 +1,4 @@
-// spec/030_companion_employment.md - 雇用斡旋所
+// spec/030_companion_employment.md - 人材局
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -22,7 +22,7 @@ export default async function RecruitPage() {
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <h1 className="text-2xl font-bold text-text-primary">雇用斡旋所</h1>
+      <h1 className="text-2xl font-bold text-text-primary">人材局</h1>
       <p className="mt-2 text-text-muted">仲間を雇用するには「雇用可能回数」を購入し、名前・アイコンを決めて仲間を作成します。</p>
 
       <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6 space-y-4">

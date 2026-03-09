@@ -11,4 +11,4 @@ export const PREMIUM_CURRENCY_DISPLAY_NAME = "GRA";
 export const PREMIUM_CURRENCY_DISPLAY_NAME_JA = "グラ";
 
 /** GRA 表示用の歯車アイコン（Game Icons のアイコン名） */
-export const PREMIUM_CURRENCY_ICON_NAME = "gear-stick";
+export const PREMIUM_CURRENCY_ICON_NAME = "big-gear";

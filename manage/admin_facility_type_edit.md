@@ -41,7 +41,7 @@ FacilityType の name / kind / description / cost の編集・新規作成に加
 | `updateAdminFacilityConstructionInputs(facilityTypeId, variantCode, inputs)` | 指定型（base 等）の建設材料を置き換え。inputs: `{ itemId, amount }[]`。 |
 
 - **削除不可条件**: 設置済み（FacilityInstance）・解放済みユーザー（UserFacilityTypeUnlock）・研究解放に紐づき（ResearchGroupItem / ResearchUnlockCost）のいずれかがある場合は削除できず、エラーメッセージを返す。
-- **建設材料**: FacilityVariant ごと（base / alpha / beta）。同一型内で itemId はユニーク。amount は 1 以上。工業エリアの設備設置では `getConstructionRecipe` / `placeFacility` が都度 DB を参照するため、管理画面で変更した内容は設置画面に即反映される。
+- **建設材料**: FacilityVariant ごと（base / alpha / beta）。同一型内で itemId はユニーク。amount は 1 以上。機工区の設備設置では `getConstructionRecipe` / `placeFacility` が都度 DB を参照するため、管理画面で変更した内容は設置画面に即反映される。
 
 ---
 
@@ -70,7 +70,7 @@ FacilityType の name / kind / description / cost の編集・新規作成に加
 
 - name の変更は可能。他テーブルで name をキーにしている場合は注意。
 - 新規作成時は name の重複チェックを行う。既存の name と被る場合は「この name は既に使用されています。」とエラーになる。
-- 工業エリアの設備設置画面（`/dashboard/facilities`）は、必要資源を `getConstructionRecipe` で都度取得し、`placeFacility` でも DB の建設材料を参照して在庫消費するため、管理画面で建設材料を変更すると次回以降の設置から反映される。
+- 機工区の設備設置画面（`/dashboard/facilities`）は、必要資源を `getConstructionRecipe` で都度取得し、`placeFacility` でも DB の建設材料を参照して在庫消費するため、管理画面で建設材料を変更すると次回以降の設置から反映される。
 - 似た名前の設備が 2 つある場合、重複した方を消したいときは上記「5. 削除できない代表例」を参照し、研究解放の紐づけを外してから削除する。
 - **川探索拠点／山探索拠点 → 川探索／山探索 に統一したい（DB は残す）**: 1 回だけ `npx tsx prisma/migrate-river-mountain-names.ts` を実行する。参照を移行してから旧名の設備種別を削除する。詳細は `prisma/migrate-river-mountain-names.ts` の先頭コメント参照。
 - **貯水槽を削除したい**: 1 回だけ `npx tsx prisma/migrate-remove-suisou.ts` を実行する。研究・設置・解放・レシピ等の参照を削除してから設備種別を削除する。seed からも貯水槽は外してある。

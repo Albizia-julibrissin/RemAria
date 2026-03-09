@@ -34,7 +34,7 @@ export default async function RecruitCreatePage() {
         </div>
         <p className="mt-6">
           <Link href="/dashboard/recruit" className="text-sm text-brass hover:text-brass-hover">
-            ← 雇用斡旋所へ
+            ← 人材局へ
           </Link>
         </p>
       </div>

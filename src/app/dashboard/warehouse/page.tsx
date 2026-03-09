@@ -29,7 +29,7 @@ export default async function WarehousePage() {
         </Link>
       </div>
       <h1 className="text-2xl font-bold text-text-primary">倉庫</h1>
-      <p className="mt-2 text-text-muted">所持している素材・製品の一覧です。工業エリアで受け取ったものがここに貯まります。</p>
+      <p className="mt-2 text-text-muted">所持している素材・製品の一覧です。機工区で受け取ったものがここに貯まります。</p>
 
       <section className="mt-8 rounded-lg border border-base-border bg-base-elevated p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-text-primary mb-4">所持数</h2>
