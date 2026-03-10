@@ -132,7 +132,7 @@ async function fixDropTableAreaId(): Promise<void> {
 
 async function main() {
   console.log("マスタ同期: ソース → ターゲット");
-  console.log("ターゲット:", targetUrl.replace(/:[^:@]+@/, ":****@"));
+  console.log("ターゲット:", targetUrl!.replace(/:[^:@]+@/, ":****@"));
 
   try {
     await source.$connect();
