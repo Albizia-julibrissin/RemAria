@@ -103,17 +103,6 @@ export async function runBattle(
       AGI: true,
       LUK: true,
       CAP: true,
-      tacticSlots: {
-        orderBy: { orderIndex: "asc" },
-        select: {
-          orderIndex: true,
-          subject: true,
-          conditionKind: true,
-          conditionParam: true,
-          actionType: true,
-          skillId: true,
-        },
-      },
       characterSkills: {
         where: { skill: { category: "battle_active" } },
         select: {
@@ -271,6 +260,37 @@ export async function runBattle(
     }
   }
 
+  // spec/063: 味方の作戦スロットはプリセット別に PresetTacticSlot から取得する
+  const presetTactics = await prisma.presetTacticSlot.findMany({
+    where: { partyPresetId: presetId, characterId: { in: characterIds } },
+    orderBy: [{ characterId: "asc" }, { orderIndex: "asc" }],
+    select: {
+      characterId: true,
+      orderIndex: true,
+      subject: true,
+      conditionKind: true,
+      conditionParam: true,
+      actionType: true,
+      skillId: true,
+    },
+  });
+  const tacticSlotsByCharId = new Map<string, TacticSlotInput[]>();
+  for (const id of characterIds) {
+    tacticSlotsByCharId.set(id, []);
+  }
+  for (const s of presetTactics) {
+    const list = tacticSlotsByCharId.get(s.characterId);
+    if (!list) continue;
+    list.push({
+      orderIndex: s.orderIndex,
+      subject: s.subject ?? undefined,
+      conditionKind: s.conditionKind,
+      conditionParam: s.conditionParam as unknown,
+      actionType: s.actionType,
+      skillId: s.skillId,
+    });
+  }
+
   const order = [preset.slot1CharacterId, preset.slot2CharacterId, preset.slot3CharacterId].filter(Boolean) as string[];
   const relicsPerMember = order.map((charId) => {
     const c = characters.find((x) => x.id === charId);
@@ -308,14 +328,7 @@ export async function runBattle(
       LUK: c.LUK,
       CAP: c.CAP,
     };
-    const tacticSlots: TacticSlotInput[] = c.tacticSlots.map((s) => ({
-      orderIndex: s.orderIndex,
-      subject: s.subject ?? undefined,
-      conditionKind: s.conditionKind,
-      conditionParam: s.conditionParam as unknown,
-      actionType: s.actionType,
-      skillId: s.skillId,
-    }));
+    const tacticSlots: TacticSlotInput[] = tacticSlotsByCharId.get(c.id) ?? [];
 
     // メカは装備パーツのスキル、それ以外は CharacterSkill（battle_active）
     let skills: Record<string, SkillDataForBattle> = {};

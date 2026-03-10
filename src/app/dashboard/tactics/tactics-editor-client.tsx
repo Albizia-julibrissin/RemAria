@@ -5,7 +5,7 @@
 import { useState, useTransition, useCallback, memo, useMemo, useEffect } from "react";
 import {
   savePresetWithTactics,
-  getTacticsForCharacters,
+  getTacticsForPreset,
   getBattleSkillsForCharacters,
   getTacticsSkillCatalogForCharacters,
   type TacticSlotRow,
@@ -459,7 +459,7 @@ export function TacticsEditorClient({
 
     if (missingIds.length > 0) {
       Promise.all([
-        getTacticsForCharacters(missingIds),
+        getTacticsForPreset(preset.id, missingIds),
         getBattleSkillsForCharacters(missingIds),
         getTacticsSkillCatalogForCharacters(currentCharacterIds),
       ]).then(([tacticsResult, skillsResult, catalogResult]) => {

@@ -34,3 +34,6 @@ prisma/*.db-journal
 
 # DB backups（必要なら手動でコミット可）
 manage/backups/*.dump
+
+# 本番 DB の URL（Cursor によるリリース時に参照。リポジトリには含めない）
+manage/production.env

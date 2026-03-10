@@ -31,6 +31,7 @@
 | locale | String | NULL可 | 表示言語 |
 | protagonistCharacterId | String | NULL可, UNIQUE, FK→Character.id | 主人公1体（category=protagonist）。登録時または初回キャラ作成時に設定。 |
 | companionHireCount | Int | NOT NULL, default 0 | 仲間雇用可能回数（購入で+1、仲間作成で-1）。spec/030。 |
+| partyPresetLimit | Int | NOT NULL, default 5 | パーティプリセットの最大所持数（作戦室）。将来は課金等でユーザごとに増やせる想定。spec/039。 |
 
 **アカウント登録時の入力項目**
 - **メールアドレス**（必須・一意）：ログイン識別子。

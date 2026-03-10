@@ -177,7 +177,7 @@
 | **アカウントデータ**（User, Character, 所持品・通貨・クエスト進捗・施設・探索状態 等） | **一切触らない** | マイグレーションでも一度きりスクリプトでも変更・削除しない。 |
 | **TacticSlot** | マイグレーションで **DROP** | 作戦の「旧保存先」。削除すると既存の作戦設定は消える（ユーザには事前に「作戦は作り直し」と案内済み想定）。 |
 | **PresetTacticSlot** | マイグレーションで **CREATE** | 作戦の新保存先。既存データの移行は行わない。 |
-| **PartyPreset** | **既定では削除しない** | プリセット名・編成枠は残す。作戦だけが空になる。「プリセット一覧も作り直し」と案内している場合は、別途 TRUNCATE 等を検討（その場合は一度きりスクリプトで明示し、実行対象・回数を doc に残す）。 |
+| **PartyPreset** | **削除しない** | プリセット名・編成枠は残す。作戦だけが空になる。 |
 
 ### 8.2 マイグレーションで行うこと・行わないこと
 
@@ -187,17 +187,45 @@
 ### 8.3 リリース前の確認
 
 1. **マイグレーション SQL の確認**: 追加されるマイグレーションに、User / Character 等を触る文が含まれていないことを確認する。
-2. **一度きりスクリプトを使う場合**: プリセット一覧を空にする等、PartyPreset を触るスクリプトを実行する場合は、**対象環境（本番の DATABASE_URL）** と **実行回数（1 回だけ）** を doc に明記し、実行前にバックアップを取る。
-3. **ユーザへの案内**: 「作戦（および必要に応じてプリセット一覧）はリセットされますが、アカウント・キャラ・所持品などには影響しません」と伝えていることを確認する。
+2. **ユーザへの案内**: 「作戦はリセットされますが、アカウント・キャラ・所持品・プリセット一覧には影響しません」と伝えていることを確認する。
 
 ### 8.4 実行順序（063 リリース時）
 
 1. 上記 8.3 の確認を実施。
 2. **バックアップ**: 本番 DB に手を入れるため、[§6 念のためバックアップ](#6-db-に関わるときの念のためバックアップ) を実施。
-3. **マイグレーション**: 本番で `npm run db:migrate:deploy` を実行（PresetTacticSlot 追加 ＋ TacticSlot 削除）。これだけでは User / Character / PartyPreset のデータは変更されない。
-4. **（任意）プリセット一覧のリセット**: 「プリセットも作り直し」と案内している場合のみ、一度きりスクリプトで PartyPreset の TRUNCATE 等を実行。実行する場合は対象環境・回数を厳守し、doc に残す。
-5. **デプロイ**: コードを push してアプリをデプロイ。
-6. **リリース後**: 既存ユーザでログインし、キャラ・所持品・ダッシュボードがそのままであること、作戦室でプリセット（または「プリセットなし」）・作戦が想定どおりかを確認する。
+3. **マイグレーション**: 本番で `npm run db:migrate:deploy` を実行（PresetTacticSlot 追加 ＋ TacticSlot 削除、および User.partyPresetLimit の追加）。これだけでは User / Character / PartyPreset のデータは変更されない（既存 User 行に partyPresetLimit=5 が入るだけ）。
+4. **デプロイ**: コードを push してアプリをデプロイ。
+5. **リリース後**: 既存ユーザでログインし、キャラ・所持品・プリセット名・編成がそのままであること、および作戦がリセットされていることを確認する。
+
+---
+
+## 9. Cursor に本番リリースを依頼する場合
+
+本番 DB へのマイグレーションやバックアップを **Cursor 主導で実行してもらう**ときは、本番の接続情報を **リポジトリに含めない**形で渡す。
+
+### 9.1 用意するファイル（運用者側）
+
+1. **manage/production.env** を用意する。
+   - 中身は 1 行でよい: `DATABASE_URL=postgresql://user:password@host:port/database`（本番の実際の URL）。
+   - このファイルは **.gitignore に含まれており、Git にコミットされない**。
+   - 初回は `manage/production.env.example` をコピーして `production.env` を作成し、`DATABASE_URL=` に本番の値を記入する。
+
+### 9.2 Cursor 側の手順
+
+リリース依頼を受けたら、次を参照して実行する。
+
+1. **manage/production.env の存在確認**  
+   本番用 URL は **manage/production.env** に記載されている。このファイルが存在し、`DATABASE_URL=` が設定されていることを確認する（存在しない・未設定の場合は依頼者に用意してもらう）。
+2. **バックアップ（推奨）**  
+   環境変数に **manage/production.env の内容を読み込んだうえで** `npm run db:backup` を実行する。出力された .dump は manage/backups/ に保存される（本番 URL がローカルに流れるため、取り扱いに注意）。
+3. **マイグレーション**  
+   同様に **manage/production.env を読み込んだうえで** `npm run db:migrate:deploy` を実行する。これで本番 DB にのみマイグレーションが適用される。
+4. **デプロイ**  
+   コードの push やデプロイは依頼者側で実施してもらう想定。必要なら「push してデプロイしてください」と案内する。
+
+※ 実行例（PowerShell）:  
+`Get-Content manage/production.env | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') } }; npm run db:migrate:deploy`  
+または、手動で production.env の 1 行をコピーし、そのターミナルで `$env:DATABASE_URL="..."` を設定してから `npm run db:migrate:deploy` を実行する。
 
 ---
 
@@ -212,3 +240,4 @@
 | バックアップ・復元（マスタの正本） | [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) |
 | マスタ編集の全体像 | [admin_master_edit_overview.md](./admin_master_edit_overview.md) |
 | 063 作戦スロット・プリセット別保持のリリース（アカウントデータ保護） | 上記 §8 |
+| Cursor に本番リリースを依頼するとき（production.env 参照） | 上記 §9 |

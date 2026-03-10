@@ -53,23 +53,31 @@ export type PartyPresetListForTacticsItem = {
 };
 
 export async function getPartyPresetListForTacticsPage(): Promise<
-  { presets: PartyPresetListForTacticsItem[] } | { error: "UNAUTHORIZED" }
+  { presets: PartyPresetListForTacticsItem[]; presetLimit: number } | { error: "UNAUTHORIZED" }
 > {
   const session = await getSession();
   if (!session.userId) return { error: "UNAUTHORIZED" as const };
 
-  const presets = await prisma.partyPreset.findMany({
-    where: { userId: session.userId },
-    select: {
-      id: true,
-      name: true,
-      user: { select: { name: true } },
-      slot1Character: { select: { displayName: true, category: true } },
-      slot2Character: { select: { displayName: true } },
-      slot3Character: { select: { displayName: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  const [user, presets] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { partyPresetLimit: true },
+    }),
+    prisma.partyPreset.findMany({
+      where: { userId: session.userId },
+      select: {
+        id: true,
+        name: true,
+        user: { select: { name: true } },
+        slot1Character: { select: { displayName: true, category: true } },
+        slot2Character: { select: { displayName: true } },
+        slot3Character: { select: { displayName: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  const presetLimit = user?.partyPresetLimit ?? 5;
 
   return {
     presets: presets.map((p) => ({
@@ -83,6 +91,7 @@ export async function getPartyPresetListForTacticsPage(): Promise<
       slot2DisplayName: p.slot2Character?.displayName ?? null,
       slot3DisplayName: p.slot3Character?.displayName ?? null,
     })),
+    presetLimit,
   };
 }
 
@@ -142,7 +151,7 @@ export type CreatePartyPresetResult =
   | { success: true; presetId: string }
   | { success: false; error: string; message: string };
 
-/** 新規プリセット作成。slot1=主人公で作成。失敗時は message を返す。 */
+/** 新規プリセット作成。slot1=主人公で作成。上限（User.partyPresetLimit）を超えると作成不可。失敗時は message を返す。 */
 export async function createPartyPreset(): Promise<CreatePartyPresetResult> {
   const session = await getSession();
   if (!session.userId) return { success: false as const, error: "UNAUTHORIZED", message: "ログインし直してください" };
@@ -150,7 +159,16 @@ export async function createPartyPreset(): Promise<CreatePartyPresetResult> {
   const protagonist = await characterRepository.getProtagonistByUserId(session.userId);
   if (!protagonist) return { success: false as const, error: "NO_PROTAGONIST", message: "主人公が存在しません" };
 
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { partyPresetLimit: true },
+  });
+  const limit = user?.partyPresetLimit ?? 5;
   const count = await prisma.partyPreset.count({ where: { userId: session.userId } });
+  if (count >= limit) {
+    return { success: false as const, error: "PRESET_LIMIT_REACHED", message: `プリセットは${limit}件までです。` };
+  }
+
   const name = `プリセット${count + 1}`;
 
   const preset = await prisma.partyPreset.create({
@@ -238,7 +256,64 @@ export type TacticSlotRow = {
   skillId: string | null;
 };
 
-/** 指定した 3 キャラ分の作戦スロットを取得。所有キャラ以外は無視 */
+/** spec/063: プリセットに紐づく作戦スロットを取得。characterIds 省略時はプリセットの編成 3 人分。 */
+export async function getTacticsForPreset(
+  presetId: string,
+  characterIds?: string[]
+): Promise<
+  | { tactics: { characterId: string; slots: TacticSlotRow[] }[] }
+  | { tactics: []; error: "UNAUTHORIZED" | "NOT_FOUND" }
+> {
+  const session = await getSession();
+  if (!session.userId) return { tactics: [], error: "UNAUTHORIZED" as const };
+
+  const preset = await prisma.partyPreset.findFirst({
+    where: { id: presetId, userId: session.userId },
+    select: { id: true, slot1CharacterId: true, slot2CharacterId: true, slot3CharacterId: true },
+  });
+  if (!preset) return { tactics: [], error: "NOT_FOUND" as const };
+
+  const ids =
+    characterIds ??
+    [preset.slot1CharacterId, preset.slot2CharacterId, preset.slot3CharacterId].filter(Boolean) as string[];
+
+  if (ids.length === 0) return { tactics: [] };
+
+  const owned = await prisma.character.findMany({
+    where: { id: { in: ids }, userId: session.userId },
+    select: { id: true },
+  });
+  const allowedIds = new Set(owned.map((c) => c.id));
+  const filteredIds = ids.filter((id) => allowedIds.has(id));
+
+  const slots = await prisma.presetTacticSlot.findMany({
+    where: { partyPresetId: presetId, characterId: { in: filteredIds } },
+    orderBy: [{ characterId: "asc" }, { orderIndex: "asc" }],
+    select: { characterId: true, orderIndex: true, subject: true, conditionKind: true, conditionParam: true, actionType: true, skillId: true },
+  });
+
+  const byChar = new Map<string, TacticSlotRow[]>();
+  for (const id of filteredIds) byChar.set(id, []);
+  for (const s of slots) {
+    const list = byChar.get(s.characterId)!;
+    list.push({
+      orderIndex: s.orderIndex,
+      subject: s.subject,
+      conditionKind: s.conditionKind,
+      conditionParam: s.conditionParam as Record<string, unknown> | null,
+      actionType: s.actionType,
+      skillId: s.skillId,
+    });
+  }
+
+  const tactics = filteredIds.map((characterId) => ({
+    characterId,
+    slots: byChar.get(characterId) ?? [],
+  }));
+  return { tactics };
+}
+
+/** 指定した 3 キャラ分の作戦スロットを取得（TacticSlot）。063 採用後は作戦室では getTacticsForPreset を使用。 */
 export async function getTacticsForCharacters(characterIds: string[]) {
   const session = await getSession();
   if (!session.userId) return { tactics: [], error: "UNAUTHORIZED" as const };
@@ -334,11 +409,47 @@ export async function savePresetWithTactics(
   });
   if (!preset) return { success: false as const, error: "NOT_FOUND" as const };
 
-  await updatePartyPreset(presetId, presetData);
-  for (const { characterId, slots } of tacticsByCharacter) {
-    const res = await upsertTacticsForCharacter(characterId, slots);
-    if (!res.success) return res;
-  }
+  // 編成更新後の 3 キャラだけを対象に PresetTacticSlot を一括置換する（spec/063）。
+  await prisma.$transaction(async (tx) => {
+    await updatePartyPreset(presetId, presetData);
+
+    // 現在の編成 3 人（slot2/slot3 は更新後の値を優先）
+    const slot1Id = preset.slot1CharacterId;
+    const slot2Id = presetData.slot2CharacterId ?? preset.slot2CharacterId;
+    const slot3Id = presetData.slot3CharacterId ?? preset.slot3CharacterId;
+    const characterIds = [slot1Id, slot2Id, slot3Id].filter(Boolean) as string[];
+
+    // tacticsByCharacter から、このプリセットに属するキャラ分だけを抽出し、orderIndex 1〜10 の範囲・重複を検証
+    const byChar: { characterId: string; slots: TacticSlotRow[] }[] = [];
+    for (const { characterId, slots } of tacticsByCharacter) {
+      if (!characterIds.includes(characterId)) continue;
+      const valid = slots.filter((s) => s.orderIndex >= 1 && s.orderIndex <= 10);
+      const orderSet = new Set(valid.map((s) => s.orderIndex));
+      if (orderSet.size !== valid.length) {
+        throw new Error("VALIDATION");
+      }
+      byChar.push({ characterId, slots: valid });
+    }
+
+    // 既存の PresetTacticSlot をこのプリセット分まとめて削除し、再作成
+    await tx.presetTacticSlot.deleteMany({ where: { partyPresetId: presetId } });
+    const createData = byChar.flatMap(({ characterId, slots }) =>
+      slots.map((s) => ({
+        partyPresetId: presetId,
+        characterId,
+        orderIndex: s.orderIndex,
+        subject: s.subject,
+        conditionKind: s.conditionKind,
+        conditionParam: (s.conditionParam ?? undefined) as Prisma.InputJsonValue | undefined,
+        actionType: s.actionType,
+        skillId: s.skillId || null,
+      })),
+    );
+    if (createData.length > 0) {
+      await tx.presetTacticSlot.createMany({ data: createData });
+    }
+  });
+
   return { success: true as const };
 }
 
