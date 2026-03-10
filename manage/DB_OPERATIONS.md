@@ -63,7 +63,7 @@
 |----------|------|
 | `npm run db:sync-masters` | ソース DB のマスタをターゲット DB に upsert で同期する。 |
 
-**前提**: 環境変数で `SOURCE_DATABASE_URL`（編集済みマスタの DB。未設定時は `DATABASE_URL`）と `TARGET_DATABASE_URL`（本番など反映先）を指定する。ソースとターゲットで同じマイグレーションが適用済みであること。
+**前提**: 環境変数で `SOURCE_DATABASE_URL`（編集済みマスタの DB。未設定時は `DATABASE_URL`）と `TARGET_DATABASE_URL`（本番など反映先）を指定する。ソースとターゲットで同じマイグレーションが適用済みであること。**Cursor に依頼する場合**は、TARGET に **manage/production.env** の `DATABASE_URL` を渡す（[PRODUCTION_RELEASE_GUIDE.md §9](./PRODUCTION_RELEASE_GUIDE.md#9-cursor-に本番リリースの各手順を依頼する標準のやり方)）。
 
 **詳細**は **[PRODUCTION_RELEASE_GUIDE.md §3](./PRODUCTION_RELEASE_GUIDE.md#3-マスタデータの正本と本番への反映)** を参照。  
 **マイグレーションでマスタテーブルを追加・削除したとき**は、`prisma/sync-masters-to-target.ts` の `MASTER_DELEGATES_IN_ORDER` を更新すること。
@@ -87,7 +87,7 @@
 | `npm run db:migrate:bump-industrial` | 全ユーザーの `industrialMaxCost` を +200、`industrialMaxSlots` を +4 する。 |
 
 - **実行前に**: `.env` の `DATABASE_URL` が対象環境（本番など）を指していることを確認する。
-- 本番で実行する場合: ローカルで本番の DATABASE_URL を一時的に設定してから実行するか、デプロイ先で実行する。
+- 本番で実行する場合: ローカルで本番の DATABASE_URL を一時的に設定してから実行するか、デプロイ先で実行する。**Cursor に依頼する場合**は、manage/production.env を読み込んだうえで実行する（[PRODUCTION_RELEASE_GUIDE.md §9](./PRODUCTION_RELEASE_GUIDE.md#9-cursor-に本番リリースの各手順を依頼する標準のやり方)）。
 - **注意**: 複数回実行するとその都度 +200 / +4 が加算される。一度だけ実行すること。
 - スクリプト本体: `prisma/migrate-bump-user-industrial.ts`
 

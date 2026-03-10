@@ -147,7 +147,6 @@ model Character {
 
   protagonistUser User? @relation("Protagonist")
   characterSkills CharacterSkill[]
-  tacticSlots     TacticSlot[]
   presetTacticSlots PresetTacticSlot[]
   partyPresetsSlot1 PartyPreset[] @relation("PresetSlot1")
   partyPresetsSlot2 PartyPreset[] @relation("PresetSlot2")
@@ -223,26 +222,6 @@ model PresetTacticSlot {
 
   @@unique([partyPresetId, characterId, orderIndex])
   @@index([partyPresetId])
-  @@index([skillId])
-}
-
-/// spec/039: 作戦スロット（キャラごと・最大10）。主語−条件−行動。063 採用後は廃止（PresetTacticSlot のみ使用）。
-model TacticSlot {
-  id              String   @id @default(cuid())
-  characterId     String
-  character       Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  orderIndex      Int      // 1～10。評価順
-  subject         String   // self / any_ally / any_enemy / front_enemy
-  conditionKind   String   // hp_below_percent, subject_has_attr_state, 等
-  conditionParam  Json?    // 条件種別ごとのパラメータ
-  actionType      String   // normal_attack / skill
-  skillId         String?  // actionType=skill のとき FK
-  skill           Skill?   @relation(fields: [skillId], references: [id], onDelete: SetNull)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@unique([characterId, orderIndex])
-  @@index([characterId])
   @@index([skillId])
 }
 
@@ -849,7 +828,6 @@ model Skill {
 
   characterSkills CharacterSkill[]
   skillEffects    SkillEffect[]
-  tacticSlots     TacticSlot[]
   presetTacticSlots PresetTacticSlot[]
   mechaPartTypeSkills MechaPartTypeSkill[]
   enemySkills     EnemySkill[]

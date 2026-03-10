@@ -9,6 +9,7 @@
 - **仕様変更は spec または正本 doc を先に更新してからコードを変更する。** チャットの会話だけに残さず、必ずファイルに反映する。
 - **データモデルの正本**: `prisma/schema.prisma`。説明・メモは `docs/08_database_schema.md`。
 - **マスタデータ**: シードでは投入しない。管理画面で編集し、**バックアップ・復元**で環境を揃える（`npm run db:backup` / `db:restore`）。**DB 運営・バックアップ手順**は **`manage/DB_OPERATIONS.md`** と **`manage/BACKUP_RESTORE.md`** を参照。
+- **本番リリース**: 本番 DB に触れる手順（バックアップ・マイグレーション・マスタ同期など）は **基本、依頼されたら Cursor が実行する**。本番の接続先は **`manage/production.env`** の `DATABASE_URL` を参照する（.gitignore 済み）。手順は **`manage/PRODUCTION_RELEASE_GUIDE.md`** の「**9. Cursor に本番リリースの各手順を依頼する**」に従い、production.env を読み込んだうえでコマンドを実行する。
 - **シード**: `prisma/seed.ts` は**テスト用データのみ**（test1/test2 ユーザー・主人公・仲間・通貨・所持品）。`npm run db:seed`。
 - **ドキュメント索引**: `docs/README.md` でテーマ別の一覧と参照先を確認できる。
 - **アーキテクチャ・ディレクトリ構成**: `docs/03_architecture_spec.md`。依存方向は UI → server(actions) → repositories → db。`lib/` は純粋ロジック。

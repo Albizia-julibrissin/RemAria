@@ -4,6 +4,8 @@
 
 **本番リリースの考え方（テーブル変更・マスタ・アカウントデータ・デプロイ）**は **[PRODUCTION_RELEASE_GUIDE.md](./PRODUCTION_RELEASE_GUIDE.md)** にまとめてある。
 
+**リリースのやり方**: 本番 DB に触れる手順（バックアップ・マイグレーション・マスタ同期など）は **基本、Cursor に各手順を依頼する**。依頼前に **manage/production.env** に本番の `DATABASE_URL` を用意しておく（`manage/production.env.example` をコピーして作成）。Cursor は [PRODUCTION_RELEASE_GUIDE.md の「Cursor に本番リリースの各手順を依頼する」](./PRODUCTION_RELEASE_GUIDE.md#9-cursor-に本番リリースの各手順を依頼する標準のやり方) を参照して production.env を読み込み、コマンドを実行する。
+
 ---
 
 ## 1. リリースの種類（要相談）
@@ -61,7 +63,7 @@
    - その他、アプリが参照する env をすべて設定
 
 3. **DB マイグレーション**
-   - スキーマ変更がある場合: `npx prisma migrate deploy`（本番 DB に対して）
+   - スキーマ変更がある場合: 本番 DB に対して `npx prisma migrate deploy` を実行する。**Cursor に依頼する場合は** [PRODUCTION_RELEASE_GUIDE.md §9](./PRODUCTION_RELEASE_GUIDE.md#9-cursor-に本番リリースの各手順を依頼する標準のやり方) のとおり、manage/production.env を参照して実行してもらう。
    - シードが必要な場合: 手順を doc 化したうえで実行（例: `npm run db:seed` または管理用スクリプト）
 
 4. **デプロイ**

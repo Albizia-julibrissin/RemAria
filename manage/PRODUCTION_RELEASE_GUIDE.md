@@ -3,6 +3,8 @@
 **目的**: 本番環境へちゃんとリリースできるように、「テーブル変更」「マスタ投入」「アカウントデータの安全」「アプリ公開」を一通り整理する。  
 手順のチェックリストは [RELEASE.md](./RELEASE.md)、デプロイ先の選び方は [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md) を参照。
 
+**基本方針（リリースのやり方）**: 本番 DB に触れる手順（バックアップ・マイグレーション・マスタ同期など）は **Cursor に各手順を依頼して実行してもらう**。運用者側では **manage/production.env** に本番の `DATABASE_URL` を用意しておき、Cursor はこのファイルを参照してコマンドを実行する（production.env は .gitignore 済みでリポジトリに含まれない）。詳細は [§9. Cursor に本番リリースの各手順を依頼する](#9-cursor-に本番リリースの各手順を依頼する標準のやり方) を参照。
+
 ---
 
 ## 1. 全体の整理（何がシンプルで何に注意するか）
@@ -151,12 +153,16 @@
 
 ## 7. リリース時の実行順序（推奨）
 
+**基本は [§9](#9-cursor-に本番リリースの各手順を依頼する標準のやり方) のとおり、Cursor に各手順を依頼する。** 運用者側は `manage/production.env` に本番の DATABASE_URL を用意し、「念のためバックアップ取って」「マイグレーション実行して」などと依頼する。
+
+上記を Cursor に依頼しない場合の手順の目安は以下のとおり。
+
 1. **リリース前**
    - [RELEASE.md](./RELEASE.md) のチェックリストを実施（lint / build / セキュリティ・DB の確認）。
-   - **DB に手を入れる場合**: 上記「6. 念のためバックアップ」を実施（Railway の手動バックアップ or pg_dump）。
-   - スキーマ変更がある場合: 本番 DB に対して **`npm run db:migrate:deploy`** を実行（push の前でも可。新コードが新スキーマ前提なら **migrate を先**に推奨）。
-   - **初回セットアップの場合のみ**: マスタ用バックアップを本番に **`npm run db:restore -- --target "本番DATABASE_URL"`** で復元。
-   - **本番にすでにユーザーがいる場合でマスタを更新するとき**: **`npm run db:sync-masters`** を実行（`SOURCE_DATABASE_URL`＝ローカル、`TARGET_DATABASE_URL`＝本番を設定してから）。
+   - **DB に手を入れる場合**: 上記「6. 念のためバックアップ」を実施（Railway の手動バックアップ or pg_dump）。本番 DB に対して実行するコマンドは **manage/production.env の DATABASE_URL を読み込んで** 実行する。
+   - スキーマ変更がある場合: 本番 DB に対して **`npm run db:migrate:deploy`** を実行（production.env を読み込んだうえで）。
+   - **初回セットアップの場合のみ**: マスタ用バックアップを本番に **`npm run db:restore -- --target "（production.env の DATABASE_URL）"`** で復元。
+   - **本番にすでにユーザーがいる場合でマスタを更新するとき**: **`npm run db:sync-masters`** を実行（SOURCE＝ローカル .env、TARGET＝production.env の DATABASE_URL）。
 
 2. **デプロイ**
    - push（または `railway up`）でアプリをデプロイ。
@@ -199,33 +205,44 @@
 
 ---
 
-## 9. Cursor に本番リリースを依頼する場合
+## 9. Cursor に本番リリースの各手順を依頼する（標準のやり方）
 
-本番 DB へのマイグレーションやバックアップを **Cursor 主導で実行してもらう**ときは、本番の接続情報を **リポジトリに含めない**形で渡す。
+本番 DB に触れる作業（バックアップ・マイグレーション・マスタ同期・復元の --target など）は **基本、Cursor に各手順を依頼する**。本番の接続情報は **manage/production.env** に用意しておき、Cursor はこのファイルを参照してコマンドを実行する（production.env は .gitignore 済みでリポジトリに含まれない）。
 
-### 9.1 用意するファイル（運用者側）
+### 9.1 運用者側で用意するもの
 
-1. **manage/production.env** を用意する。
-   - 中身は 1 行でよい: `DATABASE_URL=postgresql://user:password@host:port/database`（本番の実際の URL）。
-   - このファイルは **.gitignore に含まれており、Git にコミットされない**。
-   - 初回は `manage/production.env.example` をコピーして `production.env` を作成し、`DATABASE_URL=` に本番の値を記入する。
+- **manage/production.env**  
+  - 中身: `DATABASE_URL=postgresql://user:password@host:port/database`（本番の実際の URL）の 1 行でよい。  
+  - 初回は `manage/production.env.example` をコピーして `production.env` を作成し、`DATABASE_URL=` に本番の値を記入する。  
+  - このファイルは **.gitignore に含まれており、Git にコミットされない**。
 
-### 9.2 Cursor 側の手順
+### 9.2 依頼のしかた（運用者 → Cursor）
 
-リリース依頼を受けたら、次を参照して実行する。
+次のように「〇〇して」と依頼すればよい。Cursor は **manage/production.env を読み込んだうえで** 該当コマンドを実行する。
 
-1. **manage/production.env の存在確認**  
-   本番用 URL は **manage/production.env** に記載されている。このファイルが存在し、`DATABASE_URL=` が設定されていることを確認する（存在しない・未設定の場合は依頼者に用意してもらう）。
-2. **バックアップ（推奨）**  
-   環境変数に **manage/production.env の内容を読み込んだうえで** `npm run db:backup` を実行する。出力された .dump は manage/backups/ に保存される（本番 URL がローカルに流れるため、取り扱いに注意）。
-3. **マイグレーション**  
-   同様に **manage/production.env を読み込んだうえで** `npm run db:migrate:deploy` を実行する。これで本番 DB にのみマイグレーションが適用される。
+| 依頼内容 | Cursor が行うこと |
+|----------|-------------------|
+| （DB に手を入れる前に）**念のためバックアップ取って** | `manage/production.env` の DATABASE_URL を読み込み、その環境変数で `npm run db:backup` を実行。出力は manage/backups/ に保存される。 |
+| **本番にマイグレーション実行して** | `manage/production.env` を読み込み、その環境変数で `npm run db:migrate:deploy` を実行。 |
+| **本番にマスタ同期して** | ソースはローカル（.env の DATABASE_URL）、ターゲットは `manage/production.env` の DATABASE_URL として `npm run db:sync-masters` を実行（SOURCE_DATABASE_URL は未設定で .env を使用、TARGET_DATABASE_URL に production.env の値を渡す）。 |
+| **本番にバックアップを復元して**（初回セットアップ時のみ） | `npm run db:restore -- --target "（production.env の DATABASE_URL）"` を実行（復元元の .dump は指定または直近を使用）。 |
+| **push してデプロイして** | コードを push する（デプロイは Railway 等が自動で行う）。 |
+
+### 9.3 Cursor 側の実行手順（参照用）
+
+リリース関連の依頼を受けたら、次を守って実行する。
+
+1. **manage/production.env の確認**  
+   ファイルが存在し、`DATABASE_URL=` が設定されていることを確認する。存在しない・未設定の場合は「manage/production.env に本番の DATABASE_URL を記入してください」と依頼者に伝える。
+2. **本番 DB に対するコマンド実行時**  
+   そのターミナルで **production.env の内容を環境変数に読み込んでから** コマンドを実行する。  
+   - 例（PowerShell）:  
+     `Get-Content manage/production.env | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), 'Process') } }; npm run db:migrate:deploy`  
+   - または production.env の `DATABASE_URL=` の行をコピーし、`$env:DATABASE_URL="（値）"` を設定してから `npm run db:migrate:deploy` などを実行する。
+3. **マスタ同期の場合**  
+   SOURCE はローカル（.env の DATABASE_URL でよい）、TARGET は **production.env の DATABASE_URL** を `TARGET_DATABASE_URL` に渡して `npm run db:sync-masters` を実行する。
 4. **デプロイ**  
-   コードの push やデプロイは依頼者側で実施してもらう想定。必要なら「push してデプロイしてください」と案内する。
-
-※ 実行例（PowerShell）:  
-`Get-Content manage/production.env | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') } }; npm run db:migrate:deploy`  
-または、手動で production.env の 1 行をコピーし、そのターミナルで `$env:DATABASE_URL="..."` を設定してから `npm run db:migrate:deploy` を実行する。
+   「push してデプロイして」と依頼された場合は、git push を実行する。デプロイ先のビルド・反映は自動で行われる。
 
 ---
 
