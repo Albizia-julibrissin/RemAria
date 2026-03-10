@@ -314,3 +314,63 @@ User (1) ----< (N) Character（category: protagonist / companion / mech）
 - アカウントキャラ: `user.protagonistCharacterId === character.id` かつ `character.category === 'protagonist'` の1行。
 - 仲間: `character.userId === user.id` かつ `character.category === 'companion'`。
 - メカ: `character.userId === user.id` かつ `character.category === 'mech'`。
+
+---
+
+## 5. 探索テーブル（Expedition / ExpeditionHistory）
+
+### 5.1 Expedition（現在の探索 1 本）
+
+**spec/049_exploration**, **spec/061_expedition_single_row_per_user** 準拠。  
+「1 回の探索出撃」の進行・結果を保持するテーブルだが、**1 ユーザーにつき常に 1 行だけを持つ**（行を再利用する）モデルに変更する。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| userId | String | NOT NULL, UNIQUE, FK→User.id | 所有ユーザー。**1ユーザー1行**に制限。 |
+| areaId | String | NOT NULL, FK→ExplorationArea.id | 探索エリア |
+| partyPresetId | String | NOT NULL, FK→PartyPreset.id | 出撃時のパーティプリセット |
+| state | String | NOT NULL, default "in_progress" | in_progress / ready_to_finish / finished / aborted |
+| startedAt | DateTime | NULL可 | 今回の探索 run の開始日時。行再利用のため、開始ごとに UPDATE で上書き。 |
+| remainingNormalBattles | Int | NOT NULL, default 0 | 残り通常戦回数 |
+| strongEnemyCleared | Boolean | NOT NULL, default false | 強敵撃破済みか |
+| areaLordCleared | Boolean | NOT NULL, default false | 領域主撃破済みか |
+| battleWinCount | Int | NOT NULL, default 0 | 勝利した戦闘数 |
+| skillSuccessCount | Int | NOT NULL, default 0 | 成功した技能判定の回数 |
+| currentHpMp | Json | NULL可 | 探索中の HP/MP 状態。{ characterId: { hp, mp } } などを想定。 |
+| explorationState | Json | NULL可 | 探索用消耗品・一時バフなど、探索レイヤーの状態。 |
+| totalExpGained | Int | NOT NULL, default 0 | この探索で獲得した経験値合計（主人公・仲間に同量付与するためのメモ） |
+| createdAt | DateTime | NOT NULL, default now() | 行が初めて作られた日時 |
+| updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
+
+- **行粒度**: `1ユーザー = 1 行`。探索開始のたびに新規 INSERT はせず、既存行を UPDATE で再利用する（spec/061）。
+- **進行中探索の有無判定**: userId から 1 行取得し、`state in ('in_progress','ready_to_finish')` かどうかで判断。
+- **履歴**: 完了/中断済み run のサマリが必要な場合は ExpeditionHistory を使用する。
+
+### 5.2 ExpeditionHistory（探索履歴サマリ）
+
+**spec/061_expedition_single_row_per_user** で導入される任意テーブル。  
+完了/中断した探索 run ごとに 1 行を持ち、**軽量なサマリ情報のみ**を保持する。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| userId | String | NOT NULL, FK→User.id | 探索したユーザー |
+| areaId | String | NOT NULL | 探索エリア ID（FK制約は実装に合わせて付与） |
+| partyPresetId | String | NOT NULL | 使用したパーティプリセット ID |
+| state | String | NOT NULL | finished / aborted |
+| startedAt | DateTime | NOT NULL | run の開始日時（Expedition.startedAt のコピー。既存移行時は createdAt でも可） |
+| finishedAt | DateTime | NOT NULL | run の終了日時 |
+| battleWinCount | Int | NOT NULL, default 0 | 勝利した戦闘数 |
+| skillSuccessCount | Int | NOT NULL, default 0 | 技能成功回数 |
+| totalExpGained | Int | NOT NULL, default 0 | 獲得経験値合計 |
+| createdAt | DateTime | NOT NULL, default now() | この履歴行の作成日時 |
+
+- **行粒度**: `1 run = 1 行`。件数は増え続けてよいが、1 行あたりは軽量。
+- **用途**:
+  - CSV エクスポート（過去の探索一覧）
+  - 分析（ユーザーごとのプレイ履歴）
+  - 将来の「探索履歴画面」のデータソース
+- **インデックス**:
+  - `userId`（ユーザーごとの履歴一覧）
+  - `finishedAt`（時系列ソート）

@@ -65,6 +65,7 @@ model User {
   mechaPartInstances   MechaPartInstance[]
   relicInstances       RelicInstance[]
   expeditions          Expedition[]
+  expeditionHistories  ExpeditionHistory[]
   userFacilityTypeUnlocks UserFacilityTypeUnlock[]
   userCraftRecipeUnlocks UserCraftRecipeUnlock[]
   userTitleUnlocks       UserTitleUnlock[]
@@ -1064,7 +1065,7 @@ model ExplorationArea {
 /// spec/049_exploration, docs/020: 1 回の探索出撃（Expedition）の進行・結果。
 model Expedition {
   id        String   @id @default(cuid())
-  userId    String
+  userId    String   @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   areaId    String
@@ -1074,6 +1075,9 @@ model Expedition {
   partyPreset   PartyPreset @relation(fields: [partyPresetId], references: [id], onDelete: Cascade)
 
   state     String   @default("in_progress") // in_progress / ready_to_finish / finished / aborted
+
+  /// 今回の探索 run の開始日時。行を再利用するため、開始のたびに UPDATE で上書きする。
+  startedAt DateTime?
 
   /// 進行状況（docs/020 に準拠。強敵＝旧中ボス、領域主＝旧大ボス）
   remainingNormalBattles Int   @default(0)
@@ -1094,9 +1098,31 @@ model Expedition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId])
   @@index([areaId])
   @@index([partyPresetId])
   @@index([state])
+}
+
+/// spec/061: 完了/中断した探索 run のサマリ履歴。1 run = 1 行。
+model ExpeditionHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  areaId    String
+  partyPresetId String
+
+  state     String   // finished | aborted
+  startedAt DateTime
+  finishedAt DateTime
+
+  battleWinCount    Int @default(0)
+  skillSuccessCount Int @default(0)
+  totalExpGained    Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([finishedAt])
 }
 

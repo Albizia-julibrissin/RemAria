@@ -34,6 +34,7 @@
   - 実行場所: Railway の Shell で実行するか、ローカルで **本番の `DATABASE_URL` を一時的に設定**してから実行する。
 - **実行タイミング**: デプロイ（push）の**前でも後でもよい**が、**新しいコードが新しいスキーマを前提にしている場合は、先に migrate deploy してからデプロイ**するのが安全。
   - 例: 新カラムを参照するコードをデプロイする → 先に本番で `prisma migrate deploy` を実行してから push。
+- **ユーザー操作を止めたい場合（推奨）**: Expedition の 1 行 per ユーザー化など、**既存データを触るマイグレーション**のときは、本番で **メンテナンスモード** を有効にしてから実行すると安全。環境変数 **`MAINTENANCE=1`** を設定して再デプロイ（または再起動）すると、`/dashboard`・`/battle`・`/character` へのアクセスが「メンテナンス中」画面にリダイレクトされ、探索の開始・進行が防げる。マイグレーション完了後に `MAINTENANCE` を外す。詳細は [docs/061_exploration_one_row_per_user.md](../docs/061_exploration_one_row_per_user.md) §5.1 参照。
 
 ### アカウントデータへの影響
 
@@ -258,3 +259,4 @@
 | マスタ編集の全体像 | [admin_master_edit_overview.md](./admin_master_edit_overview.md) |
 | 063 作戦スロット・プリセット別保持のリリース（アカウントデータ保護） | 上記 §8 |
 | Cursor に本番リリースを依頼するとき（production.env 参照） | 上記 §9 |
+| 運営ログの種類・導入タイミング | [OPERATIONAL_LOGS.md](./OPERATIONAL_LOGS.md) |

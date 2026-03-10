@@ -35,5 +35,8 @@ prisma/*.db-journal
 # DB backups（必要なら手動でコミット可）
 manage/backups/*.dump
 
+# 探索テーブル CSV エクスポート出力
+manage/csv-exports/
+
 # 本番 DB の URL（Cursor によるリリース時に参照。リポジトリには含めない）
 manage/production.env

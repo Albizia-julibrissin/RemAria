@@ -134,15 +134,14 @@ export async function startExploration(
     };
   }
 
-  // 既存の進行中探索があれば拒否する（MVP: 1ユーザー1件まで）
-  const existingExpedition = await prisma.expedition.findFirst({
+  // 既存 Expedition 行を取得（1ユーザー1行）
+  const existingExpedition = await prisma.expedition.findUnique({
     where: {
       userId: session.userId,
-      state: { in: ["in_progress", "ready_to_finish"] },
     },
-    select: { id: true },
   });
-  if (existingExpedition) {
+  // 進行中または終了待ちがあれば新規開始は拒否
+  if (existingExpedition && ["in_progress", "ready_to_finish"].includes(existingExpedition.state)) {
     return {
       success: false,
       error: "EXPEDITION_ALREADY_IN_PROGRESS",
@@ -221,32 +220,42 @@ export async function startExploration(
     }
   }
 
-  // 探索用の初期状態を作成
-  const expedition = await prisma.expedition.create({
-    data: {
-      userId: session.userId,
-      areaId: area.id,
-      partyPresetId: preset.id,
-      state: "in_progress",
-      remainingNormalBattles: area.normalBattleCount,
-      strongEnemyCleared: false,
-      areaLordCleared: false,
-      battleWinCount: 0,
-      skillSuccessCount: 0,
-      currentHpMp: Prisma.JsonNull,
-      explorationState:
-        consumables.length > 0
-          ? ({
-              consumables: consumables.map((c) => ({
-                itemId: c.itemId,
-                quantity: c.quantity,
-              })),
-            } as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
-      totalExpGained: 0,
-    },
-    select: { id: true },
-  });
+  const baseData = {
+    userId: session.userId,
+    areaId: area.id,
+    partyPresetId: preset.id,
+    state: "in_progress" as const,
+    remainingNormalBattles: area.normalBattleCount,
+    strongEnemyCleared: false,
+    areaLordCleared: false,
+    battleWinCount: 0,
+    skillSuccessCount: 0,
+    currentHpMp: Prisma.JsonNull,
+    explorationState:
+      consumables.length > 0
+        ? ({
+            consumables: consumables.map((c) => ({
+              itemId: c.itemId,
+              quantity: c.quantity,
+            })),
+          } as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
+    totalExpGained: 0,
+    startedAt: new Date(),
+  };
+
+  // 行が無ければ CREATE、あれば再利用 UPDATE（id は維持）
+  const expedition =
+    existingExpedition == null
+      ? await prisma.expedition.create({
+          data: baseData,
+          select: { id: true },
+        })
+      : await prisma.expedition.update({
+          where: { userId: session.userId },
+          data: baseData,
+          select: { id: true },
+        });
 
   return { success: true, expeditionId: expedition.id };
 }
@@ -268,12 +277,10 @@ export async function getCurrentExpeditionSummary(): Promise<CurrentExpeditionSu
   const session = await getSession();
   if (!session.userId) return null;
 
-  const expedition = await prisma.expedition.findFirst({
+  const expedition = await prisma.expedition.findUnique({
     where: {
       userId: session.userId,
-      state: { in: ["in_progress", "ready_to_finish"] },
     },
-    orderBy: { createdAt: "desc" },
     include: {
       area: {
         select: {
@@ -286,7 +293,7 @@ export async function getCurrentExpeditionSummary(): Promise<CurrentExpeditionSu
     },
   });
 
-  if (!expedition) return null;
+  if (!expedition || !["in_progress", "ready_to_finish"].includes(expedition.state)) return null;
 
   const rounds = expedition.battleWinCount + expedition.skillSuccessCount;
   const rawState = (expedition.explorationState ?? {}) as unknown as {
@@ -336,8 +343,8 @@ export async function getExplorationResumeSummary(): Promise<GetExplorationResum
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
   }
 
-  const expedition = await prisma.expedition.findFirst({
-    where: { userId: session.userId, state: "in_progress" },
+  const expedition = await prisma.expedition.findUnique({
+    where: { userId: session.userId },
     include: {
       area: { select: { name: true, theme: { select: { name: true } } } },
       partyPreset: {
@@ -350,7 +357,7 @@ export async function getExplorationResumeSummary(): Promise<GetExplorationResum
     },
   });
 
-  if (!expedition?.partyPreset?.slot1CharacterId) {
+  if (!expedition || expedition.state !== "in_progress" || !expedition.partyPreset?.slot1CharacterId) {
     return {
       success: false,
       error: "NO_EXPEDITION",
@@ -469,8 +476,8 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
   }
 
-  const expedition = await prisma.expedition.findFirst({
-    where: { userId: session.userId, state: "in_progress" },
+  const expedition = await prisma.expedition.findUnique({
+    where: { userId: session.userId },
     select: {
       currentHpMp: true,
       remainingNormalBattles: true,
@@ -497,7 +504,7 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
     },
   });
 
-  if (!expedition?.partyPreset?.slot1CharacterId) {
+  if (!expedition || !expedition.partyPreset?.slot1CharacterId) {
     return {
       success: false,
       error: "NO_EXPEDITION",
@@ -653,8 +660,8 @@ export async function resolveExplorationSkillEvent(
     return { success: false, error: "INVALID_STAT", message: "無効なステータスです。" };
   }
 
-  const expedition = await prisma.expedition.findFirst({
-    where: { userId: session.userId, state: "in_progress" },
+  const expedition = await prisma.expedition.findUnique({
+    where: { userId: session.userId },
     include: {
       area: {
         select: {
@@ -672,7 +679,7 @@ export async function resolveExplorationSkillEvent(
     },
   });
 
-  if (!expedition?.partyPreset?.slot1CharacterId) {
+  if (!expedition || expedition.state !== "in_progress" || !expedition.partyPreset?.slot1CharacterId) {
     return {
       success: false,
       error: "NO_EXPEDITION",
@@ -769,7 +776,7 @@ export async function continueExploration(): Promise<ContinueExplorationResult> 
     },
   });
 
-  if (!expedition) {
+  if (!expedition || expedition.state !== "in_progress") {
     return {
       success: false,
       error: "NO_EXPEDITION",
@@ -1211,9 +1218,10 @@ export async function getExplorationPendingSkillDisplay(): Promise<PendingSkillE
 
   const expedition = await prisma.expedition.findFirst({
     where: { userId: session.userId, state: "in_progress" },
-    select: { explorationState: true },
+    select: { explorationState: true, state: true },
   });
-  const raw = (expedition?.explorationState ?? {}) as { pendingSkillEvent?: PendingSkillEventDisplay };
+  if (!expedition || expedition.state !== "in_progress") return null;
+  const raw = (expedition.explorationState ?? {}) as { pendingSkillEvent?: PendingSkillEventDisplay };
   const ev = raw.pendingSkillEvent;
   if (
     !ev ||
@@ -1272,7 +1280,7 @@ export async function getExplorationRoundConsumablesAndParty(): Promise<GetExplo
     },
   });
 
-  if (!expedition?.partyPreset?.slot1CharacterId) {
+  if (!expedition || expedition.state !== "in_progress" || !expedition.partyPreset?.slot1CharacterId) {
     return {
       success: false,
       error: "NO_EXPEDITION",
@@ -1382,7 +1390,7 @@ export async function applyExplorationConsumable(
     },
   });
 
-  if (!expedition?.partyPreset?.slot1CharacterId) {
+  if (!expedition || expedition.state !== "in_progress" || !expedition.partyPreset?.slot1CharacterId) {
     return { success: false, error: "NO_EXPEDITION", message: "進行中の探索がありません。" };
   }
 
@@ -1623,7 +1631,7 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
     },
   });
 
-  if (!expedition) {
+  if (!expedition || expedition.state !== "ready_to_finish") {
     return {
       success: false,
       error: "NO_EXPEDITION_TO_FINISH",
@@ -1695,6 +1703,8 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
   const { grantCharacterExp } = await import("@/server/actions/character-exp");
 
   await prisma.$transaction(async (tx) => {
+    const finishedAt = new Date();
+
     for (const [itemId, amount] of inventoryDelta) {
       await tx.userInventory.upsert({
         where: { userId_itemId: { userId: session.userId!, itemId } },
@@ -1706,6 +1716,22 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
       where: { id: expedition.id },
       data: { state: "finished", totalExpGained },
     });
+
+    // 履歴テーブルに 1 run 分のサマリを保存
+    await tx.expeditionHistory.create({
+      data: {
+        userId: session.userId!,
+        areaId: expedition.area.id,
+        partyPresetId: expedition.partyPresetId,
+        state: "finished",
+        startedAt: expedition.startedAt ?? expedition.createdAt,
+        finishedAt,
+        battleWinCount: expedition.battleWinCount,
+        skillSuccessCount: expedition.skillSuccessCount,
+        totalExpGained,
+      },
+    });
+
     if (participantIds.length > 0 && totalExpGained > 0) {
       await grantCharacterExp(session.userId!, participantIds, totalExpGained, tx);
     }
@@ -1752,9 +1778,25 @@ export async function abortCurrentExpedition(): Promise<{ success: true } | { su
     return { success: false, error: "NO_EXPEDITION" };
   }
 
-  await prisma.expedition.update({
-    where: { id: expedition.id },
-    data: { state: "aborted" },
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.expedition.update({
+      where: { id: expedition.id },
+      data: { state: "aborted" },
+    });
+
+    await tx.expeditionHistory.create({
+      data: {
+        userId: row.userId,
+        areaId: row.areaId,
+        partyPresetId: row.partyPresetId,
+        state: "aborted",
+        startedAt: row.startedAt ?? row.createdAt,
+        finishedAt: row.updatedAt,
+        battleWinCount: row.battleWinCount,
+        skillSuccessCount: row.skillSuccessCount,
+        totalExpGained: row.totalExpGained,
+      },
+    });
   });
 
   return { success: true };

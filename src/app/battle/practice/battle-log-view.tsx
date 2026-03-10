@@ -289,8 +289,8 @@ export function EntryLines({
                       {h.splashDamagePerEnemy.map((d, i) =>
                         d > 0 ? (
                           <div key={i}>
-                            　{ENEMY_LABEL}
-                            {i + 1}に{d}追加ダメージ
+                            　{enemyDisplayNames?.[i] ?? `${ENEMY_LABEL}${i + 1}`}
+                            に{d}追加ダメージ
                           </div>
                         ) : null
                       )}
