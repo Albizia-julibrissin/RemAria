@@ -18,6 +18,7 @@
     "db:seed:test": "cross-env SEED_TEST=1 prisma db seed",
     "db:backup": "tsx prisma/db-backup.ts",
     "db:restore": "tsx prisma/db-restore.ts",
+    "db:sync-masters": "tsx prisma/sync-masters-to-target.ts",
     "db:migrate:bump-industrial": "tsx prisma/migrate-bump-user-industrial.ts"
   },
   "prisma": {

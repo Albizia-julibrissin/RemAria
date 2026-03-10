@@ -2,6 +2,8 @@
 
 **目的**: 「いつ・何を確認して・どうやって本番に出すか」を manage 配下で整理し、リリースのたびに参照・更新できるようにする。
 
+**本番リリースの考え方（テーブル変更・マスタ・アカウントデータ・デプロイ）**は **[PRODUCTION_RELEASE_GUIDE.md](./PRODUCTION_RELEASE_GUIDE.md)** にまとめてある。
+
 ---
 
 ## 1. リリースの種類（要相談）
@@ -38,8 +40,9 @@
 
 ### 2.4 データベース
 
-- [ ] `prisma/schema.prisma` を変更した場合、本番用マイグレーションを実行する手順を確認
-- [ ] マスタデータの追加・変更がある場合、`npm run db:seed` を本番で回すか・別の投入方法か方針を決めておく
+- [ ] `prisma/schema.prisma` を変更した場合、本番で `npm run db:migrate:deploy` を実行する（[PRODUCTION_RELEASE_GUIDE.md](./PRODUCTION_RELEASE_GUIDE.md) 参照）
+- [ ] マスタテーブルを追加・削除した場合、`prisma/sync-masters-to-target.ts` の `MASTER_DELEGATES_IN_ORDER` を更新する
+- [ ] マスタデータ: 初回はバックアップ復元、本番に既存ユーザーがいる場合はマスタ同期または管理画面で編集（同上）
 
 ---
 
@@ -82,13 +85,14 @@
 - **初回リリースをいつにするか**: （例: MVP 100% 後 / セキュリティ [NOW] 完了後 / 〇月頃 など）
 - **デプロイ先**: （候補の比較は [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md)。決まったら「3. リリース実行」を具体化）
 - **ドメイン・HTTPS**: （例: サブドメインで運用する / カスタムドメインの有無）
-- **マスタデータの本番更新**: （例: 管理画面からのみ / seed を再実行 / 手動 SQL など）
+- **マスタデータの本番更新**: 方針は [PRODUCTION_RELEASE_GUIDE.md §3](./PRODUCTION_RELEASE_GUIDE.md#3-マスタデータの正本と本番への反映) に記載（初回は復元、以降は本番の管理画面で編集）。
 - その他、リリースに関して決まったこと・悩んでいることをメモする。
 
 ---
 
 ## 参照
 
+- **本番リリースの考え方（マイグレーション・マスタ・アカウントデータ）**: [PRODUCTION_RELEASE_GUIDE.md](./PRODUCTION_RELEASE_GUIDE.md)
 - **デプロイ先の検討**: [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md)
 - 進捗: [MVP_PROGRESS.md](./MVP_PROGRESS.md)
 - セキュリティ・運用 TODO: [SECURITY_READINESS.md](./SECURITY_READINESS.md)

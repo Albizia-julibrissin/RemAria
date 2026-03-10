@@ -55,6 +55,21 @@
 
 ---
 
+## 4.1 マスタのみ同期（本番にユーザーがいる場合）
+
+本番にすでにユーザーがいる状態で、ローカルで編集したマスタだけを反映したいときに使う。**ユーザー・キャラ・所持品などは一切触らない。**
+
+| コマンド | 用途 |
+|----------|------|
+| `npm run db:sync-masters` | ソース DB のマスタをターゲット DB に upsert で同期する。 |
+
+**前提**: 環境変数で `SOURCE_DATABASE_URL`（編集済みマスタの DB。未設定時は `DATABASE_URL`）と `TARGET_DATABASE_URL`（本番など反映先）を指定する。ソースとターゲットで同じマイグレーションが適用済みであること。
+
+**詳細**は **[PRODUCTION_RELEASE_GUIDE.md §3](./PRODUCTION_RELEASE_GUIDE.md#3-マスタデータの正本と本番への反映)** を参照。  
+**マイグレーションでマスタテーブルを追加・削除したとき**は、`prisma/sync-masters-to-target.ts` の `MASTER_DELEGATES_IN_ORDER` を更新すること。
+
+---
+
 ## 5. 管理画面との関係
 
 - マスタの**編集済み一覧・編集手順**は [admin_master_edit_overview.md](./admin_master_edit_overview.md) を参照。
@@ -85,5 +100,6 @@
 | スキーマ・テーブル説明 | `prisma/schema.prisma`, `docs/08_database_schema.md` |
 | バックアップ・復元の詳細 | [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) |
 | マスタ編集の全体像 | [admin_master_edit_overview.md](./admin_master_edit_overview.md) |
+| 本番リリースの考え方（マイグレーション・マスタ・アカウント） | [PRODUCTION_RELEASE_GUIDE.md](./PRODUCTION_RELEASE_GUIDE.md) |
 | リリース・本番デプロイ | [RELEASE.md](./RELEASE.md), [DEPLOY_OPTIONS.md](./DEPLOY_OPTIONS.md) |
 | Railway デプロイ | [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) |
