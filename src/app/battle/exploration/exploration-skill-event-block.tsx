@@ -70,15 +70,7 @@ const DISPLAY_LINES: { allyRow: 1 | 2 | 3; partyIndex: number }[] = [
   { allyRow: 3, partyIndex: 2 },
 ];
 
-const SKILL_STAT_LABELS: { key: string; label: string }[] = [
-  { key: "STR", label: "力" },
-  { key: "INT", label: "知" },
-  { key: "VIT", label: "体" },
-  { key: "WIS", label: "賢" },
-  { key: "DEX", label: "技" },
-  { key: "AGI", label: "速" },
-  { key: "LUK", label: "運" },
-];
+const SKILL_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"];
 
 export interface ExplorationSkillEventBlockProps {
   eventMessage: string;
@@ -194,15 +186,15 @@ export function ExplorationSkillEventBlock({
           </>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {SKILL_STAT_LABELS.map(({ key, label }) => (
+            {SKILL_STAT_KEYS.map((statKey) => (
               <button
-                key={key}
+                key={statKey}
                 type="button"
                 disabled={isPending}
-                onClick={() => handleStatChoice(key)}
+                onClick={() => handleStatChoice(statKey)}
                 className="px-3 py-1.5 rounded border border-base-border bg-base-elevated text-text-primary text-sm hover:bg-base-border/50 disabled:opacity-50"
               >
-                {label}（{key}）
+                {statKey}
               </button>
             ))}
           </div>

@@ -179,6 +179,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
           </h1>
           <div className="mt-4">
             <ExplorationSkillEventBlock
+              key={pendingSkill.eventKey}
               eventMessage={pendingSkill.eventMessage}
               partyDisplayNames={pendingSkill.partyDisplayNames}
               partyIconFilenames={pendingSkill.partyIconFilenames}

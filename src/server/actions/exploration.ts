@@ -1108,7 +1108,9 @@ export async function advanceExplorationStep(): Promise<AdvanceExplorationStepRe
     return { success: false, error: "NO_EXPEDITION", message: "進行中の探索がありません。" };
   }
   const rawState = (expedition.explorationState ?? {}) as Record<string, unknown>;
+  const eventKey = crypto.randomUUID();
   const pendingSkillEvent = {
+    eventKey,
     themeName: step.themeName,
     areaName: step.areaName,
     eventMessage: step.eventMessage,
@@ -1183,6 +1185,8 @@ export async function getExplorationLastBattleDisplay(): Promise<RunExplorationB
 // --- 表示用：explorationState.pendingSkillEvent から技能イベントを読む（059 Phase 2b・案 B） ---
 
 export type PendingSkillEventDisplay = {
+  /** 連続技能イベント時に UI をリセットするため、イベントごとに一意 */
+  eventKey: string;
   themeName: string;
   areaName: string;
   eventMessage: string;
@@ -1217,7 +1221,7 @@ export async function getExplorationPendingSkillDisplay(): Promise<PendingSkillE
     !Array.isArray(ev.partyHp)
   )
     return null;
-  return ev;
+  return { ...ev, eventKey: ev.eventKey ?? `legacy-${ev.themeName}-${ev.areaName}` };
 }
 
 // --- ラウンド後の消耗品使用用：持ち込み消耗品一覧とパーティメンバー ---

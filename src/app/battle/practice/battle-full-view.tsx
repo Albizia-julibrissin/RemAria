@@ -134,9 +134,20 @@ function TurnBlock({
   defaultEnemyIconFilename: string;
 }) {
   const entry = entries[entries.length - 1]!;
+  const firstEntry = entries[0]!;
   const enemyAlive = entry.enemyHpAfter.map((hp) => hp > 0);
   const partyNames = summary.partyDisplayNames ?? ["味方"];
   const partyIcons = partyNames.map((_, i) => partyIconFilenames[i] ?? protagonistIconFilename);
+
+  // このターンで動いたキャラの行（味方＝緑・敵＝赤で行を強調する用）
+  const actorAllyRow: number | null =
+    firstEntry.attacker === "player" && firstEntry.attackerPartyIndex != null
+      ? (partyPositions[firstEntry.attackerPartyIndex]?.row ?? null)
+      : null;
+  const actorEnemyRow: number | null =
+    firstEntry.attacker === "enemy" && firstEntry.attackerEnemyIndex != null
+      ? (enemyPositions[firstEntry.attackerEnemyIndex]?.row ?? null)
+      : null;
 
   return (
     <div className="border border-base-border rounded-lg p-4 max-sm:p-2 bg-base-elevated space-y-4">
@@ -147,6 +158,8 @@ function TurnBlock({
       <div className="space-y-2 overflow-x-auto">
         {DISPLAY_LINES.map(({ allyRow, partyIndex, enemyRow }) => {
           const enemyIndex = getEnemyIndexOnRow(enemyPositions, enemyRow);
+          const highlightAlly = actorAllyRow != null && allyRow === actorAllyRow;
+          const highlightEnemy = actorEnemyRow != null && enemyRow === actorEnemyRow;
           return (
             <div
               key={allyRow}
@@ -167,7 +180,13 @@ function TurnBlock({
                   <div className="h-7 max-sm:h-6" aria-hidden />
                 )}
               </div>
-              <div className="inline-block border border-base-border rounded p-1 max-sm:p-0.5 bg-base-elevated shrink-0 min-w-0">
+              <div
+                className={`inline-block border rounded p-1 max-sm:p-0.5 shrink-0 min-w-0 ${
+                  highlightAlly
+                    ? "border-green-500 bg-green-500/20 ring-1 ring-green-500/50"
+                    : "border-base-border bg-base-elevated"
+                }`}
+              >
                 <AllyGridRow
                   row={allyRow}
                   partyPositions={partyPositions}
@@ -175,7 +194,13 @@ function TurnBlock({
                 />
               </div>
               <span className="text-text-muted text-xs shrink-0">/</span>
-              <div className="inline-block border border-base-border rounded p-1 max-sm:p-0.5 bg-base-elevated shrink-0 min-w-0">
+              <div
+                className={`inline-block border rounded p-1 max-sm:p-0.5 shrink-0 min-w-0 ${
+                  highlightEnemy
+                    ? "border-red-500 bg-red-500/20 ring-1 ring-red-500/50"
+                    : "border-base-border bg-base-elevated"
+                }`}
+              >
                 <EnemyGridRow
                   row={enemyRow}
                   enemyPositions={enemyPositions}

@@ -35,6 +35,7 @@ export function ExplorationNextButton({
     try {
       if (useAdvanceAction) {
         await advanceExplorationStep();
+        router.refresh();
         router.replace("/battle/exploration");
       } else {
         router.push(href);
