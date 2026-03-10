@@ -2,7 +2,7 @@
 
 // spec/039: 新規プリセット作成。上限時はボタン無効・メッセージ表示。失敗時にメッセージを表示する。
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createPartyPreset, type CreatePartyPresetResult } from "@/server/actions/tactics";
 
@@ -25,9 +25,14 @@ export function CreatePresetForm({ presetCount, presetLimit }: CreatePresetFormP
 
   const atLimit = presetCount >= presetLimit;
 
+  useEffect(() => {
+    if (state?.success === true && state.presetId) {
+      router.push(`/dashboard/tactics?presetId=${state.presetId}`);
+    }
+  }, [state, router]);
+
   if (state?.success === true) {
-    router.push(`/dashboard/tactics?presetId=${state.presetId}`);
-    return null;
+    return <p className="mt-4 text-text-muted text-sm">リダイレクト中…</p>;
   }
 
   return (
