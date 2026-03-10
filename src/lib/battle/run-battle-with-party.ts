@@ -878,7 +878,7 @@ export function runBattleWithParty(
     const order = buildTurnOrder(party, enemies, partyAlive, enemyAlive, partyDebuffs, enemyDebuffs);
     let turnIndex = 0;
 
-    for (const slot of order) {
+    slotLoop: for (const slot of order) {
       turnIndex++;
 
       // Phase 8: このスロットのユニットのターンが来た時点で DoT を処理（毎サイクル発生ダメージをここで表示）
@@ -925,6 +925,10 @@ export function runBattleWithParty(
             });
             if (unit.currentHp <= 0) {
               handlePartyDeath(idx);
+              if (party.every((p, i) => !partyAlive[i] || p.currentHp <= 0)) {
+                winner = "enemy";
+                break slotLoop;
+              }
             }
           }
         }
@@ -969,7 +973,13 @@ export function runBattleWithParty(
               partyPositions: posSnap.partyPositions,
               enemyPositions: posSnap.enemyPositions,
             });
-            if (unit.currentHp <= 0) handleEnemyDeath(idx);
+            if (unit.currentHp <= 0) {
+              handleEnemyDeath(idx);
+              if (enemyAlive.every((a) => !a)) {
+                winner = "player";
+                break slotLoop;
+              }
+            }
           }
         }
       }
@@ -2045,7 +2055,22 @@ export function runBattleWithParty(
     if (enemyAlive.every((a) => !a)) break;
   }
 
-  if (party.some((p, i) => partyAlive[i] && p.currentHp > 0) && enemyAlive.some((a) => a)) winner = "draw";
+  // サイクル上限で双方に生存者がいる場合: 生き残り数で判定、同数なら残りHP合計で判定
+  if (party.some((p, i) => partyAlive[i] && p.currentHp > 0) && enemyAlive.some((a) => a)) {
+    const partySurvivors = party.filter((p, i) => partyAlive[i] && p.currentHp > 0).length;
+    const enemySurvivors = enemies.filter((e, i) => enemyAlive[i] && e.currentHp > 0).length;
+    const partyHpSum = party
+      .filter((p, i) => partyAlive[i] && p.currentHp > 0)
+      .reduce((acc, p) => acc + p.currentHp, 0);
+    const enemyHpSum = enemies
+      .filter((e, i) => enemyAlive[i] && e.currentHp > 0)
+      .reduce((acc, e) => acc + e.currentHp, 0);
+    if (partySurvivors > enemySurvivors) winner = "player";
+    else if (enemySurvivors > partySurvivors) winner = "enemy";
+    else if (partyHpSum > enemyHpSum) winner = "player";
+    else if (enemyHpSum > partyHpSum) winner = "enemy";
+    else winner = "draw";
+  }
 
   return {
     result: winner,

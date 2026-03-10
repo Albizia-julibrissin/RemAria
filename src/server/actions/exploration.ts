@@ -1122,10 +1122,12 @@ export async function advanceExplorationStep(): Promise<AdvanceExplorationStepRe
     partyMaxHp: step.partyMaxHp,
     partyMaxMp: step.partyMaxMp,
   };
+  // 技能イベント画面では戦闘結果を出さないため、lastBattle を落としておく（次へ押下時に同じ戦闘結果が再表示されるのを防ぐ）
+  const { lastBattle: _droppedForSkill, ...stateWithoutLastBattle } = rawState;
   await prisma.expedition.update({
     where: { id: expedition.id },
     data: {
-      explorationState: { ...rawState, pendingSkillEvent } as Prisma.InputJsonValue,
+      explorationState: { ...stateWithoutLastBattle, pendingSkillEvent } as Prisma.InputJsonValue,
     },
   });
   return {
