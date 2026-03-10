@@ -46,6 +46,8 @@
 | **042_battle_effect_types_reference.md** | **effectType 定義一覧（param・適用タイミング）** ← 効果追加時はここ |
 | 041_skill_effects_implementation_prep.md | 効果実装の Phase とデータフロー |
 | **043_tactics_room_skill_info_ux_proposal.md** | **作戦室でのスキル情報表示 UX 提案**（一覧項目・非開示方針） |
+| 061_tactics_room_companion_switch.md | 作戦室：仲間・メカ切り替え時に作戦が編集できない問題の原因と対策（案B 実装済み） |
+| 062_tactics_per_preset_extension.md | 作戦スロットのプリセット別保持（拡張案）。PresetTacticSlot とフォールバック案。 |
 | 023_skill_cooldown_ct_design.md | クールダウン・CT 設計 |
 | 14_初期スキル_評価と新規効果.md | 初期スキルと既存/新規効果の対応表 |
 | 14_initial_skills.csv / 14_skill_proposals_30.csv | スキル一覧（CSV） |
@@ -54,7 +56,7 @@
 | 10_battle_status.csv | ステータス例 |
 | 11_test_battle_plan.md | テスト戦闘の流れ |
 
-→ 正式仕様: **spec/038_battle_skills_and_effects.md**, spec/039, spec/040。**作戦スロット**は spec/039（味方・作戦室）と spec/050（敵・敵マスタ編集）の両方で同一仕様。詳細は 14_tactics_slot_shared.md。
+→ 正式仕様: **spec/038_battle_skills_and_effects.md**, spec/039, spec/040。**作戦スロット**は spec/039（味方・作戦室）と spec/050（敵・敵マスタ編集）の両方で同一仕様。**プリセットごとに別作戦**の拡張は **spec/063_tactics_per_preset**（設計案は 062）。詳細は 14_tactics_slot_shared.md。
 
 ---
 

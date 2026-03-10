@@ -50,6 +50,7 @@
 | チャット | spec/037_chat | `src/server/actions/chat.ts`, `src/components/chat/` |
 | 戦闘スキル・効果 | spec/038 | 上記「2. 戦闘・スキル効果」参照。`run-battle-with-party.ts`, seed BATTLE_SKILL_EFFECTS |
 | 作戦編集 | spec/039_battle_tactics_and_editor | `src/app/dashboard/tactics/`, `src/server/actions/tactics.ts`, `src/app/dashboard/tactics/tactics-constants.ts` |
+| 作戦スロット・プリセット別保持 | spec/063_tactics_per_preset | 039 の拡張。PresetTacticSlot 追加・取得・保存・戦闘参照。実装フェーズは 063 §5。 |
 | 作戦スロット評価（行動決定） | spec/040_tactic_slot_evaluation | `src/lib/battle/tactic-evaluation.ts`。戦闘ループからここを呼ぶ。 |
 | レベル・ステータス割り振り | spec/048_level_and_status_allocation | `src/server/actions/character-exp.ts`, `src/lib/level.ts`, キャラ詳細のステ割り振り UI。 |
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |

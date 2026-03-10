@@ -2,8 +2,16 @@
 
 // spec/039: 作戦室 - プリセット編成と3人分の作戦スロット編集
 
-import { useState, useTransition, useCallback, memo, useMemo } from "react";
-import { savePresetWithTactics, type TacticSlotRow, type BattleSkillOption, type TacticsSkillCatalogItem } from "@/server/actions/tactics";
+import { useState, useTransition, useCallback, memo, useMemo, useEffect } from "react";
+import {
+  savePresetWithTactics,
+  getTacticsForCharacters,
+  getBattleSkillsForCharacters,
+  getTacticsSkillCatalogForCharacters,
+  type TacticSlotRow,
+  type BattleSkillOption,
+  type TacticsSkillCatalogItem,
+} from "@/server/actions/tactics";
 import {
   SUBJECT_OPTIONS,
   CONDITION_OPTIONS,
@@ -27,6 +35,15 @@ const DEFAULT_ROW: TacticSlotRow = {
 };
 
 const CYCLE_CONDITION_VALUES = new Set<string>(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
+
+/** API 取得したスロット配列を編集用 rows に正規化（0.4 編成変更時のマージ用） */
+function normalizeSlotsFromApi(slots: TacticSlotRow[]): TacticSlotRow[] {
+  if (slots.length === 0) return [{ ...DEFAULT_ROW, orderIndex: 1 }];
+  return slots
+    .slice(0, MAX_SLOTS)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((s, i) => ({ ...s, orderIndex: i + 1 }));
+}
 
 function buildSlotsFromRows(rows: TacticSlotRow[]): TacticSlotRow[] {
   return rows.map((r, i) => {
@@ -410,8 +427,56 @@ export function TacticsEditorClient({
   const [isPending, startTransition] = useTransition();
   const [showSkillList, setShowSkillList] = useState(false);
 
+  /** spec/039 0.4: 編成変更時に追加取得したデータをマージするため state で保持 */
+  const [internalBattleSkillsByCharacter, setInternalBattleSkillsByCharacter] = useState<Record<string, BattleSkillOption[]>>(battleSkillsByCharacter);
+  const [internalSkillCatalog, setInternalSkillCatalog] = useState<TacticsSkillCatalogItem[]>(skillCatalog);
+
   const slot1 = preset.slot1!;
   const characters: SlotCharacter[] = [slot1, preset.slot2, preset.slot3].filter(Boolean) as SlotCharacter[];
+
+  /** 編成（仲間・メカ）変更時、不足キャラの作戦・スキルを取得して state にマージ（spec/039 0.4） */
+  useEffect(() => {
+    const currentCharacterIds = [slot1.characterId, slot2Id, slot3Id].filter(Boolean) as string[];
+    const missingIds = currentCharacterIds.filter((id) => !(id in internalBattleSkillsByCharacter));
+
+    const mergeFetched = (
+      tacticsResult: { tactics: { characterId: string; slots: TacticSlotRow[] }[] },
+      skillsResult: Record<string, BattleSkillOption[]>,
+      catalogResult: { skills?: TacticsSkillCatalogItem[] }
+    ) => {
+      setSlotsByCharacter((prev) => {
+        const next = { ...prev };
+        for (const t of tacticsResult.tactics) {
+          next[t.characterId] = normalizeSlotsFromApi(t.slots);
+        }
+        return next;
+      });
+      setInternalBattleSkillsByCharacter((prev) => ({ ...prev, ...skillsResult }));
+      if (catalogResult.skills) {
+        setInternalSkillCatalog(catalogResult.skills);
+      }
+    };
+
+    if (missingIds.length > 0) {
+      Promise.all([
+        getTacticsForCharacters(missingIds),
+        getBattleSkillsForCharacters(missingIds),
+        getTacticsSkillCatalogForCharacters(currentCharacterIds),
+      ]).then(([tacticsResult, skillsResult, catalogResult]) => {
+        if ("error" in tacticsResult) return;
+        mergeFetched(tacticsResult, skillsResult, catalogResult);
+      });
+    } else {
+      const lineupChanged = slot2Id !== (preset.slot2?.characterId ?? "") || slot3Id !== (preset.slot3?.characterId ?? "");
+      if (lineupChanged) {
+        getTacticsSkillCatalogForCharacters(currentCharacterIds).then((catalogResult) => {
+          if ("skills" in catalogResult) {
+            setInternalSkillCatalog(catalogResult.skills);
+          }
+        });
+      }
+    }
+  }, [slot2Id, slot3Id, slot1.characterId, preset.slot2?.characterId, preset.slot3?.characterId]);
 
   /** 初期表示: 保存済みスロットがあればその数（最大10）、なければ1行 */
   const getInitialSlotsFor = (characterId: string): TacticSlotRow[] => {
@@ -541,7 +606,7 @@ export function TacticsEditorClient({
   }, []);
 
   const getSkillsByTypeFor = (characterId: string) => {
-    const list = battleSkillsByCharacter[characterId] ?? [];
+    const list = internalBattleSkillsByCharacter[characterId] ?? [];
     const map = new Map<string, BattleSkillOption[]>();
     for (const s of list) {
       const type = s.battleSkillType ?? "other";
@@ -664,11 +729,11 @@ export function TacticsEditorClient({
       {showSkillList && (
         <div className="rounded-lg border border-base-border bg-base-elevated p-4 space-y-3">
           <h2 className="text-base font-medium text-text-primary">編成メンバーのスキル一覧</h2>
-          {skillCatalog.length === 0 ? (
+          {internalSkillCatalog.length === 0 ? (
             <p className="text-sm text-text-muted">この編成が習得している戦闘スキルはありません。</p>
           ) : (
             <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-              {skillCatalog.map((s) => (
+              {internalSkillCatalog.map((s) => (
                 <div key={s.id} className="flex gap-3 rounded border border-base-border bg-base px-3 py-2 text-sm">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -745,7 +810,7 @@ export function TacticsEditorClient({
             deleteSlotRow={deleteSlotRow}
             moveSlotRow={moveSlotRow}
             setDraggedSlot={setDraggedSlot}
-            battleSkillsByCharacter={battleSkillsByCharacter}
+            battleSkillsByCharacter={internalBattleSkillsByCharacter}
           />
         ))}
 

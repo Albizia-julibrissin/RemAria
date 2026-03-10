@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { characterRepository } from "@/server/repositories/character-repository";
 import { userRepository } from "@/server/repositories/user-repository";
 import { getProtagonistIconFilenames } from "@/server/lib/protagonist-icons";
+import { createPartyPreset } from "@/server/actions/tactics";
 
 export type CreateProtagonistResult =
   | { success: true; characterId: string }
@@ -44,6 +45,13 @@ export async function createProtagonist(formData: FormData): Promise<CreateProta
     userId: session.userId,
     iconFilename: String(iconFilename).trim(),
   });
+
+  // 初回用のパーティプリセットを1件作成（作戦室で「プリセットがない」状態にしない）
+  try {
+    await createPartyPreset();
+  } catch {
+    // プリセット作成に失敗しても主人公作成は成功とする
+  }
 
   return { success: true, characterId: character.id };
 }

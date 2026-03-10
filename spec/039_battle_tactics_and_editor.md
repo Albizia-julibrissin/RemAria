@@ -19,12 +19,18 @@
 3. **各枠（キャラ）ごとに作戦設定**：主語・条件・行動を **プルダウン** でセットする（orderIndex 1～10）。
 4. **全員設定して保存** → **パーティプリセット 1 つとして保存**する。保存単位は **パーティ単位のプリセット**（編成 3 人＋各キャラの作戦 10 件×3 を一括で反映）。
 
-※ 現状のデータモデルでは作戦はキャラごと（TacticSlot.characterId）で永続している。保存操作は「選択中プリセットの 3 キャラ分の TacticSlot をまとめて upsert」で実現する。同一キャラを別プリセットでも使う場合は、そのキャラの作戦は共通になる。将来「プリセットごとに別作戦」が必要なら、PresetTacticSlot などプリセット紐づきのスキーマ拡張を検討する。
+※ **プリセットごとに別作戦**を実現する拡張は **spec/063_tactics_per_preset.md** で定義する。063 採用後は作戦は **PresetTacticSlot**（partyPresetId + characterId + orderIndex）で永続し、取得・保存・戦闘参照はすべて PresetTacticSlot のみを使用する。現状（063 未適用）では TacticSlot（キャラ単位）で永続しており、同一キャラは全プリセットで作戦が共通。
 
 ### 0.2 操作詳細
 
 - **キャラクター選択済みの枠**にだけ、作戦設定 UI（主語・条件・行動のプルダウン）を表示する。
 - 未選択枠（仲間・メカが未選択など）は作戦編集不可、または枠を選んでから編集。
+
+### 0.4 編成変更（仲間・メカの差し替え）時のデータ取得
+
+- 画面上で仲間枠・メカ枠のドロップダウンを別キャラに変更した場合、**その時点の編成 3 人**のうち、まだ作戦・習得スキルのデータを持っていないキャラがいることがある。
+- その場合、クライアントは **不足しているキャラ分だけ** `getTacticsForCharacters` と `getBattleSkillsForCharacters` を呼び、取得結果をクライアントの state にマージする。これにより、ページ再読み込みなしで切り替え先の作戦・スキルを表示・編集できる。
+- スキル一覧（編成メンバーのスキルカタログ）も、編成変更後に **現在の 3 人** で `getTacticsSkillCatalogForCharacters` を呼び直して更新してよい。
 
 ### 0.3 行動（スキル）選択の UX（スキル増加時）
 
@@ -52,13 +58,13 @@
 
 ### 1.2 提供する API / 利用者
 
-| API | 用途 | 呼び出し元 |
-|-----|------|-----------|
-| getTacticsForCharacters | 指定した 3 キャラ分の作戦スロットを取得 | 作戦室（プリセット選択後） |
-| upsertTacticsForCharacter | 1 キャラ分（10件）の作戦スロットを一括保存 | 作戦室（保存時、3 キャラ分を順に呼ぶ想定） |
-| （プリセット取得・更新） | プリセット一覧の取得、選択中プリセットの編成（3 枠）更新 | 作戦室（別 spec / 既存のパーティ編成 API に依存） |
+| API | 用途 | 呼び出し元 | 063 採用後 |
+|-----|------|-----------|------------|
+| getTacticsForCharacters / getTacticsForPreset | 指定した 3 キャラ分（またはプリセットに紐づく）作戦スロットを取得 | 作戦室（プリセット選択後）、編成変更時追加取得 | getTacticsForPreset(presetId) で PresetTacticSlot から取得 |
+| upsertTacticsForCharacter / savePresetWithTactics | 1 キャラ分の一括保存、またはプリセット＋3 人分の一括保存 | 作戦室（保存時） | savePresetWithTactics 内で PresetTacticSlot のみ一括置換（063） |
+| （プリセット取得・更新） | プリセット一覧の取得、選択中プリセットの編成（3 枠）更新 | 作戦室（別 spec / 既存のパーティ編成 API に依存） | 変更なし |
 
-作戦室での「保存」は **パーティプリセット単位**：編成（3 枠の characterId）の更新があればプリセットを更新し、続けて 3 キャラそれぞれに対して `upsertTacticsForCharacter` を呼ぶ。または「プリセット＋3 人分の作戦を一括保存」する API を新設してもよい。
+作戦室での「保存」は **パーティプリセット単位**。063 採用後は編成・名前・列の更新に加え、**そのプリセットに紐づく PresetTacticSlot を一括置換**する（spec/063）。
 
 ### 1.3 敵側の作戦スロット（横断）
 
@@ -133,11 +139,8 @@
 
 ### 6.1 永続化
 
-- テーブル（Prisma想定）：TacticSlot
-  - characterId, orderIndex（1～10）, subject, conditionKind, conditionParam(Json), actionType, skillId?
-- 制約：
-  - @@unique([characterId, orderIndex])
-  - characterId は userId の所有物であること（他人のキャラは編集不可）
+- **063 未適用時**：テーブル TacticSlot（characterId, orderIndex, subject, conditionKind, conditionParam, actionType, skillId）。@@unique([characterId, orderIndex])。characterId は userId の所有物。
+- **063 適用後**：永続先は **PresetTacticSlot**（spec/063）。TacticSlot は廃止。取得・保存・戦闘参照はすべて PresetTacticSlot を使用する。
 
 ### 6.2 デフォルト
 
