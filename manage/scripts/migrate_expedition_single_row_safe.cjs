@@ -104,29 +104,29 @@ async function migrateDuplicates() {
         .join(", ")}`
     );
 
-    await prisma.$transaction(async (tx) => {
-      for (const exp of toRemove) {
-        if (exp.state === "finished" || exp.state === "aborted") {
-          await tx.expeditionHistory.create({
-            data: {
-              userId: exp.userId,
-              areaId: exp.areaId,
-              partyPresetId: exp.partyPresetId,
-              state: exp.state,
-              startedAt: exp.startedAt ?? exp.createdAt,
-              finishedAt: exp.updatedAt,
-              battleWinCount: exp.battleWinCount,
-              skillSuccessCount: exp.skillSuccessCount,
-              totalExpGained: exp.totalExpGained,
-            },
-          });
-        }
-
-        await tx.expedition.delete({
-          where: { id: exp.id },
+    // 本番用スクリプトの安定性を優先し、Prisma のインタラクティブトランザクションは使わず
+    // 1 行ずつ ExpeditionHistory へのコピー → Expedition の削除を行う。
+    for (const exp of toRemove) {
+      if (exp.state === "finished" || exp.state === "aborted") {
+        await prisma.expeditionHistory.create({
+          data: {
+            userId: exp.userId,
+            areaId: exp.areaId,
+            partyPresetId: exp.partyPresetId,
+            state: exp.state,
+            startedAt: exp.startedAt ?? exp.createdAt,
+            finishedAt: exp.updatedAt,
+            battleWinCount: exp.battleWinCount,
+            skillSuccessCount: exp.skillSuccessCount,
+            totalExpGained: exp.totalExpGained,
+          },
         });
       }
-    });
+
+      await prisma.expedition.delete({
+        where: { id: exp.id },
+      });
+    }
   }
 }
 

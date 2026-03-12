@@ -11,12 +11,13 @@
 - **マスタデータ**: シードでは投入しない。管理画面で編集し、**バックアップ・復元**で環境を揃える（`npm run db:backup` / `db:restore`）。**DB 運営・バックアップ手順**は **`manage/DB_OPERATIONS.md`** と **`manage/BACKUP_RESTORE.md`** を参照。
 - **本番リリース**: 本番 DB に触れる手順（バックアップ・マイグレーション・マスタ同期など）は **基本、依頼されたら Cursor が実行する**。本番の接続先は **`manage/production.env`** の `DATABASE_URL` を参照する（.gitignore 済み）。手順は **`manage/PRODUCTION_RELEASE_GUIDE.md`** の「**9. Cursor に本番リリースの各手順を依頼する**」に従い、production.env を読み込んだうえでコマンドを実行する。
 - **本番環境の前提**: 現在の本番環境は「MVP 公開テスト」中のもの。**本番 DB はプレイヤーの実データを含む**ため、リセットや破壊的操作（`migrate reset` など）は絶対に行わないこと。必要な変更は必ずバックアップ取得 → メンテナンスモード → マイグレーション／データ移行 → 検証 → メンテナンス解除、の手順で行う。
-- **シード**: `prisma/seed.ts` は**テスト用データのみ**（test1/test2 ユーザー・主人公・仲間・通貨・所持品）。`npm run db:seed`。
+- **シード**: `prisma/seed.ts` は**テスト用データのみ**（管理用アカウント「管理人」＋ test2 ユーザー・主人公・仲間・通貨・所持品）。管理用アカウントは環境変数 `ADMIN_EMAIL`（未設定時は `test1@example.com`）で作成され、パスワードは `ADMIN_PASSWORD` またはランダム生成。`npm run db:seed`。詳細は **`manage/ADMIN_ACCOUNT.md`**。
 - **ドキュメント索引**: `docs/README.md` でテーマ別の一覧と参照先を確認できる。
 - **アーキテクチャ・ディレクトリ構成**: `docs/03_architecture_spec.md`。依存方向は UI → server(actions) → repositories → db。`lib/` は純粋ロジック。
 - **ハードコード・暫定実装**: 「後でちゃんと実装する」前提のコードは **`docs/027_hardcoded_and_deferred.md`** に一覧化する。新規に追加するときは一覧に 1 行追記し、解消したらその行を削除する。
 - **MVP 以降の方針**: MVP 版を公開したあとは、「とりあえず動けばよい」その場しのぎの実装は避け、将来の拡張を見据えた素直で読みやすい設計を優先する。バグ対応や暫定策を入れる場合も、必ず docs/spec（例: `docs/059_exploration_step_refactor.md`）に方針を残し、後で必ずリファクタや設計の整理につなげる。
 - **Server Action の責務分離**: `src/server/actions/*` では、1 関数の中に「状態遷移ロジック」「DB 更新」「ビュー用データ組み立て」を過度に詰め込まない。可能な限り、状態遷移ロジックは `lib/` などの純粋関数として切り出し、Server Action は「入力の検証 → リポジトリ呼び出し → 状態遷移ロジック呼び出し → 更新結果をレスポンス型に整形する」薄いオーケストレーターとして実装する。探索進行は `advanceExplorationStep` に集約し、表示は `getExplorationLastBattleDisplay` / `getExplorationPendingSkillDisplay` で read-only にしている。`runExplorationBattle` / `finishExploration` なども同方針で整理済み・継続する。
+- **検証ログ**: 戦闘ログに「検証用の表示」（遺物適用前ダメージ・倍率メモなど）を出したい場合は **検証ログ** に集約する。表示の有無は環境変数 `NEXT_PUBLIC_SHOW_VERIFICATION_LOG="true"` で切り替え（本番では未設定で非表示）。ログ型は `BattleLogEntryWithParty` / `hitDetails` に検証用のオプション項目を追加し、表示は `src/app/battle/practice/battle-log-view.tsx` で `SHOW_VERIFICATION_LOG` が true のときのみ描画する。詳細は **`manage/VERIFICATION_LOG.md`** 参照。
 
 ### docs / spec / content-guides の役割
 
@@ -27,6 +28,7 @@
 - **`docs/content-guides/`**: コンテンツ追加ガイド。  
   - 「スキル追加」「探索エリア追加」など、コンテンツを増やすときの**実務手順書（チェックリスト）**を置く。
   - docs/spec に書かれた意図を前提に、「どの順番でどのファイルを触るか」をここで整理する。
+- **`docs/ideas/`**: アイデア・思いつきのメモ置き場。**実装には関係しない**。仕様判断・コード変更の根拠に使わない。
 
 ---
 
@@ -60,11 +62,14 @@
 | アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
 | 研究・解放・建設 | spec/047, **docs/054_quest_and_research_design.md** §4.3.1 | `src/server/actions/facilities-placement.ts`（place/dismantle）, `src/server/actions/research.ts`（研究グループ・解放）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityVariant, UserFacilityTypeUnlock, ResearchGroup, ResearchGroupItem, ResearchUnlockCost, UserCraftRecipeUnlock |
 | 遺物（4枠・鑑定・効果・戦闘耐性） | spec/051_relics | `src/server/actions/relic.ts`, `src/lib/constants/relic.ts`, `src/app/dashboard/bag/`（遺物タブ）, `src/app/dashboard/characters/[id]/character-relic-section.tsx`, schema: RelicType, RelicPassiveEffect, RelicInstance, CharacterRelic。戦闘は `src/server/actions/battle.ts` で遺物耐性を partyInput に渡す。 |
+| 戦闘時有効基礎ステ（遺物補正・メカパーツ加算・フレーム倍率） | spec/069_battle_effective_base_stats | `src/lib/battle/effective-base-stats.ts`（純粋関数）, `src/server/actions/battle.ts`（データ取得・有効基礎の組み立て）。実装フェーズは docs/070。 |
 | 称号（マスタ・ユーザ解放） | spec/055_titles | `src/server/actions/titles.ts`（getTitleList, getMyUnlockedTitleIds, unlockTitleForUser）, schema: Title, UserTitleUnlock。シードで「開拓者」1件投入。 |
 | スキル分析書・スキルレベル | spec/052_skill_books_and_level | `src/server/actions/inventory.ts`（consumeSkillBook, getCharactersForSkillBook）, `src/app/dashboard/bag/`（スキル分析書タブで使用・キャラ選択）, schema: Item.skillId, CharacterSkill.level。習得/レベルアップ必要冊数は Lv N→N+1 に (N+1) 冊。 |
 | 探索・エリアドロップ（管理） | spec/049（7.2 ドロップテーブル）, **manage/admin_area_drop_edit.md** | `src/server/actions/admin.ts`（getAreaDropEditData, saveDropTableEntries 等）, `src/app/dashboard/admin/drops/`。編集手順・強敵枠追加は manage 参照。 |
 | アイテムマスタ（管理） | spec/045, **manage/admin_item_master_edit.md** | `src/server/actions/admin.ts`（getAdminItemList, getAdminItem, updateAdminItem）, `src/app/dashboard/admin/items/`, `src/lib/constants/item-categories.ts`。 |
 | クエスト（ストーリー・研究） | spec/054_quests, **docs/054_quest_and_research_design.md** | `src/server/actions/quest.ts`, `src/app/dashboard/quests/`。探索 finish で area_clear、戦闘勝利で enemy_defeat 進捗。研究ポイント報酬・解放は A1 以降で拡張。 |
+| 任務による機能解放（テーマ・研究グループ） | spec/068_quest_unlock_themes_and_research, **docs/068_quest_unlock_themes_and_research.md** | 報告時に UserExplorationThemeUnlock / UserResearchGroupUnlock に挿入。`getExplorationMenu` でテーマ限定、`getResearchMenu` で isAvailable を任務解放のみに。管理画面で開拓任務に解放テーマ・研究グループを紐づけ。 |
+| 装備の派生戦闘ステ加算（HP/MP 含む） | spec/071_equipment_derived_stats_in_battle | `src/lib/battle/run-battle-with-party.ts`（derivedBonus 加算）、`src/server/actions/battle.ts`（装備取得・合算）。実装プランは **docs/072_equipment_hp_mp_implementation_plan.md**。 |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
 

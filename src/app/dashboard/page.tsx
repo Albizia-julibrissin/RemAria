@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentExpeditionSummary, getExplorationMenu } from "@/server/actions/exploration";
 import { getPartyPresetListForExploration } from "@/server/actions/tactics";
 import { getConsumableStacksForExploration } from "@/server/actions/inventory";
-import { TEST_USER_1_EMAIL } from "@/lib/constants/admin";
+import { getAdminEmail } from "@/server/lib/admin";
 import { ExplorationStartClient } from "./exploration-start-client";
 import { CharacterSummaryCard } from "./character-summary-card";
 import { GameIcon } from "@/components/icons/game-icon";
@@ -55,7 +55,8 @@ export default async function DashboardPage() {
       : Promise.resolve([]),
   ]);
 
-  const showAdminContent = userForDashboard?.email === TEST_USER_1_EMAIL;
+  const adminEmail = await getAdminEmail();
+  const showAdminContent = userForDashboard?.email === adminEmail;
   const balances =
     userForDashboard != null
       ? {
@@ -83,7 +84,7 @@ export default async function DashboardPage() {
     // 物資庫: spec/045_inventory_and_items.md
     { href: "/dashboard/bag", label: "物資庫", sub: "所持アイテムの確認", icon: "wooden-crate" },
     // 開拓任務: spec/054_quests.md
-    { href: "/dashboard/quests", label: "開拓任務", sub: "ストーリーや研究クエストの進捗", icon: "feather" },
+    { href: "/dashboard/quests", label: "開拓任務", sub: "使命・研究・特殊・一般の開拓任務の進捗", icon: "feather" },
   ] as const;
 
   return (

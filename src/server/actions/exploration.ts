@@ -13,6 +13,7 @@ import {
   type ExplorationBattleType,
 } from "@/server/lib/resolve-exploration-enemies";
 import { computeDerivedStats } from "@/lib/battle/derived-stats";
+import { grantStackableItem } from "@/server/lib/inventory";
 
 export type ExplorationAreaSummary = {
   areaId: string;
@@ -37,41 +38,100 @@ export type GetExplorationMenuResult =
 
 /**
  * 探索トップ画面用：テーマ・エリア一覧を取得する。
- * MVP では「全テーマ/エリア解放済み & クリア状況は未考慮」とし、status はすべて "available" を返す。
+ * spec/068: 返すテーマは「UserExplorationThemeUnlock に含まれる」または「QuestUnlockExplorationTheme に紐づいていない（任務不要で初期開放）」に限定する。
+ * クリア状況は未考慮のため、返却したテーマ内のエリアは status: "available"。
  */
 export async function getExplorationMenu(): Promise<GetExplorationMenuResult> {
   const session = await getSession();
   if (!session.userId) {
     return { success: false, error: "UNAUTHORIZED" };
   }
+  const userId = session.userId;
 
-  const themes = await prisma.explorationTheme.findMany({
-    orderBy: { displayOrder: "asc" },
+  const [themes, userUnlocks, gatedThemeIdsRows] = await Promise.all([
+    prisma.explorationTheme.findMany({
+      orderBy: { displayOrder: "asc" },
     include: {
       areas: {
-        orderBy: { difficultyRank: "asc" },
+        orderBy: [{ displayOrder: "asc" }, { difficultyRank: "asc" }],
       },
     },
-  });
+    }),
+    prisma.userExplorationThemeUnlock.findMany({
+      where: { userId },
+      select: { themeId: true },
+    }),
+    prisma.questUnlockExplorationTheme.findMany({
+      select: { themeId: true },
+    }),
+  ]);
 
-  const result: ExplorationThemeSummary[] = themes.map((t) => ({
-    themeId: t.id,
-    name: t.name,
-    description: t.description ?? null,
-    // MVP では解放条件・進行状況をまだ持たないため、常に解放済み扱いとする。
-    isUnlocked: true,
-    areas: t.areas.map((a) => ({
-      areaId: a.id,
-      name: a.name,
-      description: a.description ?? null,
-      difficultyRank: a.difficultyRank,
-      recommendedLevel: a.recommendedLevel,
-      // MVP ではクリア状況をまだ管理しないため、常に available とする。
-      status: "available" as const,
-    })),
-  }));
+  const userUnlockedThemeIds = new Set(userUnlocks.map((u) => u.themeId));
+  const gatedThemeIds = new Set(gatedThemeIdsRows.map((r) => r.themeId));
+
+  const result: ExplorationThemeSummary[] = themes
+    .filter(
+      (t) => userUnlockedThemeIds.has(t.id) || !gatedThemeIds.has(t.id)
+    )
+    .map((t) => ({
+      themeId: t.id,
+      name: t.name,
+      description: t.description ?? null,
+      isUnlocked: true,
+      areas: t.areas.map((a) => ({
+        areaId: a.id,
+        name: a.name,
+        description: a.description ?? null,
+        difficultyRank: a.difficultyRank,
+        recommendedLevel: a.recommendedLevel,
+        status: "available" as const,
+      })),
+    }));
 
   return { success: true, themes: result };
+}
+
+/** 探索開始画面用：指定エリアの出撃コスト一覧（アイテム名・必要数・所持数）。ログイン必須。 */
+export type ExplorationAreaCostForStart = {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  owned: number;
+};
+
+export async function getExplorationAreaCostsForStart(
+  areaId: string
+): Promise<{ success: true; costs: ExplorationAreaCostForStart[] } | { success: false; error: string }> {
+  const session = await getSession();
+  if (!session.userId) {
+    return { success: false, error: "UNAUTHORIZED" };
+  }
+
+  const costs = await prisma.explorationAreaCost.findMany({
+    where: { areaId },
+    include: { item: { select: { id: true, name: true } } },
+    orderBy: { item: { code: "asc" } },
+  });
+  if (costs.length === 0) {
+    return { success: true, costs: [] };
+  }
+
+  const itemIds = costs.map((c) => c.itemId);
+  const invRows = await prisma.userInventory.findMany({
+    where: { userId: session.userId, itemId: { in: itemIds } },
+    select: { itemId: true, quantity: true },
+  });
+  const ownedByItem = new Map(invRows.map((r) => [r.itemId, r.quantity]));
+
+  return {
+    success: true,
+    costs: costs.map((c) => ({
+      itemId: c.itemId,
+      itemName: c.item.name,
+      quantity: c.quantity,
+      owned: ownedByItem.get(c.itemId) ?? 0,
+    })),
+  };
 }
 
 // --- 探索開始（Expedition 作成） ---
@@ -149,7 +209,32 @@ export async function startExploration(
     };
   }
 
+  // 出撃コスト（エリアごとに設定されたアイテム消費）の取得・所持チェック
+  const areaCosts = await prisma.explorationAreaCost.findMany({
+    where: { areaId },
+    include: { item: { select: { id: true, name: true } } },
+  });
+  if (areaCosts.length > 0) {
+    const costItemIds = areaCosts.map((c) => c.itemId);
+    const invRows = await prisma.userInventory.findMany({
+      where: { userId: session.userId, itemId: { in: costItemIds } },
+      select: { itemId: true, quantity: true },
+    });
+    const invByItem = new Map(invRows.map((r) => [r.itemId, r.quantity]));
+    for (const cost of areaCosts) {
+      const owned = invByItem.get(cost.itemId) ?? 0;
+      if (owned < cost.quantity) {
+        return {
+          success: false,
+          error: "AREA_COST_INSUFFICIENT",
+          message: `${cost.item.name}が不足しています（必要: ${cost.quantity}）。`,
+        };
+      }
+    }
+  }
+
   // 消耗品の検証：一種類まで・所持数・持ち込み上限（アイテムごと）
+  const totalByItem = new Map<string, number>();
   if (consumables.length > 0) {
     const itemIds = [...new Set(consumables.map((c) => c.itemId))];
     if (itemIds.length > 1) {
@@ -171,7 +256,6 @@ export async function startExploration(
     ]);
     const invByItem = new Map(userInv.map((r) => [r.itemId, r.quantity]));
     const itemMeta = new Map(items.map((i) => [i.id, i.maxCarryPerExpedition ?? 0]));
-    const totalByItem = new Map<string, number>();
     for (const c of consumables) {
       if (c.quantity <= 0) continue;
       totalByItem.set(c.itemId, (totalByItem.get(c.itemId) ?? 0) + c.quantity);
@@ -193,30 +277,6 @@ export async function startExploration(
           message: "一部の消耗品が持ち込み上限を超えています。",
         };
       }
-    }
-
-    // 開始時に倉庫から持ち込み分を減算する（未使用分も消費扱い）
-    for (const [itemId, used] of totalByItem.entries()) {
-      const inv = await prisma.userInventory.findUnique({
-        where: {
-          userId_itemId: {
-            userId: session.userId,
-            itemId,
-          },
-        },
-        select: { quantity: true },
-      });
-      if (!inv) continue;
-      const nextQuantity = Math.max(0, inv.quantity - used);
-      await prisma.userInventory.update({
-        where: {
-          userId_itemId: {
-            userId: session.userId,
-            itemId,
-          },
-        },
-        data: { quantity: nextQuantity },
-      });
     }
   }
 
@@ -244,18 +304,55 @@ export async function startExploration(
     startedAt: new Date(),
   };
 
-  // 行が無ければ CREATE、あれば再利用 UPDATE（id は維持）
-  const expedition =
-    existingExpedition == null
-      ? await prisma.expedition.create({
+  // 出撃コスト・消耗品の消費と Expedition 作成を一括で実行（ロールバック可能に）
+  const expedition = await prisma.$transaction(async (tx) => {
+    // 1. 出撃コストを在庫から減算
+    for (const cost of areaCosts) {
+      await tx.userInventory.update({
+        where: {
+          userId_itemId: {
+            userId: session.userId,
+            itemId: cost.itemId,
+          },
+        },
+        data: { quantity: { decrement: cost.quantity } },
+      });
+    }
+    // 2. 持ち込み消耗品を在庫から減算
+    for (const [itemId, used] of totalByItem.entries()) {
+      const inv = await tx.userInventory.findUnique({
+        where: {
+          userId_itemId: {
+            userId: session.userId,
+            itemId,
+          },
+        },
+        select: { quantity: true },
+      });
+      if (!inv) continue;
+      const nextQuantity = Math.max(0, inv.quantity - used);
+      await tx.userInventory.update({
+        where: {
+          userId_itemId: {
+            userId: session.userId,
+            itemId,
+          },
+        },
+        data: { quantity: nextQuantity },
+      });
+    }
+    // 3. Expedition 作成または更新
+    return existingExpedition == null
+      ? await tx.expedition.create({
           data: baseData,
           select: { id: true },
         })
-      : await prisma.expedition.update({
+      : await tx.expedition.update({
           where: { userId: session.userId },
           data: baseData,
           select: { id: true },
         });
+  });
 
   return { success: true, expeditionId: expedition.id };
 }
@@ -1045,11 +1142,11 @@ export async function runExplorationBattle(): Promise<RunExplorationBattleResult
 
 // --- 探索進行フロー用：1 ステップ進める Server Action（059 Phase 1b） ---
 
-/** advanceExplorationStep が 1 回の呼び出しで返す「進めた結果」の型 */
+/** advanceExplorationStep が 1 回の呼び出しで返す「進めた結果」の型。戦闘時は battle を省略し最小限返す（表示は getExplorationLastBattleDisplay で取得）。 */
 export type AdvanceExplorationStep =
   | {
       kind: "battle";
-      battle: RunExplorationBattleResult;
+      battle?: RunExplorationBattleResult;
     }
   | {
       kind: "skill_check";
@@ -1100,9 +1197,10 @@ export async function advanceExplorationStep(): Promise<AdvanceExplorationStepRe
         message: battle.message,
       };
     }
+    // 戦闘結果は DB の explorationState.lastBattle に保存済み。表示は getExplorationLastBattleDisplay で取得するため、返却は最小限にしてペイロードを抑える（Unexpected end of JSON input 対策）。
     return {
       success: true,
-      step: { kind: "battle", battle },
+      step: { kind: "battle" as const },
     };
   }
 
@@ -1706,10 +1804,10 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
     const finishedAt = new Date();
 
     for (const [itemId, amount] of inventoryDelta) {
-      await tx.userInventory.upsert({
-        where: { userId_itemId: { userId: session.userId!, itemId } },
-        create: { userId: session.userId!, itemId, quantity: amount },
-        update: { quantity: { increment: amount } },
+      await grantStackableItem(tx, {
+        userId: session.userId!,
+        itemId,
+        delta: amount,
       });
     }
     await tx.expedition.update({

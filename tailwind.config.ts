@@ -13,6 +13,7 @@ const config: Config = {
     "game-icons--big-gear", // 通貨アイコン
     "game-icons--three-friends", // 居住区
     "game-icons--scroll-quill", // 人材局
+    "game-icons--ringing-bell", // 通知
     "game-icons--factory", // 機工区
     "game-icons--microscope", // 研究局
     "game-icons--anvil-impact", // 工房

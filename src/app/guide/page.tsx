@@ -3,6 +3,7 @@
 // docs/07_ui_guidelines 準拠
 
 import Link from "next/link";
+import { BattleAttributesGuideSection } from "@/components/guide/battle-attributes-guide-section";
 
 const menuItems: { href: string; label: string; desc: string; wip?: boolean }[] = [
   { href: "/dashboard", label: "ダッシュボード", desc: "探索の開始・進行中探索の続き・メニューへの入口。作戦室へのショートカット。" },
@@ -12,7 +13,7 @@ const menuItems: { href: string; label: string; desc: string; wip?: boolean }[] 
   { href: "/dashboard/research", label: "研究局", desc: "設備やレシピの解放（研究グループ・研究ポイント）。" },
   { href: "/dashboard/craft", label: "工房", desc: "装備・消耗品・メカパーツの製作。" },
   { href: "/dashboard/bag", label: "物資庫", desc: "所持アイテムの確認（種別タブ：資源・装備・遺物・スキル分析書など）。" },
-  { href: "/dashboard/quests", label: "開拓任務", desc: "ストーリー・研究クエストの進捗と達成。", wip: true },
+  { href: "/dashboard/quests", label: "開拓任務", desc: "使命・研究・特殊・一般の開拓任務の進捗と達成。", wip: true },
   { href: "/dashboard/tactics", label: "作戦室", desc: "パーティプリセットの作成・編集。各プリセットの「作戦スロット」で、条件とスキルを設定。" },
 ];
 
@@ -38,7 +39,7 @@ export default function GuidePage() {
         <div className="mt-4 rounded-lg border border-base-border bg-base-elevated px-4 py-3 text-sm text-text-primary">
           <p className="font-medium text-text-muted mb-1">実装状況</p>
           <ul className="list-disc list-inside space-y-0.5 text-text-muted">
-            <li><strong className="text-text-primary">クエスト</strong>：進捗・達成画面はありますが、<strong className="text-text-primary">実装途中</strong>です。仕様の拡張や表示の調整が行われる可能性があります。</li>
+            <li><strong className="text-text-primary">開拓任務</strong>：進捗・達成画面はありますが、<strong className="text-text-primary">実装途中</strong>です。仕様の拡張や表示の調整が行われる可能性があります。</li>
             <li><strong className="text-text-primary">チャット</strong>：投稿・閲覧は利用可能です。<strong className="text-text-primary">ミュート・ブロック・通報</strong>は<strong className="text-text-primary">未実装</strong>で、実装予定です。</li>
           </ul>
         </div>
@@ -105,12 +106,13 @@ export default function GuidePage() {
             <li>作戦は <strong>パーティプリセット</strong> ごとに設定します。探索開始時に選んだプリセットの作戦が、その探索の戦闘で使われます。</li>
             <li>スキルはキャラ・メカパーツごとに決まっています。装備やメカパーツを変えると使えるスキルも変わります。</li>
           </ul>
+          <BattleAttributesGuideSection />
         </section>
 
         <section className="mt-8">
           <h2 className="text-xl font-semibold text-text-primary border-b border-base-border pb-2">6. 育成のポイント</h2>
           <ul className="mt-3 list-disc list-inside space-y-1 text-text-primary text-sm">
-            <li><strong>レベルアップ</strong>：探索やクエストで経験値を得るとレベルが上がり、<strong>CAP（総合ポイント）</strong> が増えます。増えた分の一部は自動でステータスに振られ、残りは <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover">居住区 → キャラ詳細</Link> で手動で割り振れます（各ステには上限・下限あり）。</li>
+            <li><strong>レベルアップ</strong>：探索や開拓任務で経験値を得るとレベルが上がり、<strong>CAP（総合ポイント）</strong> が増えます。増えた分の一部は自動でステータスに振られ、残りは <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover">居住区 → キャラ詳細</Link> で手動で割り振れます（各ステには上限・下限あり）。</li>
             <li><strong>装備</strong>：クラフトで装備を製作し、居住区のキャラ詳細で装着。武器・防具など枠ごとに装備可能。</li>
             <li><strong>遺物</strong>：探索で手に入る「遺物」は最大4枠まで装着可能。鑑定後に装着し、戦闘での耐性などに影響します。</li>
             <li><strong>スキル分析書</strong>：倉庫の「スキル分析書」タブで使用し、対象キャラに渡すとスキル習得・スキルレベルアップに使えます。</li>

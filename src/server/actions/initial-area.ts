@@ -12,6 +12,7 @@ import {
   PORTABLE_RATION_ITEM_CODE,
 } from "@/lib/constants/initial-area";
 import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
+import { grantStackableItem } from "@/server/lib/inventory";
 
 export type IndustrialFacility = {
   id: string;
@@ -115,10 +116,10 @@ export async function ensureGameStartGrants(userId: string): Promise<void> {
       },
     });
     if (item) {
-      await tx.userInventory.upsert({
-        where: { userId_itemId: { userId, itemId: item.id } },
-        create: { userId, itemId: item.id, quantity: INITIAL_PORTABLE_RATION_AMOUNT },
-        update: { quantity: { increment: INITIAL_PORTABLE_RATION_AMOUNT } },
+      await grantStackableItem(tx, {
+        userId,
+        itemId: item.id,
+        delta: INITIAL_PORTABLE_RATION_AMOUNT,
       });
     }
   });

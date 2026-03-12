@@ -36,31 +36,41 @@ export type GetResearchMenuResult =
 
 /**
  * 研究グループ一覧と、各グループ内の解放対象・コスト・解放済みを返す。
- * グループが「利用可能」なのは、前提グループが無いか、前提グループの派生型以外をすべて解放済みのとき。
+ * spec/068: グループの「利用可能」は任務解放のみで判定する。QuestUnlockResearchGroup に無いか、UserResearchGroupUnlock にユーザがいる場合 true。前提グループは見ない。
  */
 export async function getResearchMenu(): Promise<GetResearchMenuResult> {
   const session = await getSession();
   if (!session?.userId) return { success: false, error: "UNAUTHORIZED" };
   const userId = session.userId;
 
-  const groups = await prisma.researchGroup.findMany({
-    orderBy: { displayOrder: "asc" },
-    include: {
-      items: { orderBy: { displayOrder: "asc" } },
-      prerequisiteGroup: { select: { id: true } },
-    },
-  });
+  const [groups, facilityUnlocks, recipeUnlocks, userGroupUnlocks, gatedGroupIdsRows] =
+    await Promise.all([
+      prisma.researchGroup.findMany({
+        orderBy: { displayOrder: "asc" },
+        include: {
+          items: { orderBy: { displayOrder: "asc" } },
+        },
+      }),
+      prisma.userFacilityTypeUnlock.findMany({
+        where: { userId },
+        select: { facilityTypeId: true },
+      }),
+      prisma.userCraftRecipeUnlock.findMany({
+        where: { userId },
+        select: { craftRecipeId: true },
+      }),
+      prisma.userResearchGroupUnlock.findMany({
+        where: { userId },
+        select: { researchGroupId: true },
+      }),
+      prisma.questUnlockResearchGroup.findMany({
+        select: { researchGroupId: true },
+      }),
+    ]);
 
-  const [facilityUnlocks, recipeUnlocks] = await Promise.all([
-    prisma.userFacilityTypeUnlock.findMany({
-      where: { userId },
-      select: { facilityTypeId: true },
-    }),
-    prisma.userCraftRecipeUnlock.findMany({
-      where: { userId },
-      select: { craftRecipeId: true },
-    }),
-  ]);
+  const userUnlockedGroupIds = new Set(userGroupUnlocks.map((u) => u.researchGroupId));
+  const gatedGroupIds = new Set(gatedGroupIdsRows.map((r) => r.researchGroupId));
+
   const unlockedFacilityIds = new Set(facilityUnlocks.map((u) => u.facilityTypeId));
   const unlockedRecipeIds = new Set(recipeUnlocks.map((u) => u.craftRecipeId));
 
@@ -111,18 +121,9 @@ export async function getResearchMenu(): Promise<GetResearchMenuResult> {
     costByTarget.set(key, arr);
   }
 
-  const isGroupComplete = (groupId: string): boolean => {
-    const group = groups.find((g) => g.id === groupId);
-    if (!group) return false;
-    const nonVariant = group.items.filter((i) => !i.isVariant);
-    return nonVariant.every((i) => {
-      if (i.targetType === "facility_type") return unlockedFacilityIds.has(i.targetId);
-      return unlockedRecipeIds.has(i.targetId);
-    });
-  };
-
   const result: ResearchGroupSummary[] = groups.map((g) => {
-    const isAvailable = !g.prerequisiteGroupId || isGroupComplete(g.prerequisiteGroupId);
+    const isAvailable =
+      !gatedGroupIds.has(g.id) || userUnlockedGroupIds.has(g.id);
     const items: ResearchGroupItemSummary[] = g.items.map((it) => {
       const isUnlocked =
         it.targetType === "facility_type"
@@ -175,53 +176,44 @@ export async function unlockResearchTarget(
 
   const groupItem = await prisma.researchGroupItem.findFirst({
     where: { targetType, targetId },
-    include: {
-      researchGroup: {
-        include: { prerequisiteGroup: { select: { id: true } } },
-      },
-    },
+    include: { researchGroup: { select: { id: true } } },
   });
   if (!groupItem) {
     return { success: false, error: "NOT_FOUND", message: "その解放対象は研究グループに登録されていません。" };
   }
 
-  const [existingFacility, existingRecipe, facilityUnlocks, recipeUnlocks] = await Promise.all([
-    targetType === "facility_type"
-      ? prisma.userFacilityTypeUnlock.findUnique({
-          where: { userId_facilityTypeId: { userId, facilityTypeId: targetId } },
-        })
-      : null,
-    targetType === "craft_recipe"
-      ? prisma.userCraftRecipeUnlock.findUnique({
-          where: { userId_craftRecipeId: { userId, craftRecipeId: targetId } },
-        })
-      : null,
-    prisma.userFacilityTypeUnlock.findMany({ where: { userId }, select: { facilityTypeId: true } }),
-    prisma.userCraftRecipeUnlock.findMany({ where: { userId }, select: { craftRecipeId: true } }),
-  ]);
+  const researchGroupId = groupItem.researchGroup.id;
+
+  const [existingFacility, existingRecipe, isGroupGated, userHasGroupUnlock] =
+    await Promise.all([
+      targetType === "facility_type"
+        ? prisma.userFacilityTypeUnlock.findUnique({
+            where: { userId_facilityTypeId: { userId, facilityTypeId: targetId } },
+          })
+        : null,
+      targetType === "craft_recipe"
+        ? prisma.userCraftRecipeUnlock.findUnique({
+            where: { userId_craftRecipeId: { userId, craftRecipeId: targetId } },
+          })
+        : null,
+      prisma.questUnlockResearchGroup.findFirst({
+        where: { researchGroupId },
+        select: { questId: true },
+      }),
+      prisma.userResearchGroupUnlock.findUnique({
+        where: { userId_researchGroupId: { userId, researchGroupId } },
+        select: { researchGroupId: true },
+      }),
+    ]);
   const alreadyUnlocked =
     targetType === "facility_type" ? !!existingFacility : !!existingRecipe;
   if (alreadyUnlocked) {
     return { success: false, error: "ALREADY_UNLOCKED", message: "すでに解放済みです。" };
   }
 
-  const unlockedFacilityIds = new Set(facilityUnlocks.map((u) => u.facilityTypeId));
-  const unlockedRecipeIds = new Set(recipeUnlocks.map((u) => u.craftRecipeId));
-  const prereqGroupId = groupItem.researchGroup.prerequisiteGroupId;
-  let groupAvailable = !prereqGroupId;
-  if (prereqGroupId) {
-    const prereqItems = await prisma.researchGroupItem.findMany({
-      where: { researchGroupId: prereqGroupId, isVariant: false },
-      select: { targetType: true, targetId: true },
-    });
-    groupAvailable = prereqItems.every((i) =>
-      i.targetType === "facility_type"
-        ? unlockedFacilityIds.has(i.targetId)
-        : unlockedRecipeIds.has(i.targetId)
-    );
-  }
+  const groupAvailable = !isGroupGated || !!userHasGroupUnlock;
   if (!groupAvailable) {
-    return { success: false, error: "GROUP_LOCKED", message: "前提となる研究グループを先にクリアしてください。" };
+    return { success: false, error: "GROUP_LOCKED", message: "この研究グループは、開拓任務をクリアすると利用可能になります。" };
   }
 
   const costs = await prisma.researchUnlockCost.findMany({

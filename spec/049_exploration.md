@@ -184,6 +184,7 @@
 - **1 回の探索（Expedition）は 1 テーマ内の 1 エリアに対してのみ行う**。
 - 出撃可能メンバーは主人公＋仲間＋メカの 1〜3 体。作戦スロットは `039` のパーティプリセットをそのまま利用する。
 - 探索開始時に、持ち込む探索用消耗品の種類・数量を指定し、**Expedition 内の専用ストック**として扱う（バッグからはあらかじめ消費）。
+- 探索開始時に、**エリアごとに定義された出撃コスト**（基本探索キット等）をユーザー在庫から消費する。出撃コストは `ExplorationArea` 毎にマスタで定義し、MVP では「全エリア共通で **基本探索キット 100（1回分）**」を標準とし、将来の拡張で「特定エリアのみ追加アイテムも要求する」形に対応する。
 - `continueExploration` の呼び出しごとに、「技能判定イベント」または「戦闘イベント」または「結果イベント」を 1 回進める。
 - **探索イベントの発生判定**：**各イベント（戦闘・技能など）が終了するたびに**、次に発生させるイベント種別を抽選する（事前にキューを積まない方式）。技能イベントの発生確率はエリアの `baseSkillEventRate` で制御する。
 - **イベント種別の拡張**：技能イベントに限らず、将来的に他の探索イベント（例：技能強制成功、ハイアンドローで連勝すると報酬枠が増え続ける等、射幸・ラッキー要素）を追加できるよう、イベント種別を汎用的に扱う設計とする。MVP では「戦闘」と「技能」のみ実装。
@@ -238,6 +239,7 @@
 
 - `ExplorationTheme`：id, name, displayOrder, unlockRequirements など。
 - `ExplorationArea`：id, themeId, name, difficultyRank, baseDropMin, baseDropMax, baseSkillEventRate, enemyGroupIds, bossIds など。
+- `ExplorationAreaCost`：areaId, itemId, quantity。**エリアごとの出撃コスト**を定義するテーブル。MVP では「全エリアに対して基本探索キット（1回分=100 単位）1行だけ」を持たせる想定だが、将来的に「特定エリアのみ追加アイテム（例：探索許可証アイテム）も要求する」行を追加できるようにしておく。
 - `Expedition`：id, userId, areaId, partySnapshot, state, remainingNormalBattles, strongEnemyCleared, areaLordCleared, battleWinCount, skillSuccessCount, expGained, createdAt, finishedAt など。
 
 ### 7.2 ドロップテーブル（報酬 Phase5 の正本）
@@ -306,6 +308,23 @@
     - `/battle/exploration` では直近バトルの詳細ログは再現せず、
     - 下部の現在 HP/MP と「次へ」ボタンだけを表示する。
 - **復帰の実装**：`/battle/exploration` は進行を進めず、表示のみ（lastBattle / pendingSkillEvent / 復帰サマリ）。次ステップの進行は `advanceExplorationStep` Server Action で行い、実行後に同一 URL へリダイレクト（059 案 B）。ダッシュボードの「探索を続ける」は復帰用。探索開始直後も `advanceExplorationStep` を 1 回呼んでから遷移し、1 戦目 or 技能から表示。
+
+### 8.2.1 探索中の HP/MP の扱い（ステ反映仕様）
+
+- **最大値の算出**  
+  戦闘で用いる最大 HP/MP は、**有効基礎ステ**（spec/069：基礎＋遺物補正＋メカパーツ加算・フレーム倍率）から `computeDerivedStats` で算出する。装備の派生戦闘ステ加算は未実装のため、現状は装備変更で最大値は変わらない。実装後は装備分も最大値に反映する。
+
+- **探索開始時（初回戦闘）**  
+  Expedition 作成時は `currentHpMp` は未設定（null）。初回の戦闘では「現在値の指定なし」として扱い、**有効基礎から求めた最大 HP/MP でスタート**する。すなわち「遺物・パーツ込みの最大値スタート」である。
+
+- **探索離脱後に装備等を変えて最大 HP/MP が増えた場合**  
+  保存されている現在 HP/MP（`Expedition.currentHpMp`）は**変更しない**。表示・戦闘は「現在値 / 新しい最大値」となり、現在値だけを増やしたり満タンにしたりはしない。
+
+- **探索離脱後に装備等を変えて最大 HP/MP が現在値より低くなった場合**  
+  **現在値を新しい最大値でクランプして扱う**。  
+  - 戦闘開始時：`min(保存されている現在値, その時点の最大値)` を初期 HP/MP として使用する。  
+  - 表示：同様に `min(保存現在値, 最大値)` を現在表示に使う（実装では `Math.min(derived.HP, override.hp)` 等）。  
+  - 戦闘後は戦闘結果が `currentHpMp` に書き戻るため、保存値も新しい最大以下に更新される。戦闘を行わず復帰しただけの場合は、保存値はそのままだが表示・次回戦闘ではクランプされた値が使われる。
 
 ### 8.3 技能イベント表示（戦闘画面流用）
 

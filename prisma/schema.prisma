@@ -23,6 +23,8 @@ model User {
   gameCurrencyBalance         Int @default(0)
   premiumCurrencyFreeBalance  Int @default(0)
   premiumCurrencyPaidBalance  Int @default(0)
+  /// 研究記録書（研究解放で消費）。クエスト報酬等で付与。docs/054。
+  researchPoint               Int @default(0)
 
   // 法・年齢・地域
   birthdate   DateTime?
@@ -70,30 +72,93 @@ model User {
   userCraftRecipeUnlocks UserCraftRecipeUnlock[]
   userTitleUnlocks       UserTitleUnlock[]
   userQuests UserQuest[]
+  /// spec/068: 任務クリアで解放した探索テーマ
+  explorationThemeUnlocks UserExplorationThemeUnlock[]
+  /// spec/068: 任務クリアで解禁した研究グループ
+  researchGroupUnlocks    UserResearchGroupUnlock[]
+  notifications Notification[]
+}
+
+/// docs/066: 通知。種別（quest_accepted 等）・タイトル・本文・リンク・既読日時。
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String    // quest_accepted | system 等
+  title     String
+  body      String?
+  linkUrl   String?   // クリックで遷移先。任意。
+  readAt    DateTime? // null の間は未読
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([userId, readAt])
 }
 
 /// docs/054, spec/054_quests: クエストマスタ。ストーリー・研究・一般。
 model Quest {
   id                  String   @id @default(cuid())
   code                String   @unique
-  questType           String   // story | research | general
+  questType           String   // story(使命) | research | special(特殊) | general
   name                String
   description         String?  // 経緯・状況がわかる説明文
   clearReportMessage  String?  // クリア報告時に表示するメッセージ（ストーリー演出用）
-  prerequisiteQuestId String?
-  prerequisiteQuest    Quest?   @relation("QuestPrerequisite", fields: [prerequisiteQuestId], references: [id], onDelete: SetNull)
   /// 達成条件タイプ: area_clear | enemy_defeat | skill_success_count | equipment_craft 等
   achievementType     String
   /// 達成条件パラメータ。例: { "areaId": "cuid", "count": 1 } | { "enemyId": "cuid", "count": 10 }
   achievementParam    Json
-  /// 報酬: 研究ポイント（研究クエストで使用）
-  rewardResearchPoint Int      @default(0)
-  rewardTitleId       String?
+  /// 報酬: 無償GRA（premiumCurrencyFreeBalance に加算）
+  rewardGra             Int      @default(0)
+  /// 報酬: 研究記録書（User.researchPoint に加算）
+  rewardResearchPoint   Int      @default(0)
+  rewardTitleId         String?
+  /// 報酬アイテム。JSON 配列: [{ "itemId": "cuid", "amount": 2 }, ...]
+  rewardItems           Json?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  nextQuests Quest[]  @relation("QuestPrerequisite")
-  userQuests UserQuest[]
+  /// この任務の前提（すべて完了で出現）。複数可。
+  prerequisites   QuestPrerequisite[] @relation("QuestRequires")
+  /// この任務を前提にしている任務
+  asPrerequisiteOf QuestPrerequisite[] @relation("QuestAsPrerequisite")
+  userQuests      UserQuest[]
+  /// spec/068: この任務クリアで解放する探索テーマ
+  unlockExplorationThemes QuestUnlockExplorationTheme[]
+  /// spec/068: この任務クリアで解禁する研究グループ
+  unlockResearchGroups    QuestUnlockResearchGroup[]
+}
+
+/// 開拓任務の前提条件（複数可）。questId は prerequisiteQuestId をすべて完了すると出現。
+model QuestPrerequisite {
+  questId             String
+  prerequisiteQuestId String
+  quest               Quest @relation("QuestRequires", fields: [questId], references: [id], onDelete: Cascade)
+  prerequisiteQuest   Quest @relation("QuestAsPrerequisite", fields: [prerequisiteQuestId], references: [id], onDelete: Cascade)
+
+  @@id([questId, prerequisiteQuestId])
+  @@index([prerequisiteQuestId])
+}
+
+/// spec/068: 任務クリア報告で解放する探索テーマの紐づけ。
+model QuestUnlockExplorationTheme {
+  questId  String
+  themeId  String
+  quest    Quest            @relation(fields: [questId], references: [id], onDelete: Cascade)
+  theme    ExplorationTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@id([questId, themeId])
+  @@index([themeId])
+}
+
+/// spec/068: 任務クリア報告で解禁する研究グループの紐づけ。
+model QuestUnlockResearchGroup {
+  questId         String
+  researchGroupId String
+  quest          Quest         @relation(fields: [questId], references: [id], onDelete: Cascade)
+  researchGroup  ResearchGroup @relation(fields: [researchGroupId], references: [id], onDelete: Cascade)
+
+  @@id([questId, researchGroupId])
+  @@index([researchGroupId])
 }
 
 /// docs/054: ユーザーごとのクエスト進行。出現＝受注扱い（オート）。
@@ -349,6 +414,8 @@ model Item {
   code        String   @unique // water, drinkable_water, wheat, flour, portable_ration
   name        String
   category    String   @default("material") // spec/045: material | consumable | blueprint | skill_book | paid
+  /// ユーザー1人あたりの所持上限個数。NULL の場合は上限なし。仕様は spec/045・docs/026 を参照。
+  maxOwnedPerUser Int?
   /// category=skill_book のとき: この分析書で習得/レベルアップできるスキル。spec/052。
   skillId     String?
   skill       Skill?   @relation(fields: [skillId], references: [id], onDelete: SetNull)
@@ -368,6 +435,7 @@ model Item {
 
   dropTableEntries DropTableEntry[]
   researchUnlockCosts ResearchUnlockCost[]
+  explorationAreaCosts ExplorationAreaCost[]
 
   @@index([skillId])
 }
@@ -458,6 +526,21 @@ model ResearchGroup {
 
   nextGroups ResearchGroup[] @relation("ResearchGroupPrerequisite")
   items      ResearchGroupItem[]
+  /// spec/068: このグループを解禁する任務の紐づけ
+  questUnlocks QuestUnlockResearchGroup[]
+  /// spec/068: ユーザごとの解禁済み
+  userUnlocks  UserResearchGroupUnlock[]
+}
+
+/// spec/068: ユーザが任務クリアで解禁した研究グループ。
+model UserResearchGroupUnlock {
+  userId          String
+  researchGroupId String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchGroup   ResearchGroup @relation(fields: [researchGroupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, researchGroupId])
+  @@index([userId])
 }
 
 /// docs/054: グループに属する解放対象。targetType + targetId で設備種別 or クラフトレシピを参照。
@@ -596,12 +679,16 @@ model RelicType {
   relicInstances RelicInstance[]
 }
 
-/// spec/051: 遺物用パッシブ効果マスタ。表示・戦闘効果は Next で拡張可。
+/// spec/051, docs/073: 遺物用パッシブ効果マスタ。effectType+param で戦闘効果を定義（案A: 1遺物1効果）。
 model RelicPassiveEffect {
   id          String   @id @default(cuid())
   code        String   @unique
   name        String
   description String?
+  /// docs/073: 効果種類。final_physical_damage_pct, final_magic_damage_pct, final_attribute_damage_pct, hp_regen_per_turn 等。
+  effectType  String?
+  /// docs/073: 効果ごとのパラメータ（pct, attribute, amount 等）。正本は docs/073 §5。
+  param       Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1002,6 +1089,21 @@ model ExplorationTheme {
   updatedAt   DateTime @updatedAt
 
   areas ExplorationArea[]
+  /// spec/068: このテーマを解放する任務の紐づけ
+  questUnlocks QuestUnlockExplorationTheme[]
+  /// spec/068: ユーザごとの解放済み
+  userUnlocks  UserExplorationThemeUnlock[]
+}
+
+/// spec/068: ユーザが任務クリアで解放した探索テーマ。
+model UserExplorationThemeUnlock {
+  userId  String
+  themeId String
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme   ExplorationTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, themeId])
+  @@index([userId])
 }
 
 /// spec/049_exploration, docs/020: 探索エリア（実際に選んで出撃する場所）。
@@ -1013,6 +1115,7 @@ model ExplorationArea {
   code        String   @unique        // 安定参照用コード（yuran_paved_road など）
   name        String                 // 表示名（遊覧舗装路跡 等）
   description String?                // 説明
+  displayOrder Int     @default(0)   // テーマ内での一覧表示順（小さいほど上）
 
   difficultyRank   Int      @default(1)  // 体感難易度ランク（1,2,3…）
   recommendedLevel Int      @default(1)  // 推奨レベル
@@ -1059,7 +1162,23 @@ model ExplorationArea {
 
   dropTables DropTable[]
 
+  /// spec/049: エリアごとの出撃コスト（探索開始時にユーザー在庫から消費するアイテム・数量）
+  areaCosts ExplorationAreaCost[]
+
   @@index([themeId])
+}
+
+/// spec/049_exploration §7.1: エリアごとの出撃コスト（itemId + quantity）。探索開始時にユーザー在庫から消費する。
+model ExplorationAreaCost {
+  id       String   @id @default(cuid())
+  areaId   String
+  area     ExplorationArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity Int      // 1 以上。探索開始時にこの数量を消費する。
+
+  @@unique([areaId, itemId])
+  @@index([areaId])
 }
 
 /// spec/049_exploration, docs/020: 1 回の探索出撃（Expedition）の進行・結果。

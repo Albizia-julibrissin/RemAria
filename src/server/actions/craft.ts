@@ -18,6 +18,7 @@ import {
   parseEquipmentStatGenConfig,
   parseMechaPartStatGenConfig,
 } from "@/lib/craft/parse-stat-gen-config";
+import { grantStackableItem } from "@/server/lib/inventory";
 
 export type CraftRecipeInputRow = {
   itemId: string;
@@ -241,12 +242,12 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
       if (recipe!.outputKind === "item" && recipe!.outputItemId) {
         const itemId = recipe!.outputItemId;
         const itemName = recipe!.outputItem?.name ?? "アイテム";
-        await tx.userInventory.upsert({
-          where: { userId_itemId: { userId, itemId } },
-          create: { userId, itemId, quantity: 1 },
-          update: { quantity: { increment: 1 } },
+        const granted = await grantStackableItem(tx, {
+          userId,
+          itemId,
+          delta: 1,
         });
-        return { kind: "item" as const, itemId, name: itemName, quantity: 1 };
+        return { kind: "item" as const, itemId, name: itemName, quantity: granted };
       }
 
       throw new Error("INVALID_RECIPE");

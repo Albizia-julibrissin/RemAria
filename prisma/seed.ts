@@ -9,22 +9,44 @@
  * 必要なマスタは「管理画面で編集した DB をバックアップし、復元する」運用とする。
  * 手順: manage/BACKUP_RESTORE.md を参照。
  *
- * テストユーザー（いずれもパスワード: password123）:
- * - test1@example.com … テストユーザー1（主人公・仲間・通貨・所持品を投入）
- * - test2@example.com … テストユーザー2
+ * ユーザー:
+ * - 管理人: 環境変数 ADMIN_EMAIL（未設定時は test1@example.com）で作成。
+ *   パスワードは ADMIN_PASSWORD が設定されていればそれを使用、なければランダム生成してコンソールに表示。
+ *   管理画面（/dashboard/admin/*）に入室できるのはこのアカウントのみ。
+ * - test2@example.com: テスト用（パスワード: password123）
+ *
+ * 本番で管理用アカウントを使う場合は .env に ADMIN_EMAIL と ADMIN_PASSWORD を設定してからシードを実行すること。
  *
  * 初期設備の配置・強制配置はアプリ側で行うため、シードでは行わない。
  */
 /// <reference path="../node_modules/.prisma/client/index.d.ts" />
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 
 const prisma = new PrismaClient();
 
-const TEST_USERS = [
-  { email: "test1@example.com", accountId: "test_user_1", password: "password123", name: "テストユーザー1" },
-  { email: "test2@example.com", accountId: "test_user_2", password: "password123", name: "テストユーザー2" },
-] as const;
+const DEFAULT_ADMIN_EMAIL = "test1@example.com";
+
+/** 管理人アカウント用: メールは env、名前は「管理人」、パスワードは env またはランダム */
+function getAdminSeedConfig(): { email: string; accountId: string; password: string; name: string } {
+  const email = process.env.ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL;
+  const password =
+    process.env.ADMIN_PASSWORD ?? crypto.randomBytes(24).toString("base64url");
+  return {
+    email,
+    accountId: "admin",
+    password,
+    name: "管理人",
+  };
+}
+
+const TEST_USER_2 = {
+  email: "test2@example.com",
+  accountId: "test_user_2",
+  password: "password123",
+  name: "テストユーザー2",
+} as const;
 
 /** テスト用：Lv50 時点の基礎ステータス（spec/048）。 */
 const LEVEL_50_BASE_STATS = {
@@ -56,13 +78,13 @@ async function ensureProtagonistHasAllBattleSkills(characterId: string): Promise
   console.log(`戦闘スキル ${battleSkills.length} 種を習得済みにしました`);
 }
 
-/** test1 に探索用消耗品を各10個所持させる。アイテムが DB に存在すること前提。 */
-async function seedTest1Consumables(): Promise<void> {
-  const test1 = await prisma.user.findUnique({
-    where: { email: "test1@example.com" },
+/** 管理人に探索用消耗品を各10個所持させる。アイテムが DB に存在すること前提。 */
+async function seedAdminConsumables(adminEmail: string): Promise<void> {
+  const admin = await prisma.user.findUnique({
+    where: { email: adminEmail },
     select: { id: true },
   });
-  if (!test1) return;
+  if (!admin) return;
 
   const codes = ["consumable_hp_10", "consumable_mp_10"];
   const items = await prisma.item.findMany({
@@ -71,21 +93,21 @@ async function seedTest1Consumables(): Promise<void> {
   });
   for (const item of items) {
     await prisma.userInventory.upsert({
-      where: { userId_itemId: { userId: test1.id, itemId: item.id } },
-      create: { userId: test1.id, itemId: item.id, quantity: 10 },
+      where: { userId_itemId: { userId: admin.id, itemId: item.id } },
+      create: { userId: admin.id, itemId: item.id, quantity: 10 },
       update: { quantity: 10 },
     });
   }
-  console.log("test1: 探索用消耗品を各10個所持");
+  console.log("管理人: 探索用消耗品を各10個所持");
 }
 
-/** test1 にスキル分析書を10冊付与。 */
-async function seedTest1SkillBooks(): Promise<void> {
-  const test1 = await prisma.user.findUnique({
-    where: { email: "test1@example.com" },
+/** 管理人にスキル分析書を10冊付与。 */
+async function seedAdminSkillBooks(adminEmail: string): Promise<void> {
+  const admin = await prisma.user.findUnique({
+    where: { email: adminEmail },
     select: { id: true },
   });
-  if (!test1) return;
+  if (!admin) return;
 
   const item = await prisma.item.findUnique({
     where: { code: "skill_book_メテオスォーム" },
@@ -94,112 +116,131 @@ async function seedTest1SkillBooks(): Promise<void> {
   if (!item) return;
 
   await prisma.userInventory.upsert({
-    where: { userId_itemId: { userId: test1.id, itemId: item.id } },
-    create: { userId: test1.id, itemId: item.id, quantity: 10 },
+    where: { userId_itemId: { userId: admin.id, itemId: item.id } },
+    create: { userId: admin.id, itemId: item.id, quantity: 10 },
     update: { quantity: 10 },
   });
-  console.log("test1: スキル分析書（メテオスォーム）を10冊所持");
+  console.log("管理人: スキル分析書（メテオスォーム）を10冊所持");
 }
 
 /** テスト用データのみ投入。マスタは事前に DB に存在すること（バックアップ復元など）。 */
 async function runTest(): Promise<void> {
-  for (const u of TEST_USERS) {
-    const passwordHash = await bcrypt.hash(u.password, 10);
-    const user = await prisma.user.upsert({
-      where: { email: u.email },
-      create: { email: u.email, accountId: u.accountId, passwordHash, name: u.name },
-      update: { accountId: u.accountId, passwordHash, name: u.name },
+  const adminConfig = getAdminSeedConfig();
+  const adminPasswordWasRandom = !process.env.ADMIN_PASSWORD;
+
+  const adminHash = await bcrypt.hash(adminConfig.password, 10);
+  const adminUser = await prisma.user.upsert({
+    where: { email: adminConfig.email },
+    create: {
+      email: adminConfig.email,
+      accountId: adminConfig.accountId,
+      passwordHash: adminHash,
+      name: adminConfig.name,
+    },
+    update: { accountId: adminConfig.accountId, passwordHash: adminHash, name: adminConfig.name },
+  });
+  console.log(`Created/updated: ${adminConfig.email} (${adminConfig.name})`);
+
+  {
+    const existing = await prisma.character.findFirst({
+      where: { userId: adminUser.id, category: "protagonist" },
     });
-    console.log(`Created/updated: ${u.email}`);
-
-    if (u.email === "test1@example.com") {
-      const existing = await prisma.character.findFirst({
-        where: { userId: user.id, category: "protagonist" },
-      });
-      if (existing) {
-        await prisma.character.update({
-          where: { id: existing.id },
-          data: {
-            displayName: user.name,
-            iconFilename: "1.gif",
-            level: 50,
-            ...LEVEL_50_BASE_STATS,
-          },
-        });
-      } else {
-        const character = await prisma.character.create({
-          data: {
-            userId: user.id,
-            category: "protagonist",
-            displayName: user.name,
-            iconFilename: "1.gif",
-            level: 50,
-            ...LEVEL_50_BASE_STATS,
-          },
-        });
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { protagonistCharacterId: character.id },
-        });
-      }
-      console.log("Created/updated: test1 の主人公");
-
-      const existingCompanion = await prisma.character.findFirst({
-        where: { userId: user.id, category: "companion" },
-      });
-      if (existingCompanion) {
-        await prisma.character.update({
-          where: { id: existingCompanion.id },
-          data: {
-            displayName: "初期仲間",
-            iconFilename: "2.gif",
-            level: 50,
-            ...LEVEL_50_BASE_STATS,
-          },
-        });
-      } else {
-        await prisma.character.create({
-          data: {
-            userId: user.id,
-            category: "companion",
-            displayName: "初期仲間",
-            iconFilename: "2.gif",
-            level: 50,
-            ...LEVEL_50_BASE_STATS,
-          },
-        });
-      }
-      console.log("Created/updated: test1 の初期仲間");
-
-      await prisma.user.update({
-        where: { id: user.id },
+    if (existing) {
+      await prisma.character.update({
+        where: { id: existing.id },
         data: {
-          gameCurrencyBalance: 5000,
-          premiumCurrencyFreeBalance: 500,
-          premiumCurrencyPaidBalance: 500,
+          displayName: adminUser.name,
+          iconFilename: "1.gif",
+          level: 50,
+          ...LEVEL_50_BASE_STATS,
         },
       });
-      console.log("test1 に通貨を付与");
+    } else {
+      const character = await prisma.character.create({
+        data: {
+          userId: adminUser.id,
+          category: "protagonist",
+          displayName: adminUser.name,
+          iconFilename: "1.gif",
+          level: 50,
+          ...LEVEL_50_BASE_STATS,
+        },
+      });
+      await prisma.user.update({
+        where: { id: adminUser.id },
+        data: { protagonistCharacterId: character.id },
+      });
     }
+    console.log("Created/updated: 管理人の主人公");
+
+    const existingCompanion = await prisma.character.findFirst({
+      where: { userId: adminUser.id, category: "companion" },
+    });
+    if (existingCompanion) {
+      await prisma.character.update({
+        where: { id: existingCompanion.id },
+        data: {
+          displayName: "初期仲間",
+          iconFilename: "2.gif",
+          level: 50,
+          ...LEVEL_50_BASE_STATS,
+        },
+      });
+    } else {
+      await prisma.character.create({
+        data: {
+          userId: adminUser.id,
+          category: "companion",
+          displayName: "初期仲間",
+          iconFilename: "2.gif",
+          level: 50,
+          ...LEVEL_50_BASE_STATS,
+        },
+      });
+    }
+    console.log("Created/updated: 管理人の初期仲間");
+
+    await prisma.user.update({
+      where: { id: adminUser.id },
+      data: {
+        gameCurrencyBalance: 5000,
+        premiumCurrencyFreeBalance: 500,
+        premiumCurrencyPaidBalance: 500,
+      },
+    });
+    console.log("管理人に通貨を付与");
   }
 
-  await seedTest1Consumables();
-  await seedTest1SkillBooks();
+  const test2Hash = await bcrypt.hash(TEST_USER_2.password, 10);
+  await prisma.user.upsert({
+    where: { email: TEST_USER_2.email },
+    create: {
+      email: TEST_USER_2.email,
+      accountId: TEST_USER_2.accountId,
+      passwordHash: test2Hash,
+      name: TEST_USER_2.name,
+    },
+    update: { accountId: TEST_USER_2.accountId, passwordHash: test2Hash, name: TEST_USER_2.name },
+  });
+  console.log(`Created/updated: ${TEST_USER_2.email}`);
 
-  const test1 = await prisma.user.findUnique({
-    where: { email: "test1@example.com" },
+  await seedAdminConsumables(adminConfig.email);
+  await seedAdminSkillBooks(adminConfig.email);
+
+  const adminForSeed = await prisma.user.findUnique({
+    where: { email: adminConfig.email },
     select: { id: true, protagonistCharacterId: true },
   });
-  if (test1) {
-    if (test1.protagonistCharacterId) {
-      await ensureProtagonistHasAllBattleSkills(test1.protagonistCharacterId);
+  if (adminForSeed) {
+    if (adminForSeed.protagonistCharacterId) {
+      await ensureProtagonistHasAllBattleSkills(adminForSeed.protagonistCharacterId);
       await prisma.character.update({
-        where: { id: test1.protagonistCharacterId },
+        where: { id: adminForSeed.protagonistCharacterId },
         data: { level: 50, ...LEVEL_50_BASE_STATS },
       });
     }
     const companions = await prisma.character.findMany({
-      where: { userId: test1.id, category: "companion" },
+      where: { userId: adminForSeed.id, category: "companion" },
       select: { id: true },
     });
     for (const c of companions) {
@@ -209,6 +250,13 @@ async function runTest(): Promise<void> {
         data: { level: 50, ...LEVEL_50_BASE_STATS },
       });
     }
+  }
+
+  if (adminPasswordWasRandom) {
+    console.log("\n--- 管理人アカウント（初回ログイン用） ---");
+    console.log(`メール: ${adminConfig.email}`);
+    console.log(`パスワード: ${adminConfig.password}`);
+    console.log("※ 本番では .env に ADMIN_EMAIL と ADMIN_PASSWORD を設定してシードを実行してください。\n");
   }
 }
 

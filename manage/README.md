@@ -20,11 +20,12 @@
 | [admin_exploration_theme_area_edit.md](./admin_exploration_theme_area_edit.md) | **管理者用** 探索テーマ・エリア編集。ExplorationTheme の code/name/表示順、ExplorationArea の code/name・敵グループ・体数確率・強敵・領域主等。spec/049・docs/020。 |
 | [admin_skill_edit.md](./admin_skill_edit.md) | **管理者用** スキル編集。name / 戦闘用項目。効果は既存 effectType のみ選択可。効果の説明一覧あり。spec/038・docs/042。 |
 | [admin_research_group_edit.md](./admin_research_group_edit.md) | **管理者用** 研究グループ編集。ResearchGroup / ResearchGroupItem / ResearchUnlockCost。spec/047。 |
-| [admin_item_master_edit.md](./admin_item_master_edit.md) | **管理者用** アイテムマスタ編集。Item の code / name / category / skillId / consumableEffect / maxCarryPerExpedition の編集手順・API。spec/045 と対応。 |
+| [admin_item_master_edit.md](./admin_item_master_edit.md) | **管理者用** アイテムマスタ編集。Item の code / name / category / skillId / consumableEffect / maxCarryPerExpedition / maxOwnedPerUser の編集手順・API。spec/045 と対応。 |
 | [admin_facility_type_edit.md](./admin_facility_type_edit.md) | **管理者用** 設備種別編集。FacilityType の code / name 等。 |
 | [admin_facility_recipe_edit.md](./admin_facility_recipe_edit.md) | **管理者用** 設備生産レシピ編集。Recipe / RecipeInput。 |
 | [admin_craft_recipe_edit.md](./admin_craft_recipe_edit.md) | **管理者用** クラフトレシピ編集。CraftRecipe / CraftRecipeInput。 |
 | [TYPE_MISMATCH_INSPECTION.md](./TYPE_MISMATCH_INSPECTION.md) | **型ずれ**。seed と Prisma 型の不整合の原因・対処（db:generate、TS 再起動、Item skillId 等）。 |
+| [VERIFICATION_LOG.md](./VERIFICATION_LOG.md) | **検証ログ**。戦闘ログ内の検証用表示（遺物適用前ダメージ等）の取り扱い。環境変数・表示条件・今後の拡張方針。 |
 
 ## 使い方
 

@@ -43,7 +43,7 @@
 
 ### 3.1 Item（拡張）
 
-既存 Item に **category** を追加する。
+既存 Item に **category** と **所持上限（maxOwnedPerUser）** を追加する。
 
 | カラム | 型 | 説明 |
 |--------|-----|------|
@@ -51,8 +51,12 @@
 | code | String, UNIQUE | 既存 |
 | name | String | 既存 |
 | **category** | **String, NOT NULL, default 'material'** | material / consumable / blueprint / skill_book / paid のいずれか。拡張時はマスタで追加。 |
+| **maxOwnedPerUser** | **Int?（NULL 可）** | ユーザー 1 人あたりの**所持上限個数**。NULL の場合は「上限なし」。未指定の既存アイテムは後述の共通ルールで扱う。 |
 
 - 既存の素材・製品は category = `material` とする。seed またはマイグレーションで設定する。
+- 所持上限は基本方針として **すべてのアイテムで 30,000 個/ユーザー** を上限（maxOwnedPerUser = 30000）とし、  
+  - 探索用資源である **基本探索キット** は「1日 ≒ 10,000 個（100 回分）」の基準から **3 日分 ≒ 30,000 個** を上限にするイメージで設定する。  
+  - 特別に厳しい上限が必要なレアアイテム等は、個別に maxOwnedPerUser を別値（例: 999）にする。
 
 ### 3.2 UserInventory（既存・変更なし）
 
@@ -151,7 +155,10 @@
 
 ### 4.2 在庫増減の前提（本 spec では API を持たない）
 
-- **増加**：036 の受け取り、047 の建設完了時の付与、046 のクラフト出力（消耗品）、探索報酬など。いずれも他 spec で UserInventory を更新する。
+- **増加**：036 の受け取り、047 の建設完了時の付与、046 のクラフト出力（消耗品）、探索報酬など。いずれも他 spec で UserInventory を更新する。  
+  このとき、対象 Item の maxOwnedPerUser（NULL なら上限なし）を見て、  
+  `newQuantity = min(currentQuantity + delta, maxOwnedPerUser)` となるように**クリップ（上限で打ち止め）**する。  
+  `currentQuantity + delta` が上限を超えていた場合、**超えたぶんは付与されず破棄**される。必要に応じて「所持上限に達しているため一部が破棄された」旨をログや UI メッセージで通知する。
 - **消費**：047 の建設時の資源消費、046 のクラフト入力。他 spec で UserInventory を減算する。減算後 quantity が 0 未満にならないようトランザクションで検証する。
 
 ------------------------------------------------------------------------

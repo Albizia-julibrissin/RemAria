@@ -8,6 +8,8 @@ import bcrypt from "bcryptjs";
 import { userRepository } from "@/server/repositories/user-repository";
 import { getSession } from "@/lib/auth/session";
 import { ensureInitialFacilities, ensureGameStartGrants } from "@/server/actions/initial-area";
+import { createNotification } from "@/server/actions/notification";
+import { DISPLAY_NAME_MAX_BYTES, DISPLAY_NAME_MAX_CHARS } from "@/lib/constants/protagonist";
 
 // --- バリデーション（spec 5.4） ---
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -17,7 +19,6 @@ const ACCOUNT_ID_MIN_LEN = 3;
 const ACCOUNT_ID_MAX_LEN = 32;
 const PASSWORD_MIN_LEN = 8;
 const PASSWORD_MAX_LEN = 72;
-const NAME_MAX_LEN = 50;
 
 export type AuthResult =
   | { success: true; userId: string }
@@ -46,9 +47,21 @@ function validateAccountId(accountId: unknown): string | null {
   return null;
 }
 
+function approxUtf8ByteLength(str: string): number {
+  // おおよそ UTF-8 バイト長を求める（ASCII 1 バイト / それ以外 2 バイト扱い）
+  return Array.from(str).reduce((sum, ch) => {
+    const code = ch.charCodeAt(0);
+    return sum + (code <= 0x7f ? 1 : 2);
+  }, 0);
+}
+
 function validateName(name: unknown): string | null {
   if (typeof name !== "string" || !name.trim()) return "名前を入力してください";
-  if (name.trim().length > NAME_MAX_LEN) return "名前は50文字以内で入力してください";
+  const trimmed = name.trim();
+  const byteLen = approxUtf8ByteLength(trimmed);
+  if (trimmed.length > DISPLAY_NAME_MAX_CHARS || byteLen > DISPLAY_NAME_MAX_BYTES) {
+    return `名前はおおよそ全角${DISPLAY_NAME_MAX_CHARS}文字・半角${DISPLAY_NAME_MAX_BYTES}文字（UTF-8 約 ${DISPLAY_NAME_MAX_BYTES} バイト）以内で入力してください`;
+  }
   return null;
 }
 
@@ -104,6 +117,18 @@ export async function register(formData: FormData): Promise<AuthResult> {
     await ensureGameStartGrants(user.id);
   } catch {
     // 付与に失敗しても登録は成功させる
+  }
+
+  // 開拓任務への誘導：初回のみ「あなたに依頼がきています。」で任務ページへ誘導（受注時通知は廃止）
+  try {
+    await createNotification({
+      userId: user.id,
+      type: "quest_accepted",
+      title: "あなたに依頼がきています。",
+      linkUrl: "/dashboard/quests",
+    });
+  } catch {
+    // 通知作成に失敗しても登録は成功させる
   }
 
   const session = await getSession();

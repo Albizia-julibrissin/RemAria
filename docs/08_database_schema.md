@@ -32,11 +32,12 @@
 | protagonistCharacterId | String | NULL可, UNIQUE, FK→Character.id | 主人公1体（category=protagonist）。登録時または初回キャラ作成時に設定。 |
 | companionHireCount | Int | NOT NULL, default 0 | 仲間雇用可能回数（購入で+1、仲間作成で-1）。spec/030。 |
 | partyPresetLimit | Int | NOT NULL, default 5 | パーティプリセットの最大所持数（作戦室）。将来は課金等でユーザごとに増やせる想定。spec/039。 |
+| researchPoint | Int | NOT NULL, default 0 | 研究記録書の所持数。クエスト報酬等で加算、研究解放で消費。表示名は「研究記録書」。docs/054。 |
 
 **アカウント登録時の入力項目**
 - **メールアドレス**（必須・一意）：ログイン識別子。
 - **ID**（accountId）（必須・一意）：英数字。**重複不可**（他ユーザーと被ると登録エラー）。
-- **名前**（name）（必須）：表示名。**重複可**。この値が**主人公キャラの表示名**としても使われる（名前は User にのみ保持し、二重管理しない）。
+- **名前**（name）（必須）：表示名。**重複可**。この値が**主人公キャラの表示名**としても使われる（名前は User にのみ保持し、二重管理しない）。長さは **おおよそ全角 12 文字・半角 24 文字（UTF-8 約 24 バイト）以内** を想定し、バリデーションもこれに従う。
 
 **リレーション**
 - `Character`（主人公） … protagonistCharacterId で 1対1
@@ -239,6 +240,22 @@ FacilityType (N) ----< FacilityTypeTag >---- (N) Tag
 - **User.companionHireCount**：仲間雇用可能回数。購入で+1、仲間作成で-1（spec/030）。
 - **ChatMessage**：全体チャット（spec/037, docs/022）。直近ログのみ保持。
 - **Tag・FacilityType・FacilityTypeTag**：設備タグと工業スキル効果の対象。docs/15。設備の型（基本型／派生型）は docs/017。初期データは seed で投入。
+
+### 1.12 spec/068: 任務による機能解放（探索テーマ・研究グループ）
+
+開拓任務のクリア報告時に、紐づく探索テーマ・研究グループをユーザに「解放済み」として記録する（フラグ方式）。**正は schema.prisma**。
+
+| モデル | 説明 | 主なカラム・制約 |
+|--------|------|-------------------|
+| **QuestUnlockExplorationTheme** | 任務→テーマの紐づけ（この任務クリアでこのテーマ解放） | questId, themeId。@@id([questId, themeId])。FK onDelete: Cascade。@@index([themeId])。 |
+| **UserExplorationThemeUnlock** | ユーザが解放済みの探索テーマ | userId, themeId。@@id([userId, themeId])。@@index([userId])。 |
+| **QuestUnlockResearchGroup** | 任務→研究グループの紐づけ（この任務クリアでこのグループ解禁） | questId, researchGroupId。@@id([questId, researchGroupId])。@@index([researchGroupId])。 |
+| **UserResearchGroupUnlock** | ユーザが解禁済みの研究グループ | userId, researchGroupId。@@id([userId, researchGroupId])。@@index([userId])。 |
+
+- **User** に `explorationThemeUnlocks`, `researchGroupUnlocks` のリレーション追加。
+- **Quest** に `unlockExplorationThemes`, `unlockResearchGroups` のリレーション追加。
+- **ExplorationTheme** に `questUnlocks`, `userUnlocks` 追加。**ResearchGroup** に `questUnlocks`, `userUnlocks` 追加。
+- 詳細は **docs/068_quest_unlock_themes_and_research.md** と **spec/068_quest_unlock_themes_and_research.md**。
 
 ---
 

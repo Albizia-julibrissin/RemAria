@@ -39,6 +39,9 @@ export function ExplorationAbortClient() {
             <p className="mt-2 text-xs text-text-muted">
               撤退すると報酬は一切得られません。
             </p>
+            <p className="mt-1 text-xs text-text-muted">
+              消費した資源は戻りません。
+            </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"

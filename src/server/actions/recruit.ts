@@ -11,7 +11,7 @@ import {
   COMPANION_HIRE_PRICE_PREMIUM,
   COMPANION_MAX_COUNT,
 } from "@/lib/constants/companion";
-import { DISPLAY_NAME_MAX_LEN } from "@/lib/constants/protagonist";
+import { DISPLAY_NAME_MAX_BYTES, DISPLAY_NAME_MAX_CHARS } from "@/lib/constants/protagonist";
 import { getProtagonistIconFilenames } from "@/server/lib/protagonist-icons";
 
 export type CompanionHireState = {
@@ -36,6 +36,14 @@ export type CreateCompanionResult =
 export type DismissCompanionResult =
   | { success: true }
   | { success: false; error: string; message: string };
+
+function approxUtf8ByteLength(str: string): number {
+  // おおよそ UTF-8 バイト長を求める（ASCII 1 バイト / それ以外 2 バイト扱い）
+  return Array.from(str).reduce((sum, ch) => {
+    const code = ch.charCodeAt(0);
+    return sum + (code <= 0x7f ? 1 : 2);
+  }, 0);
+}
 
 /** 雇用斡旋所表示用の状態を取得。spec/030 */
 export async function getCompanionHireState(): Promise<CompanionHireState | null> {
@@ -177,8 +185,13 @@ export async function createCompanion(formData: FormData): Promise<CreateCompani
     return { success: false, error: "VALIDATION_ERROR", message: "表示名を入力してください" };
   }
   const trimmedName = displayName.trim();
-  if (trimmedName.length > DISPLAY_NAME_MAX_LEN) {
-    return { success: false, error: "VALIDATION_ERROR", message: `表示名は${DISPLAY_NAME_MAX_LEN}文字以内で入力してください` };
+  const byteLen = approxUtf8ByteLength(trimmedName);
+  if (trimmedName.length > DISPLAY_NAME_MAX_CHARS || byteLen > DISPLAY_NAME_MAX_BYTES) {
+    return {
+      success: false,
+      error: "VALIDATION_ERROR",
+      message: `表示名はおおよそ全角${DISPLAY_NAME_MAX_CHARS}文字・半角${DISPLAY_NAME_MAX_BYTES}文字（UTF-8 約 ${DISPLAY_NAME_MAX_BYTES} バイト）以内で入力してください`,
+    };
   }
   const allowedIcons = getProtagonistIconFilenames();
   if (typeof iconFilename !== "string" || !iconFilename.trim() || !allowedIcons.includes(iconFilename.trim())) {

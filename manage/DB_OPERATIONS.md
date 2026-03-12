@@ -14,6 +14,22 @@
 
 接続情報は `.env` の `DATABASE_URL`。スキーマ変更後は `npm run db:generate` で Prisma クライアントを更新する。
 
+### 1.1 Docker の Postgres バージョンを変える
+
+**変えてよい。** 使っているのは「PostgreSQL が入ったコンテナ」の**イメージの種類**だけ。
+
+- **どこを変えるか**: プロジェクト直下の `docker-compose.yml` の `image:` の行。
+  - いま: `image: postgres:16-alpine`
+  - 例: 16 のまま別タグにしたい → `postgres:16`（Alpine じゃないフルイメージ）など。
+  - 例: バージョンを変えたい → `postgres:15-alpine` や `postgres:17-alpine` など。
+- **変えたあと**:
+  1. `npm run db:stop` でコンテナを止める。
+  2. 必要なら既存のデータをバックアップ（`npm run db:backup`。接続先は `.env` のローカル DB のまま）。
+  3. `docker compose up -d db` または `npm run db:start` でコンテナを起動する。
+- **注意**: すでに **同じメジャーバージョン**（16 → 16 の別タグなど）なら、そのまま起動し直すだけでよい。**メジャーが変わる**（14 → 16 など）場合は、Postgres は「古いデータディレクトリを新しいメジャーでそのまま読めない」ことがある。そのときは「いったんダンプ → 新しいイメージで空の DB で起動 → 復元」が必要（[BACKUP_RESTORE.md](./BACKUP_RESTORE.md) の復元手順を使う）。
+
+**このプロジェクトでの役割**: Docker は「ローカル用の PostgreSQL サーバー」を動かすためだけに使っている。アプリやバックアップ／復元のスクリプトは、このコンテナの 5432 番に `DATABASE_URL` で接続する。コンテナの中の Postgres のバージョンが、`pg_dump` / `pg_restore` のバージョンになる（localhost でバックアップ・復元するときは、スクリプトがこのコンテナ内のコマンドを優先して使う）。
+
 ---
 
 ## 2. マイグレーション

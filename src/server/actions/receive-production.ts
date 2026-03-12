@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
+import { grantStackableItem } from "@/server/lib/inventory";
 
 export type ReceiveProductionResult =
   | { success: true; received: { itemName: string; amount: number }[] }
@@ -125,11 +126,8 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
 
     // 同一バッチ内で前の設備が生産した分を先に DB に載せるため、生産→消費の順で反映する（019/036）
     for (const [itemId, { amount }] of produced) {
-      await tx.userInventory.upsert({
-        where: { userId_itemId: { userId, itemId } },
-        create: { userId, itemId, quantity: amount },
-        update: { quantity: { increment: amount } },
-      });
+      // Item.maxOwnedPerUser を考慮して付与量をクリップする
+      await grantStackableItem(tx, { userId, itemId, delta: amount });
     }
     for (const [itemId, amount] of consumed) {
       const inv = await tx.userInventory.findUnique({

@@ -29,6 +29,7 @@ export function AdminItemCreateForm({ skills }: Props) {
   const [skillId, setSkillId] = useState("");
   const [consumableEffectJson, setConsumableEffectJson] = useState("");
   const [maxCarry, setMaxCarry] = useState("");
+  const [maxOwned, setMaxOwned] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +42,10 @@ export function AdminItemCreateForm({ skills }: Props) {
       maxCarryPerExpedition:
         maxCarry.trim() !== "" && /^\d+$/.test(maxCarry.trim())
           ? parseInt(maxCarry.trim(), 10)
+          : null,
+      maxOwnedPerUser:
+        maxOwned.trim() !== "" && /^\d+$/.test(maxOwned.trim())
+          ? parseInt(maxOwned.trim(), 10)
           : null,
     };
     startTransition(async () => {
@@ -155,6 +160,20 @@ export function AdminItemCreateForm({ skills }: Props) {
           min={0}
           value={maxCarry}
           onChange={(e) => setMaxCarry(e.target.value)}
+          className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="maxOwned" className="block text-sm font-medium text-text-muted">
+          maxOwnedPerUser（ユーザー別所持数上限。スタック可能アイテム用。空で上限なし）
+        </label>
+        <input
+          id="maxOwned"
+          type="number"
+          min={0}
+          value={maxOwned}
+          onChange={(e) => setMaxOwned(e.target.value)}
           className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
         />
       </div>

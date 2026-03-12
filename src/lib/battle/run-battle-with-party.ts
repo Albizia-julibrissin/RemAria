@@ -88,6 +88,8 @@ export interface PartyMemberInput {
   skills: Record<string, SkillDataForBattle>;
   /** Phase 10: 属性耐性。現状は未使用。装備・遺物実装後にここへ渡す。 */
   attributeResistances?: AttributeResistances;
+  /** docs/073: 遺物パッシブ効果（effectType + param）。戦闘で最終ダメージ倍率・検証ログ用。 */
+  relicPassiveEffects?: { effectType: string; param: Record<string, unknown> }[];
 }
 
 interface FighterState {
@@ -101,6 +103,7 @@ interface PartyFighter extends FighterState {
   displayName: string;
   tacticSlots: TacticSlotInput[];
   skills: Record<string, SkillDataForBattle>;
+  relicPassiveEffects: { effectType: string; param: Record<string, unknown> }[];
 }
 
 /** 敵が作戦・スキルを持つ場合（テスト用スライムの前進突撃など） */
@@ -174,7 +177,15 @@ export interface BattleLogEntryWithParty {
     triggeredAttr?: string;
     /** このヒットで付与したデバフコード（「〇〇状態異常を付与」表示用） */
     debuffApplied?: string;
+    /** 遺物適用前ダメージ（検証ログ。NEXT_PUBLIC_SHOW_VERIFICATION_LOG 時のみ表示） */
+    relicDamageBefore?: number;
+    /** 遺物倍率の説明（同上） */
+    relicDamageNote?: string;
   }[];
+  /** 遺物適用前ダメージ（単一ヒット時。検証ログ。NEXT_PUBLIC_SHOW_VERIFICATION_LOG 時のみ表示） */
+  relicDamageBefore?: number;
+  /** 遺物倍率の説明（単一ヒット時。同上） */
+  relicDamageNote?: string;
   /** このターン終了時点の味方の陣地位置（ターンごとの表示用） */
   partyPositions?: BattlePosition[];
   /** このターン終了時点の敵の陣地位置（ターンごとの表示用） */
@@ -287,6 +298,39 @@ function consumeAttrState(unitStates: AttrStateEntry[], attr: string): boolean {
 /** Phase 4: 指定属性状態を所持しているか */
 function hasAttrState(unitStates: AttrStateEntry[], attr: string): boolean {
   return unitStates.some((s) => s.attr === attr && s.remainingCycles > 0);
+}
+
+/** docs/073: 遺物パッシブの最終ダメージ倍率と検証ログ用メモを算出。 */
+function computeRelicDamageMultAndNote(
+  relicPassiveEffects: { effectType: string; param: Record<string, unknown> }[],
+  attackType: "physical" | "magic",
+  skillAttribute?: string
+): { mult: number; note: string } {
+  let mult = 1;
+  const parts: string[] = [];
+  for (const e of relicPassiveEffects) {
+    if (e.effectType === "final_physical_damage_pct" && attackType === "physical") {
+      const pct = Number(e.param?.pct) || 0;
+      if (pct !== 0) {
+        mult *= 1 + pct / 100;
+        parts.push(`物理+${pct}%`);
+      }
+    } else if (e.effectType === "final_magic_damage_pct" && attackType === "magic") {
+      const pct = Number(e.param?.pct) || 0;
+      if (pct !== 0) {
+        mult *= 1 + pct / 100;
+        parts.push(`魔法+${pct}%`);
+      }
+    } else if (e.effectType === "final_attribute_damage_pct" && skillAttribute && e.param?.attribute === skillAttribute) {
+      const pct = Number(e.param?.pct) || 0;
+      if (pct !== 0) {
+        mult *= 1 + pct / 100;
+        parts.push(`${skillAttribute}+${pct}%`);
+      }
+    }
+  }
+  const note = parts.length > 0 ? `遺物: ${parts.join(" ")} (×${mult.toFixed(3)})` : "";
+  return { mult, note };
 }
 
 /** Phase 4/8: デバフ1件。DoT 用の recordDamage/dotKind/dotPct、萎縮用の statMult */
@@ -742,6 +786,7 @@ export function runBattleWithParty(
       currentMp: startMp,
       tacticSlots: p.tacticSlots,
       skills: p.skills,
+      relicPassiveEffects: p.relicPassiveEffects ?? [],
     };
   });
 
@@ -993,6 +1038,12 @@ export function runBattleWithParty(
         }
 
         const actor = party[actorIndex];
+        for (const e of actor.relicPassiveEffects) {
+          if (e.effectType === "hp_regen_per_turn") {
+            const amount = Math.max(0, Math.floor(Number(e.param?.amount) ?? 0));
+            if (amount > 0) actor.currentHp = Math.min(actor.derived.HP, actor.currentHp + amount);
+          }
+        }
         const legacy = partyToLegacyPlayer(party);
         const snapParty = snapshotPartyHpMp(party);
         const enemyHp = enemies.map((e) => e.currentHp);
@@ -1563,6 +1614,14 @@ export function runBattleWithParty(
               thisHitTriggeredAttr = triggerAttr;
             }
 
+            const relicMult = computeRelicDamageMultAndNote(
+              actor.relicPassiveEffects,
+              attackType,
+              skill.attribute ?? undefined
+            );
+            const damageBeforeRelic = relicMult.note ? finalDmg : undefined;
+            if (relicMult.mult !== 1) finalDmg = Math.floor(finalDmg * relicMult.mult);
+
             enemies[targetIdx].currentHp = Math.max(0, enemies[targetIdx].currentHp - finalDmg);
             totalDamage += finalDmg;
 
@@ -1717,6 +1776,9 @@ export function runBattleWithParty(
               splashDamagePerEnemy: splashPerEnemy.some((x) => x > 0) ? [...splashPerEnemy] : undefined,
               triggeredAttr: thisHitTriggeredAttr,
               debuffApplied: thisHitDebuffApplied,
+              ...(damageBeforeRelic != null && relicMult.note
+                ? { relicDamageBefore: damageBeforeRelic, relicDamageNote: relicMult.note }
+                : {}),
             });
             // Phase 2: ヒット時のみ move_target_column を適用（命中していない敵には列移動しない。Phase 1: chance 指定時は確率で適用）
             if (result.hit) {
@@ -1827,7 +1889,10 @@ export function runBattleWithParty(
           undefined,
           enemyResistances[targetIdx]
         );
-          enemies[targetIdx].currentHp = Math.max(0, enemies[targetIdx].currentHp - result.damage);
+          const normalRelicMult = computeRelicDamageMultAndNote(actor.relicPassiveEffects, "physical", undefined);
+          const normalFinalDmg =
+            normalRelicMult.mult !== 1 ? Math.floor(result.damage * normalRelicMult.mult) : result.damage;
+          enemies[targetIdx].currentHp = Math.max(0, enemies[targetIdx].currentHp - normalFinalDmg);
           const mpRec = Math.floor(actor.derived.MP * BATTLE_MP_RECOVERY_PCT) + randomInt(BATTLE_MP_RECOVERY_MIN, BATTLE_MP_RECOVERY_MAX);
           actor.currentMp = Math.min(actor.derived.MP, actor.currentMp + mpRec);
 
@@ -1843,7 +1908,7 @@ export function runBattleWithParty(
             hit: result.hit,
             direct: result.direct,
             fatal: result.fatal,
-            damage: result.damage,
+            damage: normalFinalDmg,
             targetHpAfter: enemies[targetIdx].currentHp,
             mpRecovery: mpRec,
             playerHpAfter: party[0]?.currentHp ?? 0,
@@ -1854,6 +1919,9 @@ export function runBattleWithParty(
             partyMpAfter: snapAfter.partyMp,
             tacticSlotOrder: action.matchedOrderIndex,
             tacticSlotSkippedDueToCt: action.skippedDueToCt,
+            ...(normalRelicMult.note
+              ? { relicDamageBefore: result.damage, relicDamageNote: normalRelicMult.note }
+              : {}),
             ...snapshotPositions(partyPositions, currentEnemyPositions),
           });
           if (enemies[targetIdx].currentHp <= 0) enemyAlive[targetIdx] = false;

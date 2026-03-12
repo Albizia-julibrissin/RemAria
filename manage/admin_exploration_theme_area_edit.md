@@ -21,7 +21,7 @@ ExplorationTheme と ExplorationArea の編集・新規作成。spec/049・docs/
 | **テーマ新規** | `/dashboard/admin/exploration-themes/new`。code / name / description / 表示順。作成後はテーマ編集画面へ。 |
 | **テーマ編集** | `/dashboard/admin/exploration-themes/[id]`。テーマの基本項目編集。「配下のエリア」一覧と「新規エリア」リンク。 |
 | **エリア新規** | `/dashboard/admin/exploration-areas/new`。`?themeId=xxx` でテーマ指定可。テーマ・code/name・難易度・ドロップ・技能・敵設定。作成後はエリア編集へ。 |
-| **エリア編集** | `/dashboard/admin/exploration-areas/[id]`。エリアの全項目編集。**通常戦の雑魚グループ**を選択している場合、同じ画面内で「このグループのメンバー」を編集できる（出てくる敵と重みの追加・削除・保存）。ドロップテーブルは「エリアドロップ編集」リンクで別画面。 |
+| **エリア編集** | `/dashboard/admin/exploration-areas/[id]`。エリアの全項目編集。**通常戦の雑魚グループ**を選択している場合、同じ画面内で「このグループのメンバー」を編集できる（出てくる敵と重みの追加・削除・保存）。**出撃コスト**（探索開始時に消費するアイテム・数量）も同一画面で行ごとに追加・削除・保存可能。ドロップテーブルは「エリアドロップ編集」リンクで別画面。 |
 | **入口** | コンテンツ管理（`/dashboard/admin/content`）の「探索テーマ・エリア編集」リンク。 |
 
 ---
@@ -41,13 +41,14 @@ ExplorationTheme と ExplorationArea の編集・新規作成。spec/049・docs/
 | `updateAdminExplorationArea(areaId, input)` | エリア更新。 |
 | `createAdminExplorationArea(input)` | エリア新規。input に themeId 必須。成功時 `{ success: true, areaId }`。 |
 | `saveEnemyGroupEntries(enemyGroupId, entries)` | 通常戦雑魚グループのメンバーを一括更新。entries は `{ enemyId, weight }[]`。既存を削除して置き換え。 |
+| `saveAdminExplorationAreaCosts(areaId, costs)` | エリアの出撃コストを一括保存。costs は `{ itemId, quantity }[]`。既存を削除して置き換え。spec/049 §7.1。 |
 
 ---
 
 ## 4. 編集項目
 
 - **テーマ**: code（ユニーク）, name, description, displayOrder。
-- **エリア**: code（ユニーク）, name, description, difficultyRank, recommendedLevel, baseDropMin/Max, baseSkillEventRate, skillCheckRequiredValue, normalBattleCount, normalEnemyGroupCode（EnemyGroup.code）, enemyCount1Rate / 2 / 3（合計100）, strongEnemyEnemyId, areaLordEnemyId, **areaLordAppearanceRate**（強敵勝利後の領域主出現率 0～100％）。ドロップテーブル（base/battle/skill/strongEnemy/areaLord）はエリアドロップ編集画面で設定。
+- **エリア**: code（ユニーク）, name, description, difficultyRank, recommendedLevel, baseDropMin/Max, baseSkillEventRate, skillCheckRequiredValue, normalBattleCount, normalEnemyGroupCode（EnemyGroup.code）, enemyCount1Rate / 2 / 3（合計100）, strongEnemyEnemyId, areaLordEnemyId, **areaLordAppearanceRate**（強敵勝利後の領域主出現率 0～100％）。**出撃コスト**（ExplorationAreaCost）: 探索開始時にユーザー在庫から消費するアイテム・数量をエリアごとに設定。同一エリアで同じアイテムは1行のみ。ドロップテーブル（base/battle/skill/strongEnemy/areaLord）はエリアドロップ編集画面で設定。
 - **通常戦グループのメンバー**: エリアで「通常戦 雑魚グループ」にコードを選んで保存すると、同じ画面に「このグループのメンバー」が表示される。敵を追加・削除・重み変更して「メンバーを保存」で EnemyGroupEntry を一括更新できる。
 
 ---

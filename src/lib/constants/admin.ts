@@ -1,5 +1,6 @@
 /**
- * 管理用・テスト用アカウントの識別子。
- * prisma/seed.ts で投入するテストユーザー1のメールと一致させること。
+ * 管理用アカウントのデフォルトメール（開発用）。
+ * 本番では環境変数 ADMIN_EMAIL を設定して管理用アカウントを指定する。
+ * 実アカウントは prisma/seed で「管理人」として作成する。
  */
-export const TEST_USER_1_EMAIL = "test1@example.com";
+export const DEFAULT_ADMIN_EMAIL = "test1@example.com";

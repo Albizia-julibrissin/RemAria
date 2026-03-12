@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>戦闘の属性とコンボ - RE:mAria</title>
+  <style>
+    :root {
+      --bg: #1a1a1e;
+      --surface: #252530;
+      --text: #e8e6e3;
+      --muted: #9a9590;
+      --accent: #c9a227;
+      --accent-dim: #8b7355;
+      --apply: #4a7c59;
+      --trigger: #b85450;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+    .container { max-width: 640px; margin: 0 auto; }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    /* 6属性を円状に配置 */
+    .attr-ring {
+      --size: 200px;
+      --r: 90px;
+      width: var(--size);
+      height: var(--size);
+      margin: 0 auto 2rem;
+      position: relative;
+    }
+    .attr-ring::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: calc(var(--r) * 2);
+      height: calc(var(--r) * 2);
+      margin: calc(-1 * var(--r)) 0 0 calc(-1 * var(--r));
+      border: 1px dashed var(--accent-dim);
+      border-radius: 50%;
+      opacity: 0.6;
+    }
+    .attr-ring .attr {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 64px;
+      height: 64px;
+      margin: -32px 0 0 -32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 2px solid var(--accent-dim);
+      border-radius: 50%;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-align: center;
+      padding: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .attr-ring .attr:nth-child(1) { transform: translate(-50%, -50%) rotate(-90deg) translateY(calc(-1 * var(--r))) rotate(90deg); }
+    .attr-ring .attr:nth-child(2) { transform: translate(-50%, -50%) rotate(-30deg) translateY(calc(-1 * var(--r))) rotate(30deg); }
+    .attr-ring .attr:nth-child(3) { transform: translate(-50%, -50%) rotate(30deg) translateY(calc(-1 * var(--r))) rotate(-30deg); }
+    .attr-ring .attr:nth-child(4) { transform: translate(-50%, -50%) rotate(90deg) translateY(calc(-1 * var(--r))) rotate(-90deg); }
+    .attr-ring .attr:nth-child(5) { transform: translate(-50%, -50%) rotate(150deg) translateY(calc(-1 * var(--r))) rotate(-150deg); }
+    .attr-ring .attr:nth-child(6) { transform: translate(-50%, -50%) rotate(210deg) translateY(calc(-1 * var(--r))) rotate(-210deg); }
+
+    .attr-ring .center-label {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.7rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .section {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .section h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section h2 .step-num {
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--bg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+    }
+    .section.apply h2 .step-num { background: var(--apply); }
+    .section.trigger h2 .step-num { background: var(--trigger); }
+    .section p { margin: 0; font-size: 0.9rem; color: var(--text); }
+
+    /* 付与→起爆の流れ図 */
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+      padding: 1rem;
+      background: rgba(0,0,0,0.2);
+      border-radius: var(--radius);
+    }
+    .flow-box {
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .flow-box.apply { background: var(--apply); color: #fff; }
+    .flow-box.trigger { background: var(--trigger); color: #fff; }
+    .flow-arrow {
+      font-size: 1.5rem;
+      color: var(--accent);
+    }
+    .flow-desc {
+      width: 100%;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .note {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--surface);
+    }
+
+    @media (min-width: 480px) {
+      .attr-ring { --size: 260px; --r: 110px; }
+      .attr-ring .attr { width: 72px; height: 72px; margin: -36px 0 0 -36px; font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>戦闘の属性とコンボ</h1>
+    <p class="subtitle">属性状態を付与して、別スキルで起爆する</p>
+
+    <h2 style="font-size:1rem; margin-bottom:0.75rem;">基本の6属性</h2>
+    <p style="font-size:0.9rem; color: var(--muted); margin-bottom:1rem;">
+      攻撃には属性がついています。命中すると相手にその属性の「状態」が付きます。
+    </p>
+    <div class="attr-ring">
+      <span class="attr">圧縮</span>
+      <span class="attr">切創</span>
+      <span class="attr">穿孔</span>
+      <span class="attr">焼損</span>
+      <span class="attr">凍傷</span>
+      <span class="attr">侵食</span>
+      <span class="center-label">6属性</span>
+    </div>
+
+    <div class="section apply">
+      <h2><span class="step-num">1</span> 付与</h2>
+      <p>
+        属性付きのスキルを当てると、相手にその属性の<strong>状態</strong>が付与されます。
+        例：圧縮属性の攻撃を当てる → 相手は<strong>圧縮状態</strong>に。
+      </p>
+    </div>
+
+    <div class="section trigger">
+      <h2><span class="step-num">2</span> 起爆</h2>
+      <p>
+        別のスキルで「〇〇状態のとき」にだけ発動する効果を使います。
+        倍率アップ・デバフ付与・直撃100%など。状態は消費されるものもあります。
+      </p>
+      <div class="flow-diagram">
+        <span class="flow-box apply">付与</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-box trigger">起爆！</span>
+        <p class="flow-desc">例：圧縮付与 → 閃槍で圧縮状態の敵に大ダメージ＋消費</p>
+      </div>
+    </div>
+
+    <p class="note">
+      ※ 極性は7属性目として存在しますが、ここでは基本6種で説明しています。
+    </p>
+  </div>
+</body>
+</html>

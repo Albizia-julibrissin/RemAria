@@ -8,19 +8,24 @@ import Image from "next/image";
 import { useState } from "react";
 import { logoutAndRedirect } from "@/server/actions/auth";
 import { GameIcon } from "@/components/icons/game-icon";
+import { NotificationDropdown } from "@/components/notification/NotificationDropdown";
 
 interface HeaderProps {
   isLoggedIn: boolean;
   activeUserCount?: number;
+  /** 未読通知件数。ヘッダーバッジ用。 */
+  unreadNotificationCount?: number;
 }
 
-export function Header({ isLoggedIn, activeUserCount }: HeaderProps) {
+export function Header({ isLoggedIn, activeUserCount, unreadNotificationCount = 0 }: HeaderProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
 
   const closeAll = () => {
     setHelpOpen(false);
     setSettingsOpen(false);
+    setNotificationOpen(false);
   };
 
   return (
@@ -55,13 +60,32 @@ export function Header({ isLoggedIn, activeUserCount }: HeaderProps) {
           )}
         </div>
         <nav className="relative flex items-center gap-4">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-full border border-base-border bg-base px-2 py-1 text-text-muted hover:text-brass hover:border-brass transition-colors"
-            title="通知を表示（準備中）"
-          >
-            <GameIcon name="scroll-quill" className="w-4 h-4" />
-          </button>
+          {isLoggedIn && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotificationOpen((v) => !v);
+                  setHelpOpen(false);
+                  setSettingsOpen(false);
+                }}
+                className="relative inline-flex items-center justify-center rounded-full border border-base-border bg-base px-2 py-1 text-text-muted hover:text-brass hover:border-brass transition-colors"
+                title="通知を表示"
+                aria-expanded={notificationOpen}
+              >
+                <GameIcon name="ringing-bell" className="w-4 h-4" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+              <NotificationDropdown
+                isOpen={notificationOpen}
+                onClose={() => setNotificationOpen(false)}
+              />
+            </div>
+          )}
 
           {/* ヘルプメニュー */}
           <div className="relative">

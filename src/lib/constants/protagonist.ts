@@ -1,7 +1,10 @@
 // spec/015_protagonist_creation.md: 主人公作成まわりの定数
 
-/** 表示名の最大文字数 */
-export const DISPLAY_NAME_MAX_LEN = 50;
+/** 表示名の最大文字数（おおよそ全角 12 文字） */
+export const DISPLAY_NAME_MAX_CHARS = 12;
+
+/** 表示名の最大バイト長（半角換算で約 24 バイト） */
+export const DISPLAY_NAME_MAX_BYTES = 24;
 
 /** レベル1の基礎ステータス初期値（CAP560想定で各80）。主人公作成・仲間雇用時に使用。docs/09, 10_battle_status.csv 準拠 */
 export const INITIAL_STR = 80;

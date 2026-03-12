@@ -5,9 +5,14 @@ import { useRouter } from "next/navigation";
 import type {
   AdminExplorationAreaEditData,
   AdminEnemyGroupEntryRow,
+  AdminExplorationAreaCostRow,
   UpdateAdminExplorationAreaInput,
 } from "@/server/actions/admin";
-import { updateAdminExplorationArea, saveEnemyGroupEntries } from "@/server/actions/admin";
+import {
+  updateAdminExplorationArea,
+  saveEnemyGroupEntries,
+  saveAdminExplorationAreaCosts,
+} from "@/server/actions/admin";
 
 type GroupEntryEdit = {
   tempId: string;
@@ -15,6 +20,14 @@ type GroupEntryEdit = {
   enemyCode: string;
   enemyName: string;
   weight: number;
+};
+
+type CostRowEdit = {
+  tempId: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  quantity: number;
 };
 
 type Props = {
@@ -31,15 +44,26 @@ function toEditEntry(e: AdminEnemyGroupEntryRow): GroupEntryEdit {
   };
 }
 
+function toCostRow(c: AdminExplorationAreaCostRow): CostRowEdit {
+  return {
+    tempId: c.id,
+    itemId: c.itemId,
+    itemCode: c.itemCode,
+    itemName: c.itemName,
+    quantity: c.quantity,
+  };
+}
+
 export function AdminExplorationAreaEditForm({ data }: Props) {
   const router = useRouter();
-  const { area, enemyGroupCodes, enemies, normalEnemyGroup } = data;
+  const { area, enemyGroupCodes, enemies, normalEnemyGroup, areaCosts, itemsForCost } = data;
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const [code, setCode] = useState(area.code);
   const [name, setName] = useState(area.name);
   const [description, setDescription] = useState(area.description ?? "");
+  const [displayOrder, setDisplayOrder] = useState(String(area.displayOrder ?? 0));
   const [difficultyRank, setDifficultyRank] = useState(String(area.difficultyRank));
   const [recommendedLevel, setRecommendedLevel] = useState(String(area.recommendedLevel));
   const [baseDropMin, setBaseDropMin] = useState(String(area.baseDropMin));
@@ -70,6 +94,15 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
   } | null>(null);
   const [groupSavePending, setGroupSavePending] = useState(false);
 
+  const [costRows, setCostRows] = useState<CostRowEdit[]>(() =>
+    data.areaCosts.map(toCostRow)
+  );
+  const [costSaveMessage, setCostSaveMessage] = useState<{
+    type: "ok" | "error";
+    text: string;
+  } | null>(null);
+  const [costSavePending, setCostSavePending] = useState(false);
+
   useEffect(() => {
     if (normalEnemyGroup) {
       setGroupEntries(normalEnemyGroup.entries.map(toEditEntry));
@@ -77,6 +110,10 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
       setGroupEntries([]);
     }
   }, [normalEnemyGroup]);
+
+  useEffect(() => {
+    setCostRows(data.areaCosts.map(toCostRow));
+  }, [data.areaCosts]);
 
   const handleSaveGroupEntries = () => {
     if (!normalEnemyGroup) return;
@@ -121,6 +158,45 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
     );
   };
 
+  const addCostRow = () => {
+    const first = itemsForCost[0];
+    if (!first) return;
+    setCostRows((prev) => [
+      ...prev,
+      {
+        tempId: `cost-${Date.now()}`,
+        itemId: first.id,
+        itemCode: first.code,
+        itemName: first.name,
+        quantity: 1,
+      },
+    ]);
+  };
+  const removeCostRow = (tempId: string) => {
+    setCostRows((prev) => prev.filter((r) => r.tempId !== tempId));
+  };
+  const updateCostRow = (tempId: string, patch: Partial<CostRowEdit>) => {
+    setCostRows((prev) =>
+      prev.map((r) => (r.tempId === tempId ? { ...r, ...patch } : r))
+    );
+  };
+  const handleSaveCosts = () => {
+    setCostSavePending(true);
+    setCostSaveMessage(null);
+    saveAdminExplorationAreaCosts(
+      area.id,
+      costRows.map((r) => ({ itemId: r.itemId, quantity: r.quantity }))
+    ).then((result) => {
+      setCostSavePending(false);
+      setCostSaveMessage(
+        result.success
+          ? { type: "ok", text: "出撃コストを保存しました。" }
+          : { type: "error", text: result.error ?? "保存に失敗しました。" }
+      );
+      if (result.success) router.refresh();
+    });
+  };
+
   const num = (v: string, def: number) =>
     v.trim() !== "" && /^\d+$/.test(v.trim()) ? parseInt(v.trim(), 10) : def;
 
@@ -130,6 +206,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
       code: code.trim(),
       name: name.trim(),
       description: description.trim() || null,
+      displayOrder: num(displayOrder, 0),
       difficultyRank: num(difficultyRank, 1),
       recommendedLevel: num(recommendedLevel, 1),
       baseDropMin: num(baseDropMin, 3),
@@ -200,8 +277,18 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
       </section>
 
       <section className="rounded border border-base-border bg-base-elevated p-4">
-        <h2 className="text-lg font-medium text-text-primary">難易度・推奨レベル</h2>
-        <div className="mt-3 flex gap-4">
+        <h2 className="text-lg font-medium text-text-primary">表示順・難易度・推奨レベル</h2>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <div>
+            <label className="block text-sm font-medium text-text-muted">displayOrder（テーマ内の表示順・小さいほど上）</label>
+            <input
+              type="number"
+              min={0}
+              value={displayOrder}
+              onChange={(e) => setDisplayOrder(e.target.value)}
+              className="mt-1 w-20 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-text-muted">difficultyRank</label>
             <input
@@ -488,6 +575,104 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
               className="mt-1 w-20 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
             />
           </div>
+        </div>
+      </section>
+
+      <section className="rounded border border-base-border bg-base-elevated p-4">
+        <h2 className="text-lg font-medium text-text-primary">出撃コスト（spec/049）</h2>
+        <p className="mt-1 text-sm text-text-muted">
+          探索開始時にユーザー在庫から消費するアイテム・数量。1行＝1種類。同一アイテムは1行のみ（保存時にまとめます）。
+        </p>
+        {costSaveMessage && (
+          <p
+            className={`mt-2 text-sm ${costSaveMessage.type === "ok" ? "text-success" : "text-error"}`}
+          >
+            {costSaveMessage.text}
+          </p>
+        )}
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[320px] text-sm border-collapse border border-base-border">
+            <thead>
+              <tr className="bg-base">
+                <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
+                  アイテム
+                </th>
+                <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-24">
+                  数量
+                </th>
+                <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">
+                  操作
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {costRows.map((row) => (
+                <tr key={row.tempId} className="text-text-primary">
+                  <td className="border border-base-border px-2 py-1.5">
+                    <select
+                      value={row.itemId}
+                      onChange={(e) => {
+                        const it = itemsForCost.find((x) => x.id === e.target.value);
+                        if (it)
+                          updateCostRow(row.tempId, {
+                            itemId: it.id,
+                            itemCode: it.code,
+                            itemName: it.name,
+                          });
+                      }}
+                      className="w-full max-w-[220px] rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+                    >
+                      {itemsForCost.map((it) => (
+                        <option key={it.id} value={it.id}>
+                          {it.code} — {it.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-base-border px-2 py-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      value={row.quantity}
+                      onChange={(e) =>
+                        updateCostRow(row.tempId, {
+                          quantity: parseInt(e.target.value, 10) || 1,
+                        })
+                      }
+                      className="w-20 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+                    />
+                  </td>
+                  <td className="border border-base-border px-2 py-1.5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeCostRow(row.tempId)}
+                      className="text-error hover:underline text-xs"
+                    >
+                      削除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={addCostRow}
+            disabled={itemsForCost.length === 0}
+            className="rounded border border-base-border bg-base-elevated px-3 py-1.5 text-sm text-text-primary hover:bg-base disabled:opacity-50"
+          >
+            ＋ 行を追加
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveCosts}
+            disabled={costSavePending}
+            className="rounded bg-brass px-3 py-1.5 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+          >
+            {costSavePending ? "保存中…" : "出撃コストを保存"}
+          </button>
         </div>
       </section>
 

@@ -3,40 +3,73 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { acknowledgeQuestReport } from "@/server/actions/quest";
-import type { QuestListItem } from "@/server/actions/quest";
+import type { QuestListItem, QuestRewardResult } from "@/server/actions/quest";
 import { GameIcon } from "@/components/icons/game-icon";
 
 type Props = {
   quests: QuestListItem[];
 };
 
+type ReportModalState = {
+  questId: string;
+  questName: string;
+  message: string | null;
+  phase: "message";
+} | {
+  questId: string;
+  questName: string;
+  message: string | null;
+  phase: "reward";
+  rewards: QuestRewardResult;
+};
+
 export function QuestListClient({ quests }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [reportModal, setReportModal] = useState<{
-    questId: string;
-    questName: string;
-    message: string | null;
-  } | null>(null);
+  const [reportModal, setReportModal] = useState<ReportModalState | null>(null);
+
+  const canReport = (q: QuestListItem) =>
+    !q.reportAcknowledgedAt && q.targetCount > 0 && q.progress >= q.targetCount;
 
   const handleReportClick = (q: QuestListItem) => {
-    if (q.state !== "completed" || q.reportAcknowledgedAt) return;
+    if (!canReport(q)) return;
     setReportModal({
       questId: q.questId,
       questName: q.name,
       message: q.clearReportMessage,
+      phase: "message",
     });
   };
 
   const handleConfirmReport = () => {
-    if (!reportModal) return;
+    if (!reportModal || reportModal.phase !== "message") return;
     startTransition(async () => {
       const res = await acknowledgeQuestReport(reportModal.questId);
-      if (res.success) {
+      if (res.success && res.rewards) {
+        const hasAny =
+          res.rewards.gra > 0 ||
+          res.rewards.researchPoint > 0 ||
+          res.rewards.items.length > 0;
+        if (hasAny) {
+          setReportModal({
+            ...reportModal,
+            phase: "reward",
+            rewards: res.rewards,
+          });
+        } else {
+          setReportModal(null);
+          router.refresh();
+        }
+      } else if (res.success) {
         setReportModal(null);
         router.refresh();
       }
     });
+  };
+
+  const handleCloseReportModal = () => {
+    setReportModal(null);
+    router.refresh();
   };
 
   return (
@@ -55,7 +88,13 @@ export function QuestListClient({ quests }: Props) {
                 {q.questType === "research" && (
                   <GameIcon name="flask" className="h-5 w-5 text-brass" />
                 )}
-                {q.questType !== "story" && q.questType !== "research" && (
+                {q.questType === "special" && (
+                  <GameIcon name="puzzle" className="h-5 w-5 text-brass" />
+                )}
+                {q.questType === "general" && (
+                  <GameIcon name="scroll-quill" className="h-5 w-5 text-text-muted" />
+                )}
+                {!["story", "research", "special", "general"].includes(q.questType) && (
                   <GameIcon name="scroll-quill" className="h-5 w-5 text-text-muted" />
                 )}
               </span>
@@ -64,18 +103,18 @@ export function QuestListClient({ quests }: Props) {
                   <h2 className="font-semibold text-text-primary">{q.name}</h2>
                   <span
                     className={`rounded px-2 py-0.5 text-xs ${
-                      q.state === "completed"
-                        ? q.reportAcknowledgedAt
-                          ? "bg-green-900/40 text-green-200"
-                          : "bg-amber-900/40 text-amber-200"
-                        : "bg-base-border/50 text-text-muted"
+                      q.reportAcknowledgedAt
+                        ? "bg-green-900/40 text-green-200"
+                        : canReport(q)
+                          ? "bg-amber-900/40 text-amber-200"
+                          : "bg-base-border/50 text-text-muted"
                     }`}
                   >
-                    {q.state === "completed"
-                      ? q.reportAcknowledgedAt
-                        ? "クリア済み"
-                        : "報告待ち"
-                      : "進行中"}
+                    {q.reportAcknowledgedAt
+                      ? "クリア済み"
+                      : canReport(q)
+                        ? "報告待ち"
+                        : "進行中"}
                   </span>
                 </div>
                 {q.description && (
@@ -97,7 +136,7 @@ export function QuestListClient({ quests }: Props) {
                       {q.progress} / {q.targetCount}
                     </p>
                   </div>
-                  {q.state === "completed" && !q.reportAcknowledgedAt && (
+                  {canReport(q) && (
                     <button
                       type="button"
                       onClick={() => handleReportClick(q)}
@@ -123,35 +162,82 @@ export function QuestListClient({ quests }: Props) {
         >
           <div className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl">
             <h2 id="report-modal-title" className="text-lg font-semibold text-text-primary">
-              クリア報告 — {reportModal.questName}
+              {reportModal.phase === "reward"
+                ? "報酬を受け取った"
+                : `クリア報告 — ${reportModal.questName}`}
             </h2>
-            <div className="mt-4 min-h-[4rem] rounded border border-base-border bg-base p-4">
-              {reportModal.message ? (
-                <p className="text-sm text-text-primary whitespace-pre-wrap">
-                  {reportModal.message}
-                </p>
-              ) : (
-                <p className="text-sm text-text-muted">クエストをクリアしました。</p>
-              )}
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={handleConfirmReport}
-                disabled={isPending}
-                className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
-              >
-                {isPending ? "反映中…" : "確認"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setReportModal(null)}
-                disabled={isPending}
-                className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50 focus:outline-none focus:ring-2 focus:ring-brass disabled:opacity-50"
-              >
-                閉じる
-              </button>
-            </div>
+
+            {reportModal.phase === "message" ? (
+              <>
+                <div className="mt-4 min-h-[4rem] rounded border border-base-border bg-base p-4">
+                  {reportModal.message ? (
+                    <p className="text-sm text-text-primary whitespace-pre-wrap">
+                      {reportModal.message}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-text-muted">開拓任務をクリアしました。</p>
+                  )}
+                </div>
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleConfirmReport}
+                    disabled={isPending}
+                    className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
+                  >
+                    {isPending ? "反映中…" : "確認"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCloseReportModal}
+                    disabled={isPending}
+                    className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50 focus:outline-none focus:ring-2 focus:ring-brass disabled:opacity-50"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-4 text-sm text-text-primary">報酬を受け取った。</p>
+                <ul className="mt-3 space-y-1.5 text-sm">
+                  {reportModal.rewards.gra > 0 && (
+                    <li>
+                      <span className="font-medium tabular-nums text-gra">
+                        {reportModal.rewards.gra.toLocaleString()} GRA
+                      </span>
+                    </li>
+                  )}
+                  {reportModal.rewards.researchPoint > 0 && (
+                    <li>
+                      研究記録書{" "}
+                      <span className="font-medium tabular-nums text-text-primary">
+                        {reportModal.rewards.researchPoint}
+                      </span>
+                      枚
+                    </li>
+                  )}
+                  {reportModal.rewards.items.map((it) => (
+                    <li key={it.itemId}>
+                      {it.name}{" "}
+                      <span className="font-medium tabular-nums text-text-primary">
+                        {it.amount}
+                      </span>
+                      個
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleCloseReportModal}
+                    className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

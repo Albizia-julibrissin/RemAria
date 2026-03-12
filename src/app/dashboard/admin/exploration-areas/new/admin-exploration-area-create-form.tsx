@@ -29,6 +29,7 @@ export function AdminExplorationAreaCreateForm({
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [displayOrder, setDisplayOrder] = useState("0");
   const [difficultyRank, setDifficultyRank] = useState("1");
   const [recommendedLevel, setRecommendedLevel] = useState("1");
   const [baseDropMin, setBaseDropMin] = useState("3");
@@ -58,6 +59,7 @@ export function AdminExplorationAreaCreateForm({
       code: code.trim(),
       name: name.trim(),
       description: description.trim() || null,
+      displayOrder: num(displayOrder, 0),
       difficultyRank: num(difficultyRank, 1),
       recommendedLevel: num(recommendedLevel, 1),
       baseDropMin: num(baseDropMin, 3),
@@ -157,8 +159,18 @@ export function AdminExplorationAreaCreateForm({
       </section>
 
       <section className="rounded border border-base-border bg-base-elevated p-4">
-        <h2 className="text-lg font-medium text-text-primary">難易度・ドロップ・技能</h2>
+        <h2 className="text-lg font-medium text-text-primary">表示順・難易度・ドロップ・技能</h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="block text-sm font-medium text-text-muted">displayOrder（テーマ内の表示順）</label>
+            <input
+              type="number"
+              min={0}
+              value={displayOrder}
+              onChange={(e) => setDisplayOrder(e.target.value)}
+              className="mt-1 w-full rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-text-muted">difficultyRank</label>
             <input

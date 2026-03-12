@@ -10,6 +10,9 @@ import { DEFAULT_ENEMY_NAME } from "@/lib/battle/default-enemy";
 
 const ENEMY_LABEL = DEFAULT_ENEMY_NAME;
 
+/** 検証ログ（遺物適用前ダメージ等）を戦闘ログに表示するか。本番では未設定で非表示。manage/VERIFICATION_LOG.md 参照。 */
+const SHOW_VERIFICATION_LOG = process.env.NEXT_PUBLIC_SHOW_VERIFICATION_LOG === "true";
+
 /** 属性状態コード → ログ表示用の名前（〇〇状態を付与！） */
 const ATTR_STATE_DISPLAY_NAMES: Record<string, string> = {
   crush: "圧縮",
@@ -284,6 +287,11 @@ export function EntryLines({
                       </span>
                     )}
                   </div>
+                  {SHOW_VERIFICATION_LOG && h.relicDamageBefore != null && h.relicDamageNote && (
+                    <div className="mt-0.5 pl-4 text-text-muted text-sm">
+                      検証: 適用前 {h.relicDamageBefore} → [{h.relicDamageNote}]
+                    </div>
+                  )}
                   {h.splashDamagePerEnemy?.some((d) => d > 0) && (
                     <div className="mt-0.5 pl-4 text-text-muted text-sm">
                       {h.splashDamagePerEnemy.map((d, i) =>
@@ -325,6 +333,11 @@ export function EntryLines({
                     direct={entry.direct}
                     fatal={entry.fatal}
                   />
+                </div>
+              )}
+              {SHOW_VERIFICATION_LOG && !hasHitDetails && entry.relicDamageBefore != null && entry.relicDamageNote && (
+                <div className="mt-0.5 pl-4 text-text-muted text-sm">
+                  検証: 適用前 {entry.relicDamageBefore} → [{entry.relicDamageNote}]
                 </div>
               )}
               {entry.hit && entry.healAmount != null && entry.healAmount > 0 && (

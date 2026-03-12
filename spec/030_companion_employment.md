@@ -52,7 +52,7 @@
 
 ### 3.2 仲間の作成（createCompanion）
 
-- **displayName**：必須。表示名。長さ上限は主人公と同様（例：50 文字）。空不可。
+- **displayName**：必須。表示名。長さ上限は主人公と同様（**おおよそ全角 12 文字・半角 24 文字（UTF-8 約 24 バイト）以内**）。空不可。
 - **iconFilename**：必須。主人公作成と同じアイコン許可リストに含まれること。
 - 前提：User.companionHireCount >= 1、かつ仲間（category=companion）の所持数 < 10。
 

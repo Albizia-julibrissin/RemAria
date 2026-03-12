@@ -1,4 +1,4 @@
-// コンテンツ管理トップ（テストユーザー1のみ）。各編集画面へのリンクハブ。
+// コンテンツ管理トップ（管理用アカウントのみ）。各編集画面へのリンクハブ。
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -47,6 +47,7 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
     title: "研究・その他",
     links: [
       { href: "/dashboard/admin/research-groups", label: "研究グループ編集" },
+      { href: "/dashboard/admin/quests", label: "開拓任務編集" },
       { href: "/battle/practice", label: "仮戦闘" },
     ],
   },

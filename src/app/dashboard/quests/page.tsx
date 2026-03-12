@@ -6,8 +6,10 @@ import { QuestListClient } from "./quest-list-client";
 
 const FILTERS = [
   { value: "all" as const, label: "すべて" },
-  { value: "story" as const, label: "ストーリー" },
+  { value: "story" as const, label: "使命" },
   { value: "research" as const, label: "研究" },
+  { value: "special" as const, label: "特殊" },
+  { value: "general" as const, label: "一般" },
 ];
 
 export default async function QuestsPage({
@@ -16,15 +18,18 @@ export default async function QuestsPage({
   searchParams: Promise<{ filter?: string }>;
 }) {
   const params = await searchParams;
-  const filter =
-    params.filter === "story" || params.filter === "research" ? params.filter : "all";
+  const raw = params.filter ?? "";
+  const filter: "all" | "story" | "research" | "special" | "general" =
+    raw === "story" || raw === "research" || raw === "special" || raw === "general"
+      ? raw
+      : "all";
 
   const result = await getQuestList(filter);
 
   if (!result.success) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">クエスト</h1>
+        <h1 className="text-2xl font-bold text-text-primary">開拓任務</h1>
         <p className="mt-4 text-text-muted">{result.error === "UNAUTHORIZED" ? "ログインしてください。" : result.error}</p>
         <Link href="/login" className="mt-4 inline-block text-brass hover:underline">
           ログインへ
@@ -45,13 +50,13 @@ export default async function QuestsPage({
           ← ダッシュボード
         </Link>
       </div>
-      <h1 className="text-2xl font-bold text-text-primary">クエスト</h1>
+      <h1 className="text-2xl font-bold text-text-primary">開拓任務</h1>
       <p className="mt-2 text-text-muted">
-        ストーリーと研究クエストの進捗を確認できます。条件を満たすと自動で達成され、報酬が付与されます。
-        達成したクエストは「クリア報告」でメッセージを確認し、確認するとクリア済みとして記録されます。
+        使命・研究・特殊・一般の開拓任務の進捗を確認できます。条件を満たすと報告可能になり、報酬が付与されます。
+        達成した任務は「クリア報告」でメッセージを確認し、確認するとクリア済みとして記録されます。
       </p>
 
-      <nav className="mt-6 flex gap-2 border-b border-base-border" aria-label="クエストフィルタ">
+      <nav className="mt-6 flex gap-2 border-b border-base-border" aria-label="開拓任務フィルタ">
         {FILTERS.map((f) => (
           <Link
             key={f.value}
@@ -69,7 +74,7 @@ export default async function QuestsPage({
 
       <section className="mt-6 max-w-2xl">
         {quests.length === 0 ? (
-          <p className="text-text-muted">該当するクエストはありません。</p>
+          <p className="text-text-muted">該当する開拓任務はありません。</p>
         ) : (
           <QuestListClient quests={quests} />
         )}

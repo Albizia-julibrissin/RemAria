@@ -70,6 +70,9 @@ export function AdminItemListClient({ items }: Props) {
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
                 持ち込み上限
               </th>
+              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
+                所持上限
+              </th>
               <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">
                 操作
               </th>
@@ -90,6 +93,9 @@ export function AdminItemListClient({ items }: Props) {
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-text-muted">
                   {row.maxCarryPerExpedition != null ? row.maxCarryPerExpedition : "—"}
+                </td>
+                <td className="border border-base-border px-2 py-1.5 text-text-muted">
+                  {row.maxOwnedPerUser != null ? row.maxOwnedPerUser : "—"}
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-center">
                   <Link

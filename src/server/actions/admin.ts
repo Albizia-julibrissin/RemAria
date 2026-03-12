@@ -7,7 +7,7 @@ import {
   parseEquipmentStatGenConfig,
   parseMechaPartStatGenConfig,
 } from "@/lib/craft/parse-stat-gen-config";
-import type { EquipmentStatGenConfig } from "@/lib/craft/equipment-stat-gen";
+import { EQUIPMENT_STAT_KEYS, type EquipmentStatGenConfig } from "@/lib/craft/equipment-stat-gen";
 import type { MechaPartStatGenConfig } from "@/lib/craft/mecha-part-stat-gen";
 import { isEquipmentSlot } from "@/lib/constants/equipment-slots";
 import { isMechaSlot } from "@/lib/constants/mecha-slots";
@@ -52,12 +52,12 @@ export async function getAdminContentLists(): Promise<AdminContentLists | null> 
       select: { id: true, code: true, name: true, description: true },
     }),
     prisma.explorationTheme.findMany({
-      orderBy: { name: "asc" },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,
         name: true,
         areas: {
-          orderBy: { name: "asc" },
+          orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
           select: { id: true, code: true, name: true },
         },
       },
@@ -113,7 +113,11 @@ export async function getAdminAreaList(): Promise<
   const ok = await isTestUser1();
   if (!ok) return null;
   const areas = await prisma.explorationArea.findMany({
-    orderBy: [{ name: "asc" }],
+    orderBy: [
+      { theme: { displayOrder: "asc" } },
+      { displayOrder: "asc" },
+      { name: "asc" },
+    ],
     select: {
       id: true,
       code: true,
@@ -268,6 +272,8 @@ export type AdminItemRow = {
   skillName: string | null;
   consumableEffect: unknown;
   maxCarryPerExpedition: number | null;
+  /** ユーザー別の所持数上限（スタック可能アイテム用）。null は上限なし扱い。 */
+  maxOwnedPerUser: number | null;
 };
 
 /**
@@ -331,6 +337,7 @@ export async function getAdminItemList(): Promise<AdminItemRow[] | null> {
       skillId: true,
       consumableEffect: true,
       maxCarryPerExpedition: true,
+      maxOwnedPerUser: true,
       skill: { select: { name: true } },
     },
   });
@@ -343,6 +350,7 @@ export async function getAdminItemList(): Promise<AdminItemRow[] | null> {
     skillName: r.skill?.name ?? null,
     consumableEffect: r.consumableEffect,
     maxCarryPerExpedition: r.maxCarryPerExpedition,
+    maxOwnedPerUser: r.maxOwnedPerUser,
   }));
 }
 
@@ -433,6 +441,7 @@ export async function getAdminItem(itemId: string): Promise<AdminItemDetail | nu
       skillId: true,
       consumableEffect: true,
       maxCarryPerExpedition: true,
+      maxOwnedPerUser: true,
       skill: { select: { name: true } },
     },
   });
@@ -446,6 +455,7 @@ export async function getAdminItem(itemId: string): Promise<AdminItemDetail | nu
     skillName: item.skill?.name ?? null,
     consumableEffect: item.consumableEffect,
     maxCarryPerExpedition: item.maxCarryPerExpedition,
+    maxOwnedPerUser: item.maxOwnedPerUser,
   };
 }
 
@@ -704,6 +714,8 @@ export type UpdateAdminItemInput = {
   /** JSON 文字列。空は null 扱い。 */
   consumableEffectJson: string | null;
   maxCarryPerExpedition: number | null;
+  /** ユーザー別所持数上限。null は上限なし。 */
+  maxOwnedPerUser: number | null;
 };
 
 export async function updateAdminItem(
@@ -736,6 +748,11 @@ export async function updateAdminItem(
       ? input.maxCarryPerExpedition
       : null;
 
+  const maxOwned =
+    input.maxOwnedPerUser != null && Number.isInteger(input.maxOwnedPerUser) && input.maxOwnedPerUser >= 0
+      ? input.maxOwnedPerUser
+      : null;
+
   const skillId = input.skillId?.trim() || null;
   if (input.category === "skill_book" && !skillId) {
     return { success: false, error: "スキル分析書の場合は skillId を選択してください。" };
@@ -753,6 +770,7 @@ export async function updateAdminItem(
           ? Prisma.JsonNull
           : (consumableEffect as Prisma.InputJsonValue),
       maxCarryPerExpedition: maxCarry,
+      maxOwnedPerUser: maxOwned,
     },
   });
   return { success: true };
@@ -793,6 +811,11 @@ export async function createAdminItem(
       ? input.maxCarryPerExpedition
       : null;
 
+  const maxOwned =
+    input.maxOwnedPerUser != null && Number.isInteger(input.maxOwnedPerUser) && input.maxOwnedPerUser >= 0
+      ? input.maxOwnedPerUser
+      : null;
+
   const skillId = input.skillId?.trim() || null;
   if (input.category === "skill_book" && !skillId) {
     return { success: false, error: "スキル分析書の場合は skillId を選択してください。" };
@@ -809,6 +832,7 @@ export async function createAdminItem(
           ? Prisma.JsonNull
           : (consumableEffect as Prisma.InputJsonValue),
       maxCarryPerExpedition: maxCarry,
+      maxOwnedPerUser: maxOwned,
     },
     select: { id: true },
   });
@@ -1298,9 +1322,9 @@ function validateEquipmentStatGenInput(
     return "装備の CAP は capMin ≤ capMax の整数で入力してください。";
   }
   if (!cfg.weights?.length) return "装備のステータス重みを1件以上登録してください。";
-  const validKeys = new Set(["PATK", "MATK", "PDEF", "MDEF", "HIT", "EVA"]);
+  const validKeys = new Set(EQUIPMENT_STAT_KEYS);
   for (const w of cfg.weights) {
-    if (!validKeys.has(w.key)) return `装備の重み key は PATK/MATK/PDEF/MDEF/HIT/EVA のいずれかにしてください。`;
+    if (!validKeys.has(w.key)) return `装備の重み key は ${EQUIPMENT_STAT_KEYS.join("/")} のいずれかにしてください。`;
     if (
       !Number.isInteger(w.weightMin) ||
       !Number.isInteger(w.weightMax) ||
@@ -2155,6 +2179,8 @@ export type AdminRelicPassiveEffectRow = {
   code: string;
   name: string;
   description: string | null;
+  effectType: string | null;
+  param: Record<string, unknown> | null;
 };
 
 export type AdminRelicPassiveEffectDetail = AdminRelicPassiveEffectRow;
@@ -2164,10 +2190,14 @@ export async function getAdminRelicPassiveEffectList(): Promise<
 > {
   const ok = await isTestUser1();
   if (!ok) return null;
-  return prisma.relicPassiveEffect.findMany({
+  const rows = await prisma.relicPassiveEffect.findMany({
     orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true, description: true },
+    select: { id: true, code: true, name: true, description: true, effectType: true, param: true },
   });
+  return rows.map((r) => ({
+    ...r,
+    param: r.param && typeof r.param === "object" && !Array.isArray(r.param) ? (r.param as Record<string, unknown>) : null,
+  }));
 }
 
 export async function getAdminRelicPassiveEffect(
@@ -2177,15 +2207,21 @@ export async function getAdminRelicPassiveEffect(
   if (!ok) return null;
   const row = await prisma.relicPassiveEffect.findUnique({
     where: { id },
-    select: { id: true, code: true, name: true, description: true },
+    select: { id: true, code: true, name: true, description: true, effectType: true, param: true },
   });
-  return row;
+  if (!row) return null;
+  return {
+    ...row,
+    param: row.param && typeof row.param === "object" && !Array.isArray(row.param) ? (row.param as Record<string, unknown>) : null,
+  };
 }
 
 export type UpdateAdminRelicPassiveEffectInput = {
   code: string;
   name: string;
   description: string | null;
+  effectType: string | null;
+  param: Record<string, unknown> | null;
 };
 
 export async function updateAdminRelicPassiveEffect(
@@ -2209,7 +2245,13 @@ export async function updateAdminRelicPassiveEffect(
   if (existing) return { success: false, error: "この code は既に使用されています。" };
   await prisma.relicPassiveEffect.update({
     where: { id },
-    data: { code, name, description: input.description?.trim() || null },
+    data: {
+      code,
+      name,
+      description: input.description?.trim() || null,
+      effectType: input.effectType?.trim() || null,
+      param: input.param ? (input.param as object) : null,
+    },
   });
   return { success: true };
 }
@@ -2230,7 +2272,13 @@ export async function createAdminRelicPassiveEffect(
   });
   if (existing) return { success: false, error: "この code は既に使用されています。" };
   const created = await prisma.relicPassiveEffect.create({
-    data: { code, name, description: input.description?.trim() || null },
+    data: {
+      code,
+      name,
+      description: input.description?.trim() || null,
+      effectType: input.effectType?.trim() || null,
+      param: input.param ? (input.param as object) : null,
+    },
     select: { id: true },
   });
   return { success: true, relicPassiveEffectId: created.id };
@@ -3157,6 +3205,219 @@ export async function saveAdminResearchUnlockCosts(
   return { success: true };
 }
 
+// --- クエスト編集（spec/054）---
+
+export type AdminQuestRow = {
+  id: string;
+  code: string;
+  questType: string;
+  name: string;
+  prerequisiteCodes: string[];
+};
+
+export async function getAdminQuestList(): Promise<AdminQuestRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.quest.findMany({
+    orderBy: [{ questType: "asc" }, { code: "asc" }],
+    select: {
+      id: true,
+      code: true,
+      questType: true,
+      name: true,
+      prerequisites: { select: { prerequisiteQuest: { select: { code: true } } } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    questType: r.questType,
+    name: r.name,
+    prerequisiteCodes: r.prerequisites.map((p) => p.prerequisiteQuest.code),
+  }));
+}
+
+export type AdminQuestDetail = {
+  id: string;
+  code: string;
+  questType: string;
+  name: string;
+  description: string | null;
+  clearReportMessage: string | null;
+  prerequisiteQuestIds: string[];
+  /** spec/068: この任務クリアで解放する探索テーマの ID */
+  unlockThemeIds: string[];
+  /** spec/068: この任務クリアで解禁する研究グループの ID */
+  unlockResearchGroupIds: string[];
+  achievementType: string;
+  achievementParam: unknown;
+  rewardGra: number;
+  rewardResearchPoint: number;
+  rewardTitleId: string | null;
+  rewardItems: { itemId: string; amount: number }[];
+};
+
+export async function getAdminQuest(questId: string): Promise<AdminQuestDetail | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const q = await prisma.quest.findUnique({
+    where: { id: questId },
+    select: {
+      id: true,
+      code: true,
+      questType: true,
+      name: true,
+      description: true,
+      clearReportMessage: true,
+      prerequisites: { select: { prerequisiteQuestId: true } },
+      unlockExplorationThemes: { select: { themeId: true } },
+      unlockResearchGroups: { select: { researchGroupId: true } },
+      achievementType: true,
+      achievementParam: true,
+      rewardGra: true,
+      rewardResearchPoint: true,
+      rewardTitleId: true,
+      rewardItems: true,
+    },
+  });
+  if (!q) return null;
+  const rawItems = q.rewardItems;
+  const items: { itemId: string; amount: number }[] = Array.isArray(rawItems)
+    ? (rawItems as unknown[]).filter(
+        (e): e is { itemId: string; amount: number } =>
+          e != null &&
+          typeof (e as { itemId?: unknown }).itemId === "string" &&
+          typeof (e as { amount?: unknown }).amount === "number"
+      )
+    : [];
+  return {
+    id: q.id,
+    code: q.code,
+    questType: q.questType,
+    name: q.name,
+    description: q.description,
+    clearReportMessage: q.clearReportMessage,
+    prerequisiteQuestIds: q.prerequisites.map((p) => p.prerequisiteQuestId),
+    unlockThemeIds: q.unlockExplorationThemes.map((u) => u.themeId),
+    unlockResearchGroupIds: q.unlockResearchGroups.map((u) => u.researchGroupId),
+    achievementType: q.achievementType,
+    achievementParam: q.achievementParam,
+    rewardGra: q.rewardGra,
+    rewardResearchPoint: q.rewardResearchPoint,
+    rewardTitleId: q.rewardTitleId,
+    rewardItems: items,
+  };
+}
+
+export type UpdateAdminQuestInput = {
+  code: string;
+  questType: string;
+  name: string;
+  description: string | null;
+  clearReportMessage: string | null;
+  prerequisiteQuestIds: string[];
+  /** spec/068: この任務クリアで解放する探索テーマの ID 一覧 */
+  unlockThemeIds: string[];
+  /** spec/068: この任務クリアで解禁する研究グループの ID 一覧 */
+  unlockResearchGroupIds: string[];
+  achievementType: string;
+  achievementParamJson: string;
+  rewardGra: number;
+  rewardResearchPoint: number;
+  rewardTitleId: string | null;
+  rewardItems: { itemId: string; amount: number }[];
+};
+
+export async function updateAdminQuest(
+  questId: string,
+  input: UpdateAdminQuestInput
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const quest = await prisma.quest.findUnique({
+    where: { id: questId },
+    select: { id: true },
+  });
+  if (!quest) return { success: false, error: "開拓任務が見つかりません。" };
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  const questType = input.questType.trim() || "story";
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  const existingCode = await prisma.quest.findFirst({
+    where: { code, id: { not: questId } },
+    select: { id: true },
+  });
+  if (existingCode) return { success: false, error: "この code は既に使用されています。" };
+
+  let achievementParam: unknown = null;
+  if (input.achievementParamJson.trim()) {
+    try {
+      achievementParam = JSON.parse(input.achievementParamJson.trim()) as unknown;
+    } catch {
+      return { success: false, error: "achievementParam の JSON が不正です。" };
+    }
+  }
+
+  const rewardItems = input.rewardItems.filter(
+    (r) => r.itemId.trim() && Number.isInteger(r.amount) && r.amount > 0
+  );
+  const rewardItemsJson: { itemId: string; amount: number }[] = rewardItems.map((r) => ({
+    itemId: r.itemId.trim(),
+    amount: Math.max(1, r.amount),
+  }));
+
+  const prereqIds = (input.prerequisiteQuestIds ?? [])
+    .map((id) => id.trim())
+    .filter((id) => id && id !== questId);
+
+  const unlockThemeIds = (input.unlockThemeIds ?? []).filter((id) => id.trim());
+  const unlockResearchGroupIds = (input.unlockResearchGroupIds ?? []).filter((id) => id.trim());
+
+  await prisma.$transaction(async (tx) => {
+    await tx.quest.update({
+      where: { id: questId },
+      data: {
+        code,
+        questType,
+        name,
+        description: input.description?.trim() || null,
+        clearReportMessage: input.clearReportMessage?.trim() || null,
+        achievementType: input.achievementType.trim() || "area_clear",
+        achievementParam: achievementParam ?? Prisma.JsonNull,
+        rewardGra: Number.isInteger(input.rewardGra) && input.rewardGra >= 0 ? input.rewardGra : 0,
+        rewardResearchPoint:
+          Number.isInteger(input.rewardResearchPoint) && input.rewardResearchPoint >= 0
+            ? input.rewardResearchPoint
+            : 0,
+        rewardTitleId: input.rewardTitleId?.trim() || null,
+        rewardItems: rewardItemsJson.length > 0 ? rewardItemsJson : Prisma.JsonNull,
+      },
+    });
+    await tx.questPrerequisite.deleteMany({ where: { questId } });
+    for (const pid of prereqIds) {
+      await tx.questPrerequisite.create({
+        data: { questId, prerequisiteQuestId: pid },
+      });
+    }
+    await tx.questUnlockExplorationTheme.deleteMany({ where: { questId } });
+    for (const themeId of unlockThemeIds) {
+      await tx.questUnlockExplorationTheme.create({
+        data: { questId, themeId },
+      });
+    }
+    await tx.questUnlockResearchGroup.deleteMany({ where: { questId } });
+    for (const researchGroupId of unlockResearchGroupIds) {
+      await tx.questUnlockResearchGroup.create({
+        data: { questId, researchGroupId },
+      });
+    }
+  });
+  return { success: true };
+}
+
 export type AdminExplorationThemeRow = {
   id: string;
   code: string;
@@ -3180,7 +3441,7 @@ export async function getAdminExplorationThemeList(): Promise<
       description: true,
       displayOrder: true,
       areas: {
-        orderBy: { name: "asc" },
+        orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
         select: { id: true, code: true, name: true },
       },
     },
@@ -3202,7 +3463,7 @@ export async function getAdminExplorationTheme(
       description: true,
       displayOrder: true,
       areas: {
-        orderBy: { name: "asc" },
+        orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
         select: { id: true, code: true, name: true },
       },
     },
@@ -3300,6 +3561,7 @@ export type AdminExplorationAreaDetail = {
   code: string;
   name: string;
   description: string | null;
+  displayOrder: number;
   difficultyRank: number;
   recommendedLevel: number;
   baseDropMin: number;
@@ -3330,12 +3592,25 @@ export type AdminNormalEnemyGroup = {
   entries: AdminEnemyGroupEntryRow[];
 };
 
+/** エリア出撃コスト 1 行（管理画面用） */
+export type AdminExplorationAreaCostRow = {
+  id: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  quantity: number;
+};
+
 export type AdminExplorationAreaEditData = {
   area: AdminExplorationAreaDetail;
   enemyGroupCodes: string[];
   enemies: { id: string; code: string; name: string }[];
   /** 通常戦で使うグループのメンバー（normalEnemyGroupCode が設定されていてグループが存在する場合のみ） */
   normalEnemyGroup: AdminNormalEnemyGroup | null;
+  /** 出撃コスト（探索開始時に消費するアイテム・数量）。spec/049 §7.1 */
+  areaCosts: AdminExplorationAreaCostRow[];
+  /** 出撃コストのアイテム選択用（id, code, name） */
+  itemsForCost: { id: string; code: string; name: string }[];
 };
 
 export async function getAdminExplorationAreaEditData(
@@ -3352,6 +3627,7 @@ export async function getAdminExplorationAreaEditData(
       code: true,
       name: true,
       description: true,
+      displayOrder: true,
       difficultyRank: true,
       recommendedLevel: true,
       baseDropMin: true,
@@ -3370,7 +3646,7 @@ export async function getAdminExplorationAreaEditData(
   });
   if (!area) return null;
 
-  const [enemyGroupCodes, enemies, normalGroup] = await Promise.all([
+  const [enemyGroupCodes, enemies, normalGroup, areaCosts, itemsForCost] = await Promise.all([
     prisma.enemyGroup.findMany({ orderBy: { code: "asc" }, select: { code: true } }),
     prisma.enemy.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
     !area.normalEnemyGroupCode
@@ -3396,6 +3672,15 @@ export async function getAdminExplorationAreaEditData(
             })),
           };
         }),
+    prisma.explorationAreaCost.findMany({
+      where: { areaId },
+      include: { item: { select: { id: true, code: true, name: true } } },
+      orderBy: { item: { code: "asc" } },
+    }),
+    prisma.item.findMany({
+      orderBy: [{ category: "asc" }, { code: "asc" }],
+      select: { id: true, code: true, name: true },
+    }),
   ]);
 
   const { theme, ...rest } = area;
@@ -3407,6 +3692,14 @@ export async function getAdminExplorationAreaEditData(
     enemyGroupCodes: enemyGroupCodes.map((r) => r.code),
     enemies: enemies,
     normalEnemyGroup: normalGroup,
+    areaCosts: areaCosts.map((c) => ({
+      id: c.id,
+      itemId: c.itemId,
+      itemCode: c.item.code,
+      itemName: c.item.name,
+      quantity: c.quantity,
+    })),
+    itemsForCost,
   };
 }
 
@@ -3442,10 +3735,56 @@ export async function saveEnemyGroupEntries(
   return { success: true };
 }
 
+/** エリアの出撃コストを一括保存（既存を削除して指定で置き換え）。テストユーザー1のみ。 */
+export async function saveAdminExplorationAreaCosts(
+  areaId: string,
+  costs: { itemId: string; quantity: number }[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const area = await prisma.explorationArea.findUnique({
+    where: { id: areaId },
+    select: { id: true },
+  });
+  if (!area) return { success: false, error: "エリアが見つかりません。" };
+
+  const valid = costs.filter(
+    (c) => c.itemId.trim() && Number.isInteger(c.quantity) && c.quantity >= 1
+  );
+  const uniqueByItem = new Map<string, number>();
+  for (const c of valid) {
+    const id = c.itemId.trim();
+    uniqueByItem.set(id, Math.max(1, c.quantity));
+  }
+
+  const itemIds = [...uniqueByItem.keys()];
+  const existingItems = await prisma.item.findMany({
+    where: { id: { in: itemIds } },
+    select: { id: true },
+  });
+  const existingIdSet = new Set(existingItems.map((i) => i.id));
+  for (const id of itemIds) {
+    if (!existingIdSet.has(id)) {
+      return { success: false, error: "存在しないアイテムが含まれています。" };
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.explorationAreaCost.deleteMany({ where: { areaId } }),
+    ...Array.from(uniqueByItem.entries()).map(([itemId, quantity]) =>
+      prisma.explorationAreaCost.create({
+        data: { areaId, itemId, quantity },
+      })
+    ),
+  ]);
+  return { success: true };
+}
+
 export type UpdateAdminExplorationAreaInput = {
   code: string;
   name: string;
   description: string | null;
+  displayOrder: number;
   difficultyRank: number;
   recommendedLevel: number;
   baseDropMin: number;
@@ -3495,6 +3834,7 @@ export async function updateAdminExplorationArea(
       code,
       name,
       description: input.description?.trim() || null,
+      displayOrder: Number.isInteger(input.displayOrder) ? input.displayOrder : 0,
       difficultyRank: Math.max(1, Number(input.difficultyRank) || 1),
       recommendedLevel: Math.max(1, Number(input.recommendedLevel) || 1),
       baseDropMin: Math.max(0, Number(input.baseDropMin) ?? 3),
@@ -3551,6 +3891,7 @@ export async function createAdminExplorationArea(
       code,
       name,
       description: input.description?.trim() || null,
+      displayOrder: Number.isInteger(input.displayOrder) ? input.displayOrder : 0,
       difficultyRank: Math.max(1, Number(input.difficultyRank) || 1),
       recommendedLevel: Math.max(1, Number(input.recommendedLevel) || 1),
       baseDropMin: Math.max(0, Number(input.baseDropMin) ?? 3),

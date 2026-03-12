@@ -138,7 +138,12 @@ export async function runBattle(
         where: { relicInstanceId: { not: null } },
         select: {
           relicInstance: {
-            select: { attributeResistances: true },
+            select: {
+              attributeResistances: true,
+              relicPassiveEffect: {
+                select: { effectType: true, param: true },
+              },
+            },
           },
         },
       },
@@ -369,12 +374,20 @@ export async function runBattle(
       ? partyAttributeResistances[memberIndex]
       : undefined;
 
+    const relicPassiveEffects = (c.characterRelics ?? [])
+      .filter((cr) => cr.relicInstance?.relicPassiveEffect?.effectType)
+      .map((cr) => ({
+        effectType: cr.relicInstance!.relicPassiveEffect!.effectType!,
+        param: (cr.relicInstance!.relicPassiveEffect!.param as Record<string, unknown>) ?? {},
+      }));
+
     partyInput.push({
       displayName: c.category === "protagonist" && user?.name ? user.name : c.displayName,
       base,
       tacticSlots,
       skills,
       attributeResistances,
+      relicPassiveEffects,
     });
     partyIconFilenames.push(c.iconFilename);
     const override = initialHpMpByCharacterId?.[c.id];
