@@ -10,7 +10,7 @@ import type { SkillDataForBattle, TacticSlotInput } from "./run-battle-with-part
 export const DEFAULT_ENEMY_NAME = "スライム";
 
 /** スライム用アイコン（public/icons/ に配置） */
-export const DEFAULT_ENEMY_ICON_FILENAME = "6.gif";
+export const DEFAULT_ENEMY_ICON_FILENAME = "0.gif";
 
 /** 敵未指定時の固定敵（スライム1～3）の基礎ステータス。
  *  元は CAP=560 を 7 種に均等配分（各 80）だったが、

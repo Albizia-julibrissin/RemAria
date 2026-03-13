@@ -20,7 +20,9 @@
     "db:restore": "tsx prisma/db-restore.ts",
     "db:check-versions": "tsx prisma/db-check-versions.ts",
     "db:sync-masters": "tsx prisma/sync-masters-to-target.ts",
-    "db:migrate:bump-industrial": "tsx prisma/migrate-bump-user-industrial.ts"
+    "db:migrate:bump-industrial": "tsx prisma/migrate-bump-user-industrial.ts",
+    "db:delete-non-seed-users": "tsx prisma/delete-non-seed-users.ts",
+    "db:delete-non-seed-users:dry-run": "cross-env DRY_RUN=1 tsx prisma/delete-non-seed-users.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

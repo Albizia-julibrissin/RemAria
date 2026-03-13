@@ -1,7 +1,9 @@
 # スキル効果（SkillEffect）実装の準備
 
+**effectType の一覧・各 param の定義は `docs/042_battle_effect_types_reference.md` が正本。** 本 doc は実装 Phase・データフローの整理用。
+
 戦闘スキルの「効果まわり」（effectType + param）を実装するにあたり、**現状・不足・データ構造・実装順**を整理する。  
-参照: `spec/038_battle_skills_and_effects.md`, `docs/14_battle_skill_design_draft.md`, `prisma/seed.ts` の BATTLE_SKILL_EFFECTS。
+参照: `spec/038_battle_skills_and_effects.md`, `docs/042_battle_effect_types_reference.md`, `prisma/seed.ts` の BATTLE_SKILL_EFFECTS。
 
 ---
 

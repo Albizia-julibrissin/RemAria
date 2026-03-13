@@ -109,7 +109,21 @@
 
 ---
 
-## 7. 参照リンク
+## 7. テストユーザ以外のアカウント削除
+
+シードで作成するテストユーザ（管理人・test2@example.com）以外の User を削除する。開発環境で不要なアカウントを一括削除するときなどに使う。
+
+| コマンド | 用途 |
+|----------|------|
+| `npm run db:delete-non-seed-users` | 削除を実行（accountId が `admin` / `test_user_2` 以外のユーザを削除） |
+| `npm run db:delete-non-seed-users:dry-run` | 削除対象を表示するだけ（**確実に削除しない**。本番前の確認に推奨） |
+
+- **残すユーザ**: accountId が `admin`（管理人）または `test_user_2`（test2@example.com）のユーザのみ。関連データは Prisma の onDelete: Cascade で削除される。
+- **本番で実行する場合**: 必ず `npm run db:delete-non-seed-users:dry-run` で対象を確認してから、削除用コマンドを実行すること。（`npm run ... -- --dry-run` は環境によっては引数がスクリプトに渡らず削除が実行されてしまうため、dry-run 専用スクリプトを推奨）
+
+---
+
+## 8. 参照リンク
 
 | 内容 | 参照先 |
 |------|--------|

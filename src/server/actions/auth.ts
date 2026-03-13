@@ -112,7 +112,7 @@ export async function register(formData: FormData): Promise<AuthResult> {
     // 工業設備の初期作成に失敗しても登録は成功させる
   }
 
-  // ゲーム開始時付与：500 GRA と携帯食料 1000 個（manage/ECONOMY_DESIGN.md）
+  // ゲーム開始時付与：500 GRA と基本探索キット 5000 個（manage/ECONOMY_DESIGN.md）
   try {
     await ensureGameStartGrants(user.id);
   } catch {

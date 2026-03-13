@@ -56,7 +56,7 @@
 | 作戦編集 | spec/039_battle_tactics_and_editor | `src/app/dashboard/tactics/`, `src/server/actions/tactics.ts`, `src/app/dashboard/tactics/tactics-constants.ts` |
 | 作戦スロット・プリセット別保持 | spec/063_tactics_per_preset | 039 の拡張。PresetTacticSlot 追加・取得・保存・戦闘参照。実装フェーズは 063 §5。 |
 | 作戦スロット評価（行動決定） | spec/040_tactic_slot_evaluation | `src/lib/battle/tactic-evaluation.ts`。戦闘ループからここを呼ぶ。 |
-| レベル・ステータス割り振り | spec/048_level_and_status_allocation | `src/server/actions/character-exp.ts`, `src/lib/level.ts`, キャラ詳細のステ割り振り UI。レベルキャップ・キャップ到達後の経験値→アイテム付与は **docs/074_level_cap_and_cap_break_item.md**。 |
+| レベル・ステータス割り振り | spec/048_level_and_status_allocation | `src/server/actions/character-exp.ts`, `src/lib/level.ts`, キャラ詳細のステ割り振り UI。**レベルキャップ・キャップ到達後の経験値→アイテム付与**は **spec/074_level_cap_and_cap_reward_item.md**（設計は docs/074）。 |
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |
 | アイテム・所持・バッグ | spec/045_inventory_and_items | `src/server/actions/inventory.ts`（または bag.ts）, `src/app/dashboard/bag/`, schema: Item.category, EquipmentType, EquipmentInstance, CharacterEquipment, MechaPartInstance |
 | アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
@@ -71,8 +71,26 @@
 | クエスト（ストーリー・研究） | spec/054_quests, **docs/054_quest_and_research_design.md** | `src/server/actions/quest.ts`, `src/app/dashboard/quests/`。探索 finish で area_clear、戦闘勝利で enemy_defeat 進捗。研究ポイント報酬・解放は A1 以降で拡張。 |
 | 任務による機能解放（テーマ・研究グループ） | spec/068_quest_unlock_themes_and_research, **docs/068_quest_unlock_themes_and_research.md** | 報告時に UserExplorationThemeUnlock / UserResearchGroupUnlock に挿入。`getExplorationMenu` でテーマ限定、`getResearchMenu` で isAvailable を任務解放のみに。管理画面で開拓任務に解放テーマ・研究グループを紐づけ。 |
 | 装備の派生戦闘ステ加算（HP/MP 含む） | spec/071_equipment_derived_stats_in_battle | `src/lib/battle/run-battle-with-party.ts`（derivedBonus 加算）、`src/server/actions/battle.ts`（装備取得・合算）。実装プランは **docs/072_equipment_hp_mp_implementation_plan.md**。 |
+| 市場（出品・購入・最安消化・手数料） | spec/075_market, **docs/065_market_design.md** | 未実装。設計は 065、API・データ・実装フェーズは **spec/075_market.md** §7。Item.marketListable 拡張、MarketListing, MarketTransaction。 |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
+
+### タスク別・読むファイル最小セット（コンテキスト節約用）
+
+実装タスクごとに**この組み合わせだけ開けば十分**。必要以上に docs/README や設計メモを開かなくてよい。
+
+| タスク | 読むファイル（この順で十分） |
+|--------|------------------------------|
+| **effectType 追加** | `docs/042_battle_effect_types_reference.md`（正本）, `spec/038`, `src/lib/battle/run-battle-with-party.ts`, 必要なら `prisma/seed.ts` の BATTLE_SKILL_EFFECTS |
+| 戦闘計算・式の確認 | `docs/10_battle_calc_formulas.md`, `docs/10_battle_status.csv`, `src/lib/battle/derived-stats.ts` |
+| 作戦・ターゲット評価 | `spec/039`, `spec/040`, `docs/14_tactics_slot_shared.md`, `src/lib/battle/tactic-evaluation.ts` |
+| 探索・技能イベント | `spec/073_skill_events_exploration.md`, `docs/060_exploration_events_design.md` |
+| クエスト・報告・報酬 | `spec/054_quests.md`, `docs/067_quest_report_completion_flow.md`, `src/server/actions/quest.ts` |
+| 遺物・装備の戦闘反映 | `spec/051`, `spec/069`, `spec/071`, `src/server/actions/battle.ts`, `src/lib/battle/effective-base-stats.ts` |
+| データモデル・スキーマ変更 | `prisma/schema.prisma`, `docs/08_database_schema.md`, 該当 spec |
+| **スキル追加（新規スキル・効果の登録）** | `docs/content-guides/skill_addition_guide.md`, `spec/038`, `docs/042_battle_effect_types_reference.md`, 必要なら `prisma/seed.ts` の BATTLE_SKILL_EFFECTS |
+
+※ `docs/ideas/` は実装判断に使わない。`docs/14_*_draft` は設計メモであり実装の正本ではない（正本は spec/038 と 042）。
 
 ---
 

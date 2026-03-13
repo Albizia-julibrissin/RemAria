@@ -8,8 +8,8 @@ import { prisma } from "@/lib/db/prisma";
 import {
   INITIAL_FACILITY_NAMES,
   INITIAL_GRA_AMOUNT,
-  INITIAL_PORTABLE_RATION_AMOUNT,
-  PORTABLE_RATION_ITEM_CODE,
+  INITIAL_GRANT_ITEM_AMOUNT,
+  INITIAL_GRANT_ITEM_CODE,
 } from "@/lib/constants/initial-area";
 import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 import { grantStackableItem } from "@/server/lib/inventory";
@@ -91,12 +91,12 @@ export async function ensureInitialFacilities(userId: string): Promise<void> {
 }
 
 /**
- * ゲーム開始時付与：500 GRA（無償）と携帯食料 1000 個。
+ * ゲーム開始時付与：500 GRA（無償）と基本探索キット 5000 個。
  * 新規登録時に 1 回だけ呼ぶ。manage/ECONOMY_DESIGN.md。
  */
 export async function ensureGameStartGrants(userId: string): Promise<void> {
   const item = await prisma.item.findUnique({
-    where: { code: PORTABLE_RATION_ITEM_CODE },
+    where: { code: INITIAL_GRANT_ITEM_CODE },
     select: { id: true },
   });
 
@@ -119,7 +119,7 @@ export async function ensureGameStartGrants(userId: string): Promise<void> {
       await grantStackableItem(tx, {
         userId,
         itemId: item.id,
-        delta: INITIAL_PORTABLE_RATION_AMOUNT,
+        delta: INITIAL_GRANT_ITEM_AMOUNT,
       });
     }
   });

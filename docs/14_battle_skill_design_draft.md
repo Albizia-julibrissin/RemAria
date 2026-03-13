@@ -1,5 +1,9 @@
 # スキル設計：草案から見る必要項目とシステム
 
+**【設計メモ・実装の正本ではない】** 実装時は `spec/038_battle_skills_and_effects.md` と `docs/042_battle_effect_types_reference.md` を正本として参照すること。
+
+---
+
 本書は **スキル草案** を題材に、スキルに必要になりそうな**項目（フィールド・テーブル）**と、それを実現するための**システム**を洗い出す。  
 前提: `14_battle_core_spec.md`, `14_battle_attributes_tactics.md`, `14_battle_tactics_impl_draft.md`。
 
