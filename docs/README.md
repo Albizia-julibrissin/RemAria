@@ -39,8 +39,7 @@
 
 | ファイル | 内容 |
 |----------|------|
-| **00_battle_system_overview.md** | 戦闘システム概要（あれば） |
-| **14_battle_core_spec.md** | 戦闘コア仕様（編成・列・ターゲット・流れ） |
+| **14_battle_core_spec.md** | **戦闘コア仕様**（編成・列・ターゲット・流れ・概要はここに集約。旧 00_battle_system_overview は統合済み） |
 | 14_battle_attributes_tactics.md | 属性・耐性・属性状態・作戦 |
 | 14_battle_skill_design_draft.md | スキル設計の草案・必要項目（設計メモ） |
 | 14_battle_tactics_impl_draft.md | 作戦実装のたたき台 |
@@ -61,7 +60,7 @@
 | **070_battle_effective_stats_implementation_plan.md** | 戦闘時有効基礎ステ実装案・実装フェーズ分け（→ spec/069） |
 | **072_equipment_hp_mp_implementation_plan.md** | 装備の HP/MP 仕様拡張・戦闘反映の実装フェーズ分け（→ spec/071） |
 
-→ 正式仕様: **spec/038_battle_skills_and_effects.md**, spec/039, spec/040。**戦闘時有効基礎ステ**（遺物補正・メカパーツ・フレーム倍率）は **spec/069_battle_effective_base_stats**。**装備の派生戦闘ステ加算**（HP/MP 含む・HP は 4.25 倍）は **spec/071_equipment_derived_stats_in_battle**。**作戦スロット**は spec/039（味方・作戦室）と spec/050（敵・敵マスタ編集）の両方で同一仕様。**プリセットごとに別作戦**の拡張は **spec/063_tactics_per_preset**（設計案は 062）。詳細は 14_tactics_slot_shared.md。
+→ 正式仕様: **spec/038_battle_skills_and_effects.md**, spec/039, spec/040。**戦闘時有効基礎ステ**（遺物補正・メカパーツ・フレーム倍率）は **spec/069_battle_effective_base_stats**。**装備の派生戦闘ステ加算**（HP/MP 含む）は **spec/071_equipment_derived_stats_in_battle**。**作戦スロット**は spec/039（味方・作戦室）と spec/050（敵・敵マスタ編集）の両方で同一仕様。**プリセットごとに別作戦**の拡張は **spec/063_tactics_per_preset**（設計案は 062）。詳細は 14_tactics_slot_shared.md。
 
 ---
 
@@ -76,9 +75,10 @@
 | **024_mecha_design.md** | **メカ設計（パーツ部位・スキル方針・ステ計算）** |
 | **026_user_inventory_and_items.md** | **ユーザーアイテム所持（資源・装備・メカパーツ・遺物・スキル分析書・課金）** |
 | **053_equipment_craft_stat_gen_master.md** | **装備・クラフトのステ生成（CAP/ウェイト）をマスタに持つ設計**（021 のマスタ化） |
-| **073_relic_passive_effect_types_design.md** | **遺物パッシブ効果の effectType 設計**（スキル効果型・条件＋効果・ハクスラ向けユニーク拡張）。正本は本 doc §5。 |
+| **073_equipment_hp_no_multiplier_impact.md** | 装備 HP が倍率に与えない設計メモ。 |
+| **074_level_cap_and_cap_break_item.md** | **レベルキャップとキャップ到達後の報酬**。ゲーム全体の最大レベル（例:100）。キャップ到達後はレベルは上がらず、レベル1分の経験値が貯まるごとに振り直しアイテムを1個付与。→ spec/048 拡張。 |
 
-→ spec/015, 025, 030, 045, 046, 051（遺物）
+→ spec/015, 025, 030, 045, 046, 051（遺物）。**遺物パッシブ効果の effectType** は spec/051 および `src/lib/constants/relic-passive-effect-admin.ts` を参照。
 
 ---
 
@@ -102,6 +102,7 @@
 | ファイル | 内容 |
 |----------|------|
 | **064_game_cycle_design.md** | **ゲームサイクル設計**（生産→資源→探索消費）。1日あたりのプレイ量・消費量の判断用。探索時の資源消費は未実装。 |
+| **065_market_design.md** | **市場設計**（出品/購入・手数料・価格履歴）。Item 出品可否・最安から購入（トレード防止）・運営の取捨選択。→ spec は未作成。 |
 | 020_exploration_design.md | 探索設計 |
 | 022_chat_ui_design.md | チャット UI 設計 |
 | **054_quest_and_research_design.md** | **クエストと研究の設計**（定義・前提・作業分解。ストーリー/研究/一般クエスト・研究ポイント・解放コスト・称号。設計メモ。正式仕様は spec/054_quests で定義済み。） |
@@ -138,7 +139,7 @@
 
 ---
 
-## 統廃合の検討（docs/00_doc_consolidation_proposal.md）
+## 統廃合の検討
 
-ドキュメントが増えてきたため、統廃合の案を **00_doc_consolidation_proposal.md** にまとめてある。  
-「どこを 1 本にまとめるか」「どれを参照用に残すか」の判断に使える。
+- **方針・戦略**: **docs/00_doc_consolidation_proposal.md** — 「どこを 1 本にまとめるか」「どれを参照用に残すか」の判断。
+- **実行計画（00 から順）**: **manage/DOC_CONSOLIDATION_PLAN.md** — 番号順の削除・統合・アーカイブのチェックリスト。

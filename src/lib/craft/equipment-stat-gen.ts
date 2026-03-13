@@ -3,8 +3,10 @@
  * 戦闘用ステータス（PATK, PDEF 等）への加算値を返す。
  */
 
-/** 装備が補正できる戦闘用ステータス（derived-stats のキーと対応） */
+/** 装備が補正できる戦闘用ステータス（derived-stats のキーと対応）。戦闘時は合算値をそのまま派生ステに加算（spec/071）。 */
 export const EQUIPMENT_STAT_KEYS = [
+  "HP",
+  "MP",
   "PATK",
   "MATK",
   "PDEF",
@@ -17,6 +19,8 @@ export type EquipmentStatKey = (typeof EQUIPMENT_STAT_KEYS)[number];
 
 /** 装備ステータスの表示名（UI 一覧・モーダル用） */
 export const EQUIPMENT_STAT_LABELS: Record<EquipmentStatKey, string> = {
+  HP: "HP",
+  MP: "MP",
   PATK: "物理攻撃",
   MATK: "魔法攻撃",
   PDEF: "物理防御",

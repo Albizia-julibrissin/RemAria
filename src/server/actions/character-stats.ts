@@ -57,11 +57,11 @@ export async function allocateCharacterStats(input: {
   };
 
   const sum = BASE_STAT_KEYS.reduce((acc, key) => acc + values[key], 0);
-  if (sum !== cap) {
+  if (sum > cap) {
     return {
       success: false,
       error: "VALIDATION",
-      message: `合計が CAP と一致してください（現在の合計: ${sum}, CAP: ${cap}）。`,
+      message: `合計が CAP を超えています（現在の合計: ${sum}, CAP: ${cap}）。`,
     };
   }
 

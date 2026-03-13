@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isTestUser1 } from "@/server/lib/admin";
+import { AdminBackButton } from "../admin-back-button";
 
 const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[] = [
   {
@@ -40,6 +41,7 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
     title: "探索",
     links: [
       { href: "/dashboard/admin/exploration-themes", label: "探索テーマ・エリア編集" },
+      { href: "/dashboard/admin/skill-events", label: "技能イベント編集" },
       { href: "/dashboard/admin/drops", label: "エリアドロップ編集" },
     ],
   },
@@ -68,12 +70,7 @@ export default async function AdminContentPage() {
   return (
     <main className="min-h-screen bg-base p-8">
       <div className="mb-6">
-        <Link
-          href="/dashboard"
-          className="text-sm text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-        >
-          ← ダッシュボード
-        </Link>
+        <AdminBackButton />
       </div>
       <h1 className="text-2xl font-bold text-text-primary">コンテンツ管理</h1>
       <p className="mt-2 text-sm text-text-muted">

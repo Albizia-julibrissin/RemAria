@@ -69,7 +69,7 @@
 | ファイル | 提案 | 理由 |
 |----------|------|------|
 | 14_初期スキル（中身がほぼ空のファイル/フォルダ） | 削除 or 14_initial_skills.csv へのリンクだけ残す | 実体がなければ削除でよい。 |
-| 00_battle_system_overview.md | 14_battle_core_spec や 00_overview と内容が重なっていれば | 戦闘の概要を 00_overview か 14_battle_core_spec に統合し、このファイルは「14_battle_core_spec 参照」の短いリダイレクトにするか削除。 |
+| ~~00_battle_system_overview.md~~ | **削除済み** | 戦闘概要は 14_battle_core_spec に集約。2025-03 に削除。 |
 
 ---
 

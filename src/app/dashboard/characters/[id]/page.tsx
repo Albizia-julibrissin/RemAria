@@ -162,13 +162,17 @@ export default async function CharacterDetailPage({
           />
           <div className="min-w-0 flex-1 overflow-x-auto">
             <h2 className="text-lg font-medium text-text-primary">基礎ステータス</h2>
-            <p className="mt-1 text-xs text-text-muted">列は 基礎・装備・遺物 の加算です。</p>
+            <p className="mt-1 text-xs text-text-muted">
+              {isMech ? "列は 基礎・パーツ・遺物 の加算です。" : "列は 基礎・遺物 の加算です。"}
+            </p>
             <table className="mt-3 w-full min-w-[200px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-base-border text-left text-text-muted">
                   <th className="py-1 pr-4 font-medium"></th>
                   <th className="w-14 py-1 text-right font-medium tabular-nums">基礎</th>
-                  <th className="w-14 py-1 text-right font-medium tabular-nums">装備</th>
+                  {isMech && (
+                    <th className="w-14 py-1 text-right font-medium tabular-nums">パーツ</th>
+                  )}
                   <th className="w-14 py-1 text-right font-medium tabular-nums">遺物</th>
                 </tr>
               </thead>
@@ -176,13 +180,13 @@ export default async function CharacterDetailPage({
                 {BASE_STAT_KEYS.map((key) => {
                   const baseVal = character[key];
                   const relAdd = key === "CAP" ? 0 : (relicBonus[key as keyof typeof relicBonus] ?? 0);
-                  const equipAdd = key === "CAP" ? 0 : (mechaEquipmentBonus?.[key as keyof typeof mechaEquipmentBonus] ?? 0);
+                  const partsAdd = isMech && key !== "CAP" ? (mechaEquipmentBonus?.[key as keyof typeof mechaEquipmentBonus] ?? 0) : 0;
                   if (key === "CAP") {
                     return (
                       <tr key={key} className="border-b border-base-border/70">
                         <td className="py-1 pr-4 text-text-muted">{key}</td>
                         <td className="py-1 text-right font-medium tabular-nums text-text-primary">{baseVal}</td>
-                        <td className="py-1 text-right tabular-nums text-text-muted">—</td>
+                        {isMech && <td className="py-1 text-right tabular-nums text-text-muted">—</td>}
                         <td className="py-1 text-right tabular-nums text-text-muted">—</td>
                       </tr>
                     );
@@ -191,9 +195,11 @@ export default async function CharacterDetailPage({
                     <tr key={key} className="border-b border-base-border/70">
                       <td className="py-1 pr-4 text-text-muted">{key}</td>
                       <td className="py-1 text-right font-medium tabular-nums text-text-primary">{baseVal}</td>
-                      <td className="py-1 text-right tabular-nums text-text-primary">
-                        {equipAdd > 0 ? <span className="text-green-600 dark:text-green-400">+{equipAdd}</span> : "+0"}
-                      </td>
+                      {isMech && (
+                        <td className="py-1 text-right tabular-nums text-text-primary">
+                          {partsAdd > 0 ? <span className="text-green-600 dark:text-green-400">+{partsAdd}</span> : "+0"}
+                        </td>
+                      )}
                       <td className="py-1 text-right tabular-nums text-text-primary">
                         {relAdd > 0 ? <span className="text-amber-600 dark:text-amber-400">+{relAdd}</span> : "+0"}
                       </td>

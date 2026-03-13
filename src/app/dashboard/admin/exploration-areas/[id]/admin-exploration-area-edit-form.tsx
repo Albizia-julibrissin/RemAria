@@ -6,12 +6,14 @@ import type {
   AdminExplorationAreaEditData,
   AdminEnemyGroupEntryRow,
   AdminExplorationAreaCostRow,
+  AdminAreaExplorationEventRow,
   UpdateAdminExplorationAreaInput,
 } from "@/server/actions/admin";
 import {
   updateAdminExplorationArea,
   saveEnemyGroupEntries,
   saveAdminExplorationAreaCosts,
+  saveAdminAreaExplorationEvents,
 } from "@/server/actions/admin";
 
 type GroupEntryEdit = {
@@ -28,6 +30,14 @@ type CostRowEdit = {
   itemCode: string;
   itemName: string;
   quantity: number;
+};
+
+type SkillEventRowEdit = {
+  tempId: string;
+  explorationEventId: string;
+  explorationEventCode: string;
+  explorationEventName: string;
+  weight: number;
 };
 
 type Props = {
@@ -56,7 +66,7 @@ function toCostRow(c: AdminExplorationAreaCostRow): CostRowEdit {
 
 export function AdminExplorationAreaEditForm({ data }: Props) {
   const router = useRouter();
-  const { area, enemyGroupCodes, enemies, normalEnemyGroup, areaCosts, itemsForCost } = data;
+  const { area, enemyGroupCodes, enemies, normalEnemyGroup, areaCosts, itemsForCost, areaExplorationEvents, explorationEventsForSelect } = data;
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
@@ -103,6 +113,22 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
   } | null>(null);
   const [costSavePending, setCostSavePending] = useState(false);
 
+  const toSkillEventRow = (r: AdminAreaExplorationEventRow): SkillEventRowEdit => ({
+    tempId: r.explorationEventId,
+    explorationEventId: r.explorationEventId,
+    explorationEventCode: r.explorationEventCode,
+    explorationEventName: r.explorationEventName,
+    weight: r.weight,
+  });
+  const [skillEventRows, setSkillEventRows] = useState<SkillEventRowEdit[]>(() =>
+    data.areaExplorationEvents.map(toSkillEventRow)
+  );
+  const [skillEventSaveMessage, setSkillEventSaveMessage] = useState<{
+    type: "ok" | "error";
+    text: string;
+  } | null>(null);
+  const [skillEventSavePending, setSkillEventSavePending] = useState(false);
+
   useEffect(() => {
     if (normalEnemyGroup) {
       setGroupEntries(normalEnemyGroup.entries.map(toEditEntry));
@@ -114,6 +140,10 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
   useEffect(() => {
     setCostRows(data.areaCosts.map(toCostRow));
   }, [data.areaCosts]);
+
+  useEffect(() => {
+    setSkillEventRows(data.areaExplorationEvents.map(toSkillEventRow));
+  }, [data.areaExplorationEvents]);
 
   const handleSaveGroupEntries = () => {
     if (!normalEnemyGroup) return;
@@ -191,6 +221,46 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
       setCostSaveMessage(
         result.success
           ? { type: "ok", text: "出撃コストを保存しました。" }
+          : { type: "error", text: result.error ?? "保存に失敗しました。" }
+      );
+      if (result.success) router.refresh();
+    });
+  };
+
+  const addSkillEventRow = () => {
+    const used = new Set(skillEventRows.map((r) => r.explorationEventId));
+    const first = explorationEventsForSelect.find((e) => !used.has(e.id));
+    if (!first) return;
+    setSkillEventRows((prev) => [
+      ...prev,
+      {
+        tempId: `skill-${Date.now()}`,
+        explorationEventId: first.id,
+        explorationEventCode: first.code,
+        explorationEventName: first.name,
+        weight: 1,
+      },
+    ]);
+  };
+  const removeSkillEventRow = (tempId: string) => {
+    setSkillEventRows((prev) => prev.filter((r) => r.tempId !== tempId));
+  };
+  const updateSkillEventRow = (tempId: string, patch: Partial<SkillEventRowEdit>) => {
+    setSkillEventRows((prev) =>
+      prev.map((r) => (r.tempId === tempId ? { ...r, ...patch } : r))
+    );
+  };
+  const handleSaveSkillEvents = () => {
+    setSkillEventSavePending(true);
+    setSkillEventSaveMessage(null);
+    saveAdminAreaExplorationEvents(
+      area.id,
+      skillEventRows.map((r) => ({ explorationEventId: r.explorationEventId, weight: r.weight }))
+    ).then((result) => {
+      setSkillEventSavePending(false);
+      setSkillEventSaveMessage(
+        result.success
+          ? { type: "ok", text: "技能イベント紐づけを保存しました。" }
           : { type: "error", text: result.error ?? "保存に失敗しました。" }
       );
       if (result.success) router.refresh();
@@ -673,6 +743,111 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
           >
             {costSavePending ? "保存中…" : "出撃コストを保存"}
           </button>
+        </div>
+      </section>
+
+      <section className="rounded border border-base-border bg-base-elevated p-4">
+        <h2 className="text-lg font-medium text-text-primary">技能イベント（spec/073）</h2>
+        <p className="mt-1 text-sm text-text-muted">
+          このエリアで発生しうる技能イベントと重み。重み付き抽選で1件選ばれます。0件のときは従来の固定文言で動作します。
+        </p>
+        {skillEventSaveMessage && (
+          <p
+            className={`mt-2 text-sm ${skillEventSaveMessage.type === "ok" ? "text-success" : "text-error"}`}
+          >
+            {skillEventSaveMessage.text}
+          </p>
+        )}
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[320px] text-sm border-collapse border border-base-border">
+            <thead>
+              <tr className="bg-base">
+                <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
+                  技能イベント
+                </th>
+                <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-24">
+                  重み
+                </th>
+                <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">
+                  操作
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {skillEventRows.map((row) => (
+                <tr key={row.tempId} className="text-text-primary">
+                  <td className="border border-base-border px-2 py-1.5">
+                    <select
+                      value={row.explorationEventId}
+                      onChange={(e) => {
+                        const ev = explorationEventsForSelect.find((x) => x.id === e.target.value);
+                        if (ev)
+                          updateSkillEventRow(row.tempId, {
+                            explorationEventId: ev.id,
+                            explorationEventCode: ev.code,
+                            explorationEventName: ev.name,
+                          });
+                      }}
+                      className="w-full max-w-[220px] rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+                    >
+                      {explorationEventsForSelect.map((ev) => (
+                        <option key={ev.id} value={ev.id}>
+                          {ev.code} — {ev.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-base-border px-2 py-1.5">
+                    <input
+                      type="number"
+                      min={0}
+                      value={row.weight}
+                      onChange={(e) =>
+                        updateSkillEventRow(row.tempId, {
+                          weight: Math.max(0, parseInt(e.target.value, 10) || 0),
+                        })
+                      }
+                      className="w-20 rounded border border-base-border bg-base px-2 py-1 text-text-primary"
+                    />
+                  </td>
+                  <td className="border border-base-border px-2 py-1.5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeSkillEventRow(row.tempId)}
+                      className="text-error hover:underline text-xs"
+                    >
+                      削除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={addSkillEventRow}
+            disabled={explorationEventsForSelect.length === 0}
+            className="rounded border border-base-border bg-base-elevated px-3 py-1.5 text-sm text-text-primary hover:bg-base disabled:opacity-50"
+          >
+            ＋ イベントを追加
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveSkillEvents}
+            disabled={skillEventSavePending}
+            className="rounded bg-brass px-3 py-1.5 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+          >
+            {skillEventSavePending ? "保存中…" : "技能イベント紐づけを保存"}
+          </button>
+          <span className="text-xs text-text-muted">
+            技能イベントマスタは
+            <a href="/dashboard/admin/skill-events" className="text-brass hover:text-brass-hover ml-1" target="_blank" rel="noopener noreferrer">
+              技能イベント編集
+            </a>
+            で追加できます。
+          </span>
         </div>
       </section>
 

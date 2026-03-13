@@ -56,7 +56,7 @@
 | 作戦編集 | spec/039_battle_tactics_and_editor | `src/app/dashboard/tactics/`, `src/server/actions/tactics.ts`, `src/app/dashboard/tactics/tactics-constants.ts` |
 | 作戦スロット・プリセット別保持 | spec/063_tactics_per_preset | 039 の拡張。PresetTacticSlot 追加・取得・保存・戦闘参照。実装フェーズは 063 §5。 |
 | 作戦スロット評価（行動決定） | spec/040_tactic_slot_evaluation | `src/lib/battle/tactic-evaluation.ts`。戦闘ループからここを呼ぶ。 |
-| レベル・ステータス割り振り | spec/048_level_and_status_allocation | `src/server/actions/character-exp.ts`, `src/lib/level.ts`, キャラ詳細のステ割り振り UI。 |
+| レベル・ステータス割り振り | spec/048_level_and_status_allocation | `src/server/actions/character-exp.ts`, `src/lib/level.ts`, キャラ詳細のステ割り振り UI。レベルキャップ・キャップ到達後の経験値→アイテム付与は **docs/074_level_cap_and_cap_break_item.md**。 |
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |
 | アイテム・所持・バッグ | spec/045_inventory_and_items | `src/server/actions/inventory.ts`（または bag.ts）, `src/app/dashboard/bag/`, schema: Item.category, EquipmentType, EquipmentInstance, CharacterEquipment, MechaPartInstance |
 | アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
@@ -66,6 +66,7 @@
 | 称号（マスタ・ユーザ解放） | spec/055_titles | `src/server/actions/titles.ts`（getTitleList, getMyUnlockedTitleIds, unlockTitleForUser）, schema: Title, UserTitleUnlock。シードで「開拓者」1件投入。 |
 | スキル分析書・スキルレベル | spec/052_skill_books_and_level | `src/server/actions/inventory.ts`（consumeSkillBook, getCharactersForSkillBook）, `src/app/dashboard/bag/`（スキル分析書タブで使用・キャラ選択）, schema: Item.skillId, CharacterSkill.level。習得/レベルアップ必要冊数は Lv N→N+1 に (N+1) 冊。 |
 | 探索・エリアドロップ（管理） | spec/049（7.2 ドロップテーブル）, **manage/admin_area_drop_edit.md** | `src/server/actions/admin.ts`（getAreaDropEditData, saveDropTableEntries 等）, `src/app/dashboard/admin/drops/`。編集手順・強敵枠追加は manage 参照。 |
+| 探索・技能イベント（本実装） | spec/073_skill_events_exploration, **docs/060_exploration_events_design.md** | エリア×イベント紐づけ・係数閾値・発生/クリアメッセージ。`getNextExplorationStep` / `resolveExplorationSkillEvent` / pendingSkillEvent。管理画面は Phase 6 で追加。 |
 | アイテムマスタ（管理） | spec/045, **manage/admin_item_master_edit.md** | `src/server/actions/admin.ts`（getAdminItemList, getAdminItem, updateAdminItem）, `src/app/dashboard/admin/items/`, `src/lib/constants/item-categories.ts`。 |
 | クエスト（ストーリー・研究） | spec/054_quests, **docs/054_quest_and_research_design.md** | `src/server/actions/quest.ts`, `src/app/dashboard/quests/`。探索 finish で area_clear、戦闘勝利で enemy_defeat 進捗。研究ポイント報酬・解放は A1 以降で拡張。 |
 | 任務による機能解放（テーマ・研究グループ） | spec/068_quest_unlock_themes_and_research, **docs/068_quest_unlock_themes_and_research.md** | 報告時に UserExplorationThemeUnlock / UserResearchGroupUnlock に挿入。`getExplorationMenu` でテーマ限定、`getResearchMenu` で isAvailable を任務解放のみに。管理画面で開拓任務に解放テーマ・研究グループを紐づけ。 |

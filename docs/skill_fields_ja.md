@@ -4,6 +4,8 @@
 
 **effectType の正式な定義・param 一覧・適用タイミング**は `docs/042_battle_effect_types_reference.md` を参照。
 
+**属性コード→日本語名の正本**: 本ドキュメントの attribute 行と `src/lib/constants/relic.ts` の `ATTRIBUTE_RESISTANCE_LABELS` を正本とする。他で表示名を参照する場合はここに合わせる。
+
 ---
 
 ## 1. スキル本体（Skill / BATTLE_SKILLS）
@@ -21,7 +23,7 @@
 | hitsMax | 攻撃回数（最大） | 例: 1, 5 |
 | resampleTargetPerHit | ヒットごとにターゲット再抽選 | true / false |
 | targetScope | 対象範囲 | enemy_single=敵単体 / enemy_all=敵全体 / ally_single=味方単体 / ally_all=味方全体 / self=自分 |
-| attribute | 属性 | none / crush=圧縮 / slash=切創 / pierce=穿孔 / burn=焼損 / freeze=凍傷 / corrode=侵食 / polarity=極性 |
+| attribute | 属性 | none / crush=圧縮 / slash=切創 / pierce=穿孔 / burn=焼損 / freeze=凍傷 / corrode=侵食 / polarity=極星 |
 | weightAddFront | 列ウェイト加算（前列） | ターゲット抽選で前列に加算。例: 0, 1.0 |
 | weightAddMid | 列ウェイト加算（中列） | 同上・中列 |
 | weightAddBack | 列ウェイト加算（後列） | 同上・後列。例: 2.0 |

@@ -6,13 +6,13 @@ import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import type { RunBattleSuccess } from "@/server/actions/battle";
-import { runBattle } from "@/server/actions/battle";
+import { getPartyVerificationStats, runBattle } from "@/server/actions/battle";
 import { userRepository } from "@/server/repositories/user-repository";
 import {
   resolveEnemiesForExplorationBattle,
   type ExplorationBattleType,
 } from "@/server/lib/resolve-exploration-enemies";
-import { computeDerivedStats } from "@/lib/battle/derived-stats";
+import { computeDerivedStats, type DerivedStats } from "@/lib/battle/derived-stats";
 import { grantStackableItem } from "@/server/lib/inventory";
 
 export type ExplorationAreaSummary = {
@@ -163,6 +163,7 @@ export async function startExploration(
   if (!session.userId) {
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
   }
+  const userId = session.userId;
 
   const { areaId, partyPresetId, consumables } = params;
 
@@ -281,7 +282,7 @@ export async function startExploration(
   }
 
   const baseData = {
-    userId: session.userId,
+    userId,
     areaId: area.id,
     partyPresetId: preset.id,
     state: "in_progress" as const,
@@ -311,7 +312,7 @@ export async function startExploration(
       await tx.userInventory.update({
         where: {
           userId_itemId: {
-            userId: session.userId,
+            userId,
             itemId: cost.itemId,
           },
         },
@@ -323,7 +324,7 @@ export async function startExploration(
       const inv = await tx.userInventory.findUnique({
         where: {
           userId_itemId: {
-            userId: session.userId,
+            userId,
             itemId,
           },
         },
@@ -334,7 +335,7 @@ export async function startExploration(
       await tx.userInventory.update({
         where: {
           userId_itemId: {
-            userId: session.userId,
+            userId,
             itemId,
           },
         },
@@ -348,7 +349,7 @@ export async function startExploration(
           select: { id: true },
         })
       : await tx.expedition.update({
-          where: { userId: session.userId },
+          where: { userId },
           data: baseData,
           select: { id: true },
         });
@@ -549,6 +550,8 @@ export type NextExplorationStep =
       themeName: string;
       areaName: string;
       eventMessage: string;
+      /** spec/073: マスタ登録イベントの id。フォールバック時は null */
+      explorationEventId: string | null;
       partyDisplayNames: string[];
       partyIconFilenames: (string | null)[];
       partyPositions: { row: number; col: number }[];
@@ -583,6 +586,7 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
       explorationState: true,
       area: {
         select: {
+          id: true,
           name: true,
           baseSkillEventRate: true,
           theme: { select: { name: true } },
@@ -609,7 +613,12 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
     };
   }
 
-  const area = expedition.area as { name: string; baseSkillEventRate: number; theme: { name: string } };
+  const area = expedition.area as {
+    id: string;
+    name: string;
+    baseSkillEventRate: number;
+    theme: { name: string };
+  };
   const themeName = area.theme.name;
   const areaName = area.name;
 
@@ -637,6 +646,42 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
 
   if (!isSkillEvent) {
     return { success: true, step: { kind: "battle" } };
+  }
+
+  // spec/073: 技能に振れた場合、エリアに紐づくイベント（weight > 0）から重み付き抽選。0 件ならフォールバック。
+  const areaEvents = await prisma.areaExplorationEvent.findMany({
+    where: { areaId: area.id, weight: { gt: 0 } },
+    include: {
+      explorationEvent: {
+        include: { skillEventDetail: true },
+      },
+    },
+  });
+  const skillCheckPool = areaEvents.filter(
+    (ae) =>
+      ae.explorationEvent.eventType === "skill_check" &&
+      ae.explorationEvent.skillEventDetail != null
+  );
+  const totalWeight = skillCheckPool.reduce((s, ae) => s + ae.weight, 0);
+  let chosenEventMessage = "何かが起きた…。どう対処する？";
+  let chosenExplorationEventId: string | null = null;
+  if (skillCheckPool.length > 0 && totalWeight > 0) {
+    let r = Math.random() * totalWeight;
+    for (const ae of skillCheckPool) {
+      r -= ae.weight;
+      if (r < 0 && ae.explorationEvent.skillEventDetail) {
+        chosenEventMessage = ae.explorationEvent.skillEventDetail.occurrenceMessage;
+        chosenExplorationEventId = ae.explorationEvent.id;
+        break;
+      }
+    }
+    if (chosenExplorationEventId === null) {
+      const last = skillCheckPool[skillCheckPool.length - 1]!;
+      if (last.explorationEvent.skillEventDetail) {
+        chosenEventMessage = last.explorationEvent.skillEventDetail.occurrenceMessage;
+        chosenExplorationEventId = last.explorationEvent.id;
+      }
+    }
   }
 
   const order = [
@@ -721,7 +766,8 @@ export async function getNextExplorationStep(): Promise<GetNextExplorationStepRe
       kind: "skill_check",
       themeName: area.theme.name,
       areaName: area.name,
-      eventMessage: "何かが起きた…。どう対処する？",
+      eventMessage: chosenEventMessage,
+      explorationEventId: chosenExplorationEventId,
       partyDisplayNames,
       partyIconFilenames,
       partyPositions,
@@ -784,6 +830,10 @@ export async function resolveExplorationSkillEvent(
     };
   }
 
+  // spec/073: pendingSkillEvent の explorationEventId を参照（resolve 前に取得し、後で state から削除する）
+  const rawStateForPending = (expedition.explorationState ?? {}) as { pendingSkillEvent?: { explorationEventId?: string | null } };
+  const explorationEventId = rawStateForPending.pendingSkillEvent?.explorationEventId ?? null;
+
   const order = [
     expedition.partyPreset.slot1CharacterId,
     expedition.partyPreset.slot2CharacterId,
@@ -811,17 +861,38 @@ export async function resolveExplorationSkillEvent(
     if (v > bestValue) bestValue = v;
   }
 
-  const required = expedition.area.skillCheckRequiredValue ?? 80;
+  const areaBase = expedition.area.skillCheckRequiredValue ?? 80;
+  const rounds = expedition.battleWinCount + expedition.skillSuccessCount;
+  const roundIndex = rounds + 1;
+  const fallbackSuccessLog = `R${roundIndex}: 技能判定（${stat}）成功。`;
+  const fallbackFailLog = `R${roundIndex}: 技能判定（${stat}）失敗。`;
+
+  let required: number;
+  let statOption: { successMessage: string; failMessage: string; difficultyCoefficient: number } | null = null;
+  if (explorationEventId) {
+    // spec/073: マスタ登録イベント時は SkillEventStatOption から係数・メッセージを取得
+    const row = await prisma.skillEventStatOption.findUnique({
+      where: {
+        skillEventDetailId_statKey: {
+          skillEventDetailId: explorationEventId,
+          statKey,
+        },
+      },
+    });
+    statOption = row;
+    const coefficient = row?.difficultyCoefficient ?? 1;
+    required = Math.round(areaBase * coefficient);
+  } else {
+    required = areaBase;
+  }
+
   const isSuccess =
     bestValue >= required
       ? true
       : Math.random() < bestValue / required;
-
-  const rounds = expedition.battleWinCount + expedition.skillSuccessCount;
-  const roundIndex = rounds + 1;
   const logLine = isSuccess
-    ? `R${roundIndex}: 技能判定（${stat}）成功。`
-    : `R${roundIndex}: 技能判定（${stat}）失敗。`;
+    ? (statOption?.successMessage ?? fallbackSuccessLog)
+    : (statOption?.failMessage ?? fallbackFailLog);
 
   const rawState = (expedition.explorationState ?? {}) as unknown as { logs?: unknown; pendingSkillEvent?: unknown };
   const { pendingSkillEvent: _dropped, ...stateWithoutPending } = rawState;
@@ -1153,6 +1224,8 @@ export type AdvanceExplorationStep =
       themeName: string;
       areaName: string;
       eventMessage: string;
+      /** spec/073: マスタ登録イベントの id。フォールバック時は null */
+      explorationEventId: string | null;
       partyDisplayNames: string[];
       partyIconFilenames: (string | null)[];
       partyPositions: { row: number; col: number }[];
@@ -1219,6 +1292,7 @@ export async function advanceExplorationStep(): Promise<AdvanceExplorationStepRe
     themeName: step.themeName,
     areaName: step.areaName,
     eventMessage: step.eventMessage,
+    explorationEventId: step.explorationEventId,
     partyDisplayNames: step.partyDisplayNames,
     partyIconFilenames: step.partyIconFilenames,
     partyPositions: step.partyPositions,
@@ -1289,6 +1363,25 @@ export async function getExplorationLastBattleDisplay(): Promise<RunExplorationB
   };
 }
 
+/** 検証ログ用: 進行中探索のパーティの装備前・装備後戦闘ステ。NEXT_PUBLIC_SHOW_VERIFICATION_LOG 時のみ探索トップで表示。 */
+export async function getExplorationPartyStatsVerification(): Promise<
+  { displayName: string; before: DerivedStats; after: DerivedStats }[] | null
+> {
+  const session = await getSession();
+  if (!session.userId) return null;
+
+  const expedition = await prisma.expedition.findFirst({
+    where: {
+      userId: session.userId,
+      state: { in: ["in_progress", "ready_to_finish"] },
+    },
+    select: { partyPresetId: true },
+  });
+  if (!expedition?.partyPresetId) return null;
+
+  return getPartyVerificationStats(expedition.partyPresetId, session.userId);
+}
+
 // --- 表示用：explorationState.pendingSkillEvent から技能イベントを読む（059 Phase 2b・案 B） ---
 
 export type PendingSkillEventDisplay = {
@@ -1297,6 +1390,8 @@ export type PendingSkillEventDisplay = {
   themeName: string;
   areaName: string;
   eventMessage: string;
+  /** spec/073: マスタ登録イベントの id。フォールバック時は null */
+  explorationEventId: string | null;
   partyDisplayNames: string[];
   partyIconFilenames: (string | null)[];
   partyPositions: { row: number; col: number }[];
@@ -1329,7 +1424,11 @@ export async function getExplorationPendingSkillDisplay(): Promise<PendingSkillE
     !Array.isArray(ev.partyHp)
   )
     return null;
-  return { ...ev, eventKey: ev.eventKey ?? `legacy-${ev.themeName}-${ev.areaName}` };
+  return {
+    ...ev,
+    eventKey: ev.eventKey ?? `legacy-${ev.themeName}-${ev.areaName}`,
+    explorationEventId: ev.explorationEventId ?? null,
+  };
 }
 
 // --- ラウンド後の消耗品使用用：持ち込み消耗品一覧とパーティメンバー ---

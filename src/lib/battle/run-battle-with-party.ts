@@ -4,6 +4,7 @@
  */
 
 import type { BaseStats } from "./derived-stats";
+import type { DerivedStats } from "./derived-stats";
 import { computeDerivedStats, luckPoint } from "./derived-stats";
 import type { BattlePosition } from "./battle-position";
 import type { BattleCol } from "./battle-position";
@@ -90,6 +91,8 @@ export interface PartyMemberInput {
   attributeResistances?: AttributeResistances;
   /** docs/073: 遺物パッシブ効果（effectType + param）。戦闘で最終ダメージ倍率・検証ログ用。 */
   relicPassiveEffects?: { effectType: string; param: Record<string, unknown> }[];
+  /** spec/071: 装備の派生戦闘ステ加算。未指定時は加算なし。 */
+  derivedBonus?: Partial<DerivedStats>;
 }
 
 interface FighterState {
@@ -768,7 +771,21 @@ export function runBattleWithParty(
   const enemyCount = enemyInputs.length;
 
   const party: PartyFighter[] = partyInput.map((p, idx) => {
-    const derived = computeDerivedStats(p.base);
+    let derived: DerivedStats = computeDerivedStats(p.base);
+    if (p.derivedBonus && Object.keys(p.derivedBonus).length > 0) {
+      const bonus = p.derivedBonus;
+      derived = {
+        HP: derived.HP + (bonus.HP ?? 0),
+        MP: derived.MP + (bonus.MP ?? 0),
+        PATK: derived.PATK + (bonus.PATK ?? 0),
+        MATK: derived.MATK + (bonus.MATK ?? 0),
+        PDEF: derived.PDEF + (bonus.PDEF ?? 0),
+        MDEF: derived.MDEF + (bonus.MDEF ?? 0),
+        HIT: derived.HIT + (bonus.HIT ?? 0),
+        EVA: derived.EVA + (bonus.EVA ?? 0),
+        LUCK: derived.LUCK + (bonus.LUCK ?? 0),
+      };
+    }
     const override = initialPartyHpMp?.[idx];
     const startHp =
       override && override.currentHp >= 0

@@ -1322,7 +1322,7 @@ function validateEquipmentStatGenInput(
     return "装備の CAP は capMin ≤ capMax の整数で入力してください。";
   }
   if (!cfg.weights?.length) return "装備のステータス重みを1件以上登録してください。";
-  const validKeys = new Set(EQUIPMENT_STAT_KEYS);
+  const validKeys = new Set<string>(EQUIPMENT_STAT_KEYS);
   for (const w of cfg.weights) {
     if (!validKeys.has(w.key)) return `装備の重み key は ${EQUIPMENT_STAT_KEYS.join("/")} のいずれかにしてください。`;
     if (
@@ -2250,7 +2250,7 @@ export async function updateAdminRelicPassiveEffect(
       name,
       description: input.description?.trim() || null,
       effectType: input.effectType?.trim() || null,
-      param: input.param ? (input.param as object) : null,
+      param: input.param ? (input.param as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
   });
   return { success: true };
@@ -2277,7 +2277,7 @@ export async function createAdminRelicPassiveEffect(
       name,
       description: input.description?.trim() || null,
       effectType: input.effectType?.trim() || null,
-      param: input.param ? (input.param as object) : null,
+      param: input.param ? (input.param as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
     select: { id: true },
   });
@@ -3611,6 +3611,10 @@ export type AdminExplorationAreaEditData = {
   areaCosts: AdminExplorationAreaCostRow[];
   /** 出撃コストのアイテム選択用（id, code, name） */
   itemsForCost: { id: string; code: string; name: string }[];
+  /** spec/073: このエリアに紐づく技能イベント（重み付き） */
+  areaExplorationEvents: AdminAreaExplorationEventRow[];
+  /** spec/073: 紐づけ追加用の技能イベント一覧（id, code, name） */
+  explorationEventsForSelect: { id: string; code: string; name: string }[];
 };
 
 export async function getAdminExplorationAreaEditData(
@@ -3646,7 +3650,7 @@ export async function getAdminExplorationAreaEditData(
   });
   if (!area) return null;
 
-  const [enemyGroupCodes, enemies, normalGroup, areaCosts, itemsForCost] = await Promise.all([
+  const [enemyGroupCodes, enemies, normalGroup, areaCosts, itemsForCost, areaExplorationEvents, explorationEventsForSelect] = await Promise.all([
     prisma.enemyGroup.findMany({ orderBy: { code: "asc" }, select: { code: true } }),
     prisma.enemy.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
     !area.normalEnemyGroupCode
@@ -3681,6 +3685,16 @@ export async function getAdminExplorationAreaEditData(
       orderBy: [{ category: "asc" }, { code: "asc" }],
       select: { id: true, code: true, name: true },
     }),
+    prisma.areaExplorationEvent.findMany({
+      where: { areaId },
+      include: { explorationEvent: { select: { id: true, code: true, name: true } } },
+      orderBy: { explorationEvent: { code: "asc" } },
+    }),
+    prisma.explorationEvent.findMany({
+      where: { eventType: "skill_check" },
+      orderBy: { code: "asc" },
+      select: { id: true, code: true, name: true },
+    }),
   ]);
 
   const { theme, ...rest } = area;
@@ -3700,6 +3714,13 @@ export async function getAdminExplorationAreaEditData(
       quantity: c.quantity,
     })),
     itemsForCost,
+    areaExplorationEvents: areaExplorationEvents.map((ae) => ({
+      explorationEventId: ae.explorationEventId,
+      explorationEventCode: ae.explorationEvent.code,
+      explorationEventName: ae.explorationEvent.name,
+      weight: ae.weight,
+    })),
+    explorationEventsForSelect: explorationEventsForSelect,
   };
 }
 
@@ -3776,6 +3797,287 @@ export async function saveAdminExplorationAreaCosts(
         data: { areaId, itemId, quantity },
       })
     ),
+  ]);
+  return { success: true };
+}
+
+// --- 技能イベント（ExplorationEvent / SkillEventDetail / SkillEventStatOption）spec/073 ---
+
+const SKILL_EVENT_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"] as const;
+
+export type AdminExplorationEventRow = {
+  id: string;
+  code: string;
+  eventType: string;
+  name: string;
+  description: string | null;
+  occurrenceMessage: string | null;
+};
+
+export type AdminSkillEventStatOptionRow = {
+  statKey: string;
+  sortOrder: number;
+  difficultyCoefficient: number;
+  successMessage: string;
+  failMessage: string;
+};
+
+export type AdminExplorationEventDetail = {
+  id: string;
+  code: string;
+  eventType: string;
+  name: string;
+  description: string | null;
+  occurrenceMessage: string;
+  statOptions: AdminSkillEventStatOptionRow[];
+};
+
+export async function getAdminExplorationEventList(): Promise<AdminExplorationEventRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.explorationEvent.findMany({
+    where: { eventType: "skill_check" },
+    orderBy: { code: "asc" },
+    include: {
+      skillEventDetail: { select: { occurrenceMessage: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    eventType: r.eventType,
+    name: r.name,
+    description: r.description,
+    occurrenceMessage: r.skillEventDetail?.occurrenceMessage ?? null,
+  }));
+}
+
+export async function getAdminExplorationEvent(
+  id: string
+): Promise<AdminExplorationEventDetail | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const row = await prisma.explorationEvent.findUnique({
+    where: { id },
+    include: {
+      skillEventDetail: {
+        include: {
+          statOptions: { orderBy: { sortOrder: "asc" } },
+        },
+      },
+    },
+  });
+  if (!row || row.eventType !== "skill_check") return null;
+  const detail = row.skillEventDetail;
+  if (!detail) return null;
+  return {
+    id: row.id,
+    code: row.code,
+    eventType: row.eventType,
+    name: row.name,
+    description: row.description,
+    occurrenceMessage: detail.occurrenceMessage,
+    statOptions: detail.statOptions.map((o) => ({
+      statKey: o.statKey,
+      sortOrder: o.sortOrder,
+      difficultyCoefficient: o.difficultyCoefficient,
+      successMessage: o.successMessage,
+      failMessage: o.failMessage,
+    })),
+  };
+}
+
+export type CreateAdminExplorationEventInput = {
+  code: string;
+  name: string;
+  description: string | null;
+  occurrenceMessage: string;
+  statOptions: { statKey: string; sortOrder: number; difficultyCoefficient: number; successMessage: string; failMessage: string }[];
+};
+
+export async function createAdminExplorationEvent(
+  input: CreateAdminExplorationEventInput
+): Promise<{ success: boolean; error?: string; explorationEventId?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code || !name) return { success: false, error: "code と name は必須です。" };
+  const existing = await prisma.explorationEvent.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+  const occurrenceMessage = (input.occurrenceMessage ?? "").trim() || "何かが起きた…。どう対処する？";
+  const statKeys = [...SKILL_EVENT_STAT_KEYS];
+  const optionMap = new Map(
+    (input.statOptions ?? []).map((o) => [o.statKey, o])
+  );
+  const defaultOption = {
+    sortOrder: 0,
+    difficultyCoefficient: 1,
+    successMessage: "うまくいった。",
+    failMessage: "うまくいかなかった。",
+  };
+  await prisma.$transaction(async (tx) => {
+    const event = await tx.explorationEvent.create({
+      data: {
+        code,
+        eventType: "skill_check",
+        name,
+        description: input.description?.trim() || null,
+      },
+      select: { id: true },
+    });
+    await tx.skillEventDetail.create({
+      data: {
+        explorationEventId: event.id,
+        occurrenceMessage,
+      },
+    });
+    for (let i = 0; i < statKeys.length; i += 1) {
+      const statKey = statKeys[i]!;
+      const o = optionMap.get(statKey) ?? {
+        statKey,
+        sortOrder: i,
+        difficultyCoefficient: defaultOption.difficultyCoefficient,
+        successMessage: defaultOption.successMessage,
+        failMessage: defaultOption.failMessage,
+      };
+      await tx.skillEventStatOption.create({
+        data: {
+          skillEventDetailId: event.id,
+          statKey,
+          sortOrder: Number.isFinite(o.sortOrder) ? o.sortOrder : i,
+          difficultyCoefficient: Number(o.difficultyCoefficient) || 1,
+          successMessage: (o.successMessage ?? defaultOption.successMessage).trim() || defaultOption.successMessage,
+          failMessage: (o.failMessage ?? defaultOption.failMessage).trim() || defaultOption.failMessage,
+        },
+      });
+    }
+  });
+  const created = await prisma.explorationEvent.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  return { success: true, explorationEventId: created!.id };
+}
+
+export type UpdateAdminExplorationEventInput = {
+  code: string;
+  name: string;
+  description: string | null;
+  occurrenceMessage: string;
+  statOptions: { statKey: string; sortOrder: number; difficultyCoefficient: number; successMessage: string; failMessage: string }[];
+};
+
+export async function updateAdminExplorationEvent(
+  id: string,
+  input: UpdateAdminExplorationEventInput
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const row = await prisma.explorationEvent.findUnique({
+    where: { id },
+    select: { id: true, skillEventDetail: { select: { explorationEventId: true } } },
+  });
+  if (!row || !row.skillEventDetail) return { success: false, error: "技能イベントが見つかりません。" };
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code || !name) return { success: false, error: "code と name は必須です。" };
+  const existing = await prisma.explorationEvent.findFirst({
+    where: { code, id: { not: id } },
+    select: { id: true },
+  });
+  if (existing) return { success: false, error: "この code は既に使用されています。" };
+  const occurrenceMessage = (input.occurrenceMessage ?? "").trim() || "何かが起きた…。どう対処する？";
+  const detailId = row.skillEventDetail.explorationEventId;
+  await prisma.$transaction(async (tx) => {
+    await tx.explorationEvent.update({
+      where: { id },
+      data: { code, name, description: input.description?.trim() || null },
+    });
+    await tx.skillEventDetail.update({
+      where: { explorationEventId: id },
+      data: { occurrenceMessage },
+    });
+    const optionMap = new Map(
+      (input.statOptions ?? []).map((o) => [o.statKey, o])
+    );
+    const defaultOption = { sortOrder: 0, difficultyCoefficient: 1, successMessage: "うまくいった。", failMessage: "うまくいかなかった。" };
+    for (const statKey of SKILL_EVENT_STAT_KEYS) {
+      const o = optionMap.get(statKey) ?? { statKey, ...defaultOption, successMessage: defaultOption.successMessage, failMessage: defaultOption.failMessage };
+      await tx.skillEventStatOption.upsert({
+        where: {
+          skillEventDetailId_statKey: { skillEventDetailId: detailId, statKey },
+        },
+        create: {
+          skillEventDetailId: detailId,
+          statKey,
+          sortOrder: Number.isFinite(o.sortOrder) ? o.sortOrder : 0,
+          difficultyCoefficient: Number(o.difficultyCoefficient) || 1,
+          successMessage: (o.successMessage ?? defaultOption.successMessage).trim() || defaultOption.successMessage,
+          failMessage: (o.failMessage ?? defaultOption.failMessage).trim() || defaultOption.failMessage,
+        },
+        update: {
+          sortOrder: Number.isFinite(o.sortOrder) ? o.sortOrder : 0,
+          difficultyCoefficient: Number(o.difficultyCoefficient) || 1,
+          successMessage: (o.successMessage ?? defaultOption.successMessage).trim() || defaultOption.successMessage,
+          failMessage: (o.failMessage ?? defaultOption.failMessage).trim() || defaultOption.failMessage,
+        },
+      });
+    }
+  });
+  return { success: true };
+}
+
+/** エリアに紐づく技能イベント一覧（重み付き）。編集データ用。 */
+export type AdminAreaExplorationEventRow = {
+  explorationEventId: string;
+  explorationEventCode: string;
+  explorationEventName: string;
+  weight: number;
+};
+
+/** エリアの技能イベント紐づけを一括保存（既存を削除して指定で置き換え）。テストユーザー1のみ。 */
+export async function saveAdminAreaExplorationEvents(
+  areaId: string,
+  entries: { explorationEventId: string; weight: number }[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const area = await prisma.explorationArea.findUnique({
+    where: { id: areaId },
+    select: { id: true },
+  });
+  if (!area) return { success: false, error: "エリアが見つかりません。" };
+  const valid = entries.filter(
+    (e) => e.explorationEventId.trim() && Number.isInteger(e.weight) && e.weight >= 0
+  );
+  const uniqueByEvent = new Map<string, number>();
+  for (const e of valid) {
+    uniqueByEvent.set(e.explorationEventId.trim(), Math.max(0, e.weight));
+  }
+  const eventIds = [...uniqueByEvent.keys()];
+  const existingEvents = await prisma.explorationEvent.findMany({
+    where: { id: { in: eventIds }, eventType: "skill_check" },
+    select: { id: true },
+  });
+  const existingIdSet = new Set(existingEvents.map((e) => e.id));
+  for (const id of eventIds) {
+    if (!existingIdSet.has(id)) {
+      return { success: false, error: "存在しない技能イベントが含まれています。" };
+    }
+  }
+  await prisma.$transaction([
+    prisma.areaExplorationEvent.deleteMany({ where: { areaId } }),
+    ...Array.from(uniqueByEvent.entries())
+      .filter(([, w]) => w > 0)
+      .map(([explorationEventId, weight]) =>
+        prisma.areaExplorationEvent.create({
+          data: { areaId, explorationEventId, weight },
+        })
+      ),
   ]);
   return { success: true };
 }

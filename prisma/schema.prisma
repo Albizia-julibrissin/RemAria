@@ -1164,6 +1164,8 @@ model ExplorationArea {
 
   /// spec/049: エリアごとの出撃コスト（探索開始時にユーザー在庫から消費するアイテム・数量）
   areaCosts ExplorationAreaCost[]
+  /// spec/073: エリアごとに発生しうる技能イベント（重み付き）
+  areaExplorationEvents AreaExplorationEvent[]
 
   @@index([themeId])
 }
@@ -1179,6 +1181,62 @@ model ExplorationAreaCost {
 
   @@unique([areaId, itemId])
   @@index([areaId])
+}
+
+/// spec/073_skill_events_exploration: 探索イベント共通マスタ（種別で技能/将来ストーリー等に分岐）。
+model ExplorationEvent {
+  id          String   @id @default(cuid())
+  code        String   @unique // 安定参照用コード
+  eventType   String   // skill_check 等。将来 story_choice 等を拡張
+  name        String   // 管理用表示名
+  description String?  // 説明（任意）
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// 種別が skill_check のとき 1 件。spec/073
+  skillEventDetail   SkillEventDetail?
+  areaExplorationEvents AreaExplorationEvent[]
+
+  @@index([eventType])
+}
+
+/// spec/073: 技能イベント専用。発生時メッセージ（ExplorationEvent と 1 対 1）。
+model SkillEventDetail {
+  explorationEventId String   @id // PK 兼 FK → ExplorationEvent
+  explorationEvent   ExplorationEvent @relation(fields: [explorationEventId], references: [id], onDelete: Cascade)
+  occurrenceMessage String   // 発生時共通メッセージ。選択前の画面で 1 回表示
+
+  statOptions SkillEventStatOption[]
+
+  @@index([explorationEventId])
+}
+
+/// spec/073: 技能イベントのステータスごとの設定（係数・成功/失敗メッセージ）。
+model SkillEventStatOption {
+  skillEventDetailId     String
+  skillEventDetail       SkillEventDetail @relation(fields: [skillEventDetailId], references: [explorationEventId], onDelete: Cascade)
+  statKey                String   // STR | INT | VIT | WIS | DEX | AGI | LUK
+  sortOrder              Int      @default(0)   // 表示順
+  difficultyCoefficient   Float    @default(1)   // 閾値 = エリア skillCheckRequiredValue × 係数（端数四捨五入）
+  successMessage         String   // そのステで成功したときの解決メッセージ
+  failMessage            String   // そのステで失敗したときの解決メッセージ
+
+  @@id([skillEventDetailId, statKey])
+  @@index([skillEventDetailId])
+}
+
+/// spec/073: エリア × 探索イベントの紐づけ（重み付き抽選）。同一エリアに同一イベントは 1 行。
+model AreaExplorationEvent {
+  areaId             String
+  explorationEventId String
+  area               ExplorationArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  explorationEvent   ExplorationEvent @relation(fields: [explorationEventId], references: [id], onDelete: Cascade)
+  weight             Int      // 出現重み。抽選で使用。0 で無効扱い可
+
+  @@id([areaId, explorationEventId])
+  @@index([areaId])
+  @@index([explorationEventId])
 }
 
 /// spec/049_exploration, docs/020: 1 回の探索出撃（Expedition）の進行・結果。

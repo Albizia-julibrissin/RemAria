@@ -26,6 +26,8 @@
 | [admin_craft_recipe_edit.md](./admin_craft_recipe_edit.md) | **管理者用** クラフトレシピ編集。CraftRecipe / CraftRecipeInput。 |
 | [TYPE_MISMATCH_INSPECTION.md](./TYPE_MISMATCH_INSPECTION.md) | **型ずれ**。seed と Prisma 型の不整合の原因・対処（db:generate、TS 再起動、Item skillId 等）。 |
 | [VERIFICATION_LOG.md](./VERIFICATION_LOG.md) | **検証ログ**。戦闘ログ内の検証用表示（遺物適用前ダメージ等）の取り扱い。環境変数・表示条件・今後の拡張方針。 |
+| [DOC_CONSOLIDATION_PLAN.md](./DOC_CONSOLIDATION_PLAN.md) | **docs 整理計画**。00 から順の削除・統合・アーカイブの実行チェックリスト。方針は docs/00_doc_consolidation_proposal.md。 |
+| [COMBAT_POWER_SCALE_DESIGN.md](./COMBAT_POWER_SCALE_DESIGN.md) | **運営用スケール設計**。戦闘力（CAP×21）・装備CAP（Lv1 各部位1500／Lv100 各15000）・遺物込みで約27万のバランス目安。 |
 
 ## 使い方
 

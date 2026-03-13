@@ -29,7 +29,8 @@ export type Stats = Record<StatKey, number>;
 
 /**
  * レベルアップ時のステータス配分（spec/048 2.6）。
- * 各ステに floor(deltaCAP×0.10) を加算し、残り 30% を 30% 上限を超えないように 1 ポイントずつ配分する。
+ * 各ステに floor(deltaCAP×0.10) のみ加算する。残り 30% は配分せず、
+ * CAP との差（未割り振りポイント）としてプレイヤーが後で割り振る。
  */
 export function computeNewStatsForLevelUp(
   oldStats: Stats,
@@ -39,25 +40,11 @@ export function computeNewStatsForLevelUp(
   const deltaCap = newCap - oldCap;
   if (deltaCap <= 0) return { ...oldStats };
 
-  const baseAdd = Math.floor(deltaCap * 0.1); // 70% 分を均等に
-  const remainder = deltaCap - baseAdd * 7;    // 残り 30% 分
+  const baseAdd = Math.floor(deltaCap * 0.1); // 70% 分を各ステに均等に加算
 
-  const maxPerStat = Math.floor(newCap * 0.3);
   const next: Stats = { ...oldStats };
   for (const k of STAT_KEYS) {
     next[k] = oldStats[k] + baseAdd;
-  }
-
-  let left = remainder;
-  let idx = 0;
-  while (left > 0) {
-    const key = STAT_KEYS[idx % 7]!;
-    if (next[key] < maxPerStat) {
-      next[key] += 1;
-      left -= 1;
-    }
-    idx += 1;
-    if (idx > 1000) break; // 保険
   }
 
   return next;

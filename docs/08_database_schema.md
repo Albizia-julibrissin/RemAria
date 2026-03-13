@@ -391,3 +391,58 @@ User (1) ----< (N) Character（category: protagonist / companion / mech）
 - **インデックス**:
   - `userId`（ユーザーごとの履歴一覧）
   - `finishedAt`（時系列ソート）
+
+### 5.3 探索イベント（技能イベント本実装・spec/073）
+
+**spec/073_skill_events_exploration** 準拠。探索中の技能イベントをマスタ化し、エリアごとに発生しうるイベントを重み付きで紐づける。
+
+| テーブル | 役割 |
+|----------|------|
+| **ExplorationEvent** | 探索イベントの共通マスタ。eventType（skill_check 等）で種別分岐。 |
+| **SkillEventDetail** | 技能イベント専用。発生時メッセージ（ExplorationEvent と 1 対 1）。 |
+| **SkillEventStatOption** | 技能イベントのステータスごとの係数・成功/失敗メッセージ。 |
+| **AreaExplorationEvent** | エリア × イベントの紐づけ（weight で重み付き抽選）。 |
+
+**ExplorationEvent**
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| code | String | NOT NULL, UNIQUE | 安定参照用コード |
+| eventType | String | NOT NULL | skill_check 等。将来 story_choice 等を拡張 |
+| name | String | NOT NULL | 管理用表示名 |
+| description | String | NULL可 | 説明（任意） |
+| createdAt / updatedAt | DateTime | NOT NULL | 作成・更新日時 |
+
+**SkillEventDetail**
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| explorationEventId | String | PK, FK→ExplorationEvent.id | 対応する探索イベント（1 対 1） |
+| occurrenceMessage | String | NOT NULL | 発生時共通メッセージ。選択前の画面で 1 回表示 |
+
+**SkillEventStatOption**
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| skillEventDetailId | String | PK の一部, FK→SkillEventDetail | 技能イベント詳細 |
+| statKey | String | PK の一部 | STR \| INT \| VIT \| WIS \| DEX \| AGI \| LUK |
+| sortOrder | Int | NOT NULL, default 0 | 表示順 |
+| difficultyCoefficient | Float | NOT NULL, default 1 | 閾値 = エリア skillCheckRequiredValue × 係数（端数四捨五入） |
+| successMessage | String | NOT NULL | そのステで成功したときの解決メッセージ |
+| failMessage | String | NOT NULL | そのステで失敗したときの解決メッセージ |
+
+@@id([skillEventDetailId, statKey])。
+
+**AreaExplorationEvent**
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| areaId | String | PK の一部, FK→ExplorationArea.id | 探索エリア |
+| explorationEventId | String | PK の一部, FK→ExplorationEvent.id | 探索イベント |
+| weight | Int | NOT NULL | 出現重み。抽選で使用。0 で無効扱い可 |
+
+@@id([areaId, explorationEventId])。同一エリアに同一イベントは 1 行。
+
+- **ExplorationArea** にリレーション `areaExplorationEvents AreaExplorationEvent[]` を追加済み。
+- 抽選: 技能に振れたとき、そのエリアの AreaExplorationEvent（weight > 0）から重み付きで 1 件選択。0 件のときは従来の固定文言・エリア skillCheckRequiredValue でフォールバック（後方互換）。

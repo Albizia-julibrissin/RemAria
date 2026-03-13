@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminRelicPassiveEffectList } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
+import { formatRelicPassiveEffectSummary } from "@/lib/constants/relic-passive-effect-admin";
 
 export default async function AdminRelicPassiveEffectsPage() {
   const allowed = await isTestUser1();
@@ -26,7 +27,7 @@ export default async function AdminRelicPassiveEffectsPage() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">遺物パッシブ効果編集</h1>
           <p className="mt-2 text-sm text-text-muted">
-            RelicPassiveEffect（code / name / description）。遺物個体に紐づく効果マスタ。
+            RelicPassiveEffect（code / name / エフェクトタイプ・効果設定）。遺物個体に紐づく効果マスタ。
           </p>
         </div>
         <Link
@@ -42,6 +43,7 @@ export default async function AdminRelicPassiveEffectsPage() {
             <tr className="bg-base-elevated">
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">code</th>
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">name</th>
+              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">効果</th>
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium max-w-[280px]">description</th>
               <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">操作</th>
             </tr>
@@ -51,6 +53,9 @@ export default async function AdminRelicPassiveEffectsPage() {
               <tr key={row.id} className="text-text-primary">
                 <td className="border border-base-border px-2 py-1.5 font-mono text-xs">{row.code}</td>
                 <td className="border border-base-border px-2 py-1.5">{row.name}</td>
+                <td className="border border-base-border px-2 py-1.5 text-text-muted">
+                  {formatRelicPassiveEffectSummary(row.effectType, row.param)}
+                </td>
                 <td className="border border-base-border px-2 py-1.5 text-text-muted truncate max-w-[280px]">{row.description ?? "—"}</td>
                 <td className="border border-base-border px-2 py-1.5 text-center">
                   <Link href={`/dashboard/admin/relic-passive-effects/${row.id}`} className="text-brass hover:text-brass-hover">編集</Link>

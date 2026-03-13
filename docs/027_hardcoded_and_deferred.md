@@ -47,6 +47,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 30 | `src/app/battle/exploration/`（ExplorationNextButton 等） | **「次へ」ボタンの無効解除**：押下後に 1.5 秒の setTimeout で無効を解除している。 | サーバー応答／処理完了でボタンを戻す（例: サーバーから渡す key で remount、または Server Action + useFormStatus）。方法は本 doc または会話で検討済み。 |
 | 31 | （解消済み） | **通知機能**：066 にて Notification テーブル・未読件数・一覧・既読・作成 API とヘッダー通知ドロップダウンを実装済み。任務受注時の通知追加は別タスク。 | — |
 | 32 | （解消済み） | **探索開始直後の「復帰画面」最終手段案**：059 Phase 4 で advanceExplorationStep を探索開始直後に 1 回だけ呼ぶフローを実装し、「探索開始 → いきなり 1 戦目」を安全に実現済み。 | — |
+| 33 | `src/server/actions/exploration.ts` | **技能イベントの HP/MP 処理**：技能イベントの表示用データ（`getNextExplorationStep` の skill_check 分岐および `getExplorationPendingSkillDisplay` で参照する partyHp / partyMp / partyMaxHp / partyMaxMp）を組み立てる際、最大値に**装備・遺物・メカを含まない** `computeDerivedStats(キャラ基礎のみ)` を使用している。クランプ式は `Math.min(derived.HP, override.hp)` で再開サマリと同じ。 | 戦闘・再開サマリと同様に、装備込みの derived（computeEffectiveBaseStats + 装備合算の derivedBonus）で最大値を算出し、currentHpMp とのクランプを行う。docs/072 §4「再開・表示」の推奨対応に同じ。 |
 
 ---
 
@@ -72,6 +73,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 - **#32 解消**：059 Phase 4 で探索開始直後に advanceExplorationStep を 1 回呼ぶフローを実装。復帰画面の「最終手段案」は不要になったため解消済みとした。
 - **#22 解消**：059 案 B で explorationState に pendingSkillEvent を保持する形にしたため、技能イベント表示中に離脱しても復帰時に同じイベントが表示される。スキップ扱いではなく「同じイベントに戻れる」状態になったため解消済みとした。
 - **#26 方針確定**：装備の属性耐性は**行わない（オミット）**とする。遺物のみ戦闘に attributeResistances を渡す。一覧では解消扱い（実装しない方針のため「未実装」項目から外す）。
+- **#33 追加**：技能イベントの HP/MP 表示・クランプが装備なしの derived で算出していることを一覧に記載。解消方針は docs/072 §4 の再開・表示と同様。
 
 ---
 

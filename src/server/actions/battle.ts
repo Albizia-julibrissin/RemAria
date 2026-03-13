@@ -4,7 +4,15 @@
 
 import { getSession } from "@/lib/auth/session";
 import { userRepository } from "@/server/repositories/user-repository";
-import type { BaseStats } from "@/lib/battle/derived-stats";
+import {
+  computeDerivedStats,
+  type BaseStats,
+  type DerivedStats,
+} from "@/lib/battle/derived-stats";
+import {
+  computeEffectiveBaseStats,
+  parseRelicStatBonus,
+} from "@/lib/battle/effective-base-stats";
 import { runBattleWithParty } from "@/lib/battle/run-battle-with-party";
 import type {
   PartyMemberInput,
@@ -46,6 +54,8 @@ export type RunBattleSuccess = {
   partyCharacterIds: string[];
   /** docs/054: 撃破した敵の DB id（探索戦闘で player 勝利時のみ。enemyInputs に enemyId がある場合） */
   defeatedEnemyIds?: string[];
+  /** 検証ログ用: 各キャラの装備前・装備後の戦闘ステ（VERIFICATION_LOG） */
+  verificationPartyStats?: { displayName: string; before: DerivedStats; after: DerivedStats }[];
 };
 
 export type RunBattleError = {
@@ -140,10 +150,19 @@ export async function runBattle(
           relicInstance: {
             select: {
               attributeResistances: true,
+              statBonus1: true,
+              statBonus2: true,
               relicPassiveEffect: {
                 select: { effectType: true, param: true },
               },
             },
+          },
+        },
+      },
+      characterEquipments: {
+        select: {
+          equipmentInstance: {
+            select: { stats: true },
           },
         },
       },
@@ -153,6 +172,10 @@ export async function runBattle(
   // spec/044: メカは装備パーツのスキルを使用。戦闘用に skillId → SkillDataForBattle を事前取得。
   const mechIds = characters.filter((x) => x.category === "mech").map((x) => x.id);
   const mechSkillsByCharId = new Map<string, Record<string, SkillDataForBattle>>();
+  const mechPartDataByCharId = new Map<
+    string,
+    { mechaFlat: Partial<BaseStats>; frameMultiplier: Record<string, number> | null }
+  >();
   if (mechIds.length > 0) {
     const mechEquips = await prisma.mechaEquipment.findMany({
       where: { characterId: { in: mechIds } },
@@ -162,6 +185,16 @@ export async function runBattle(
           select: {
             mechaPartType: {
               select: {
+                slot: true,
+                statRates: true,
+                strAdd: true,
+                intAdd: true,
+                vitAdd: true,
+                wisAdd: true,
+                dexAdd: true,
+                agiAdd: true,
+                lukAdd: true,
+                capAdd: true,
                 mechaPartTypeSkills: {
                   select: {
                     skill: {
@@ -195,6 +228,16 @@ export async function runBattle(
         },
         mechaPartType: {
           select: {
+            slot: true,
+            statRates: true,
+            strAdd: true,
+            intAdd: true,
+            vitAdd: true,
+            wisAdd: true,
+            dexAdd: true,
+            agiAdd: true,
+            lukAdd: true,
+            capAdd: true,
             mechaPartTypeSkills: {
               select: {
                 skill: {
@@ -263,6 +306,42 @@ export async function runBattle(
         };
       }
     }
+    for (const eq of mechEquips) {
+      const partType = eq.mechaPartInstance?.mechaPartType ?? eq.mechaPartType;
+      if (!partType || !("slot" in partType)) continue;
+      const slot = (partType as { slot: string }).slot;
+      let data = mechPartDataByCharId.get(eq.characterId);
+      if (!data) {
+        data = { mechaFlat: {}, frameMultiplier: null };
+        mechPartDataByCharId.set(eq.characterId, data);
+      }
+      if (slot === "frame") {
+        const rates = (partType as { statRates?: unknown }).statRates;
+        data.frameMultiplier =
+          rates && typeof rates === "object" && !Array.isArray(rates)
+            ? (rates as Record<string, number>)
+            : null;
+      } else {
+        const p = partType as {
+          strAdd?: number | null;
+          intAdd?: number | null;
+          vitAdd?: number | null;
+          wisAdd?: number | null;
+          dexAdd?: number | null;
+          agiAdd?: number | null;
+          lukAdd?: number | null;
+          capAdd?: number | null;
+        };
+        if (p.strAdd != null) data.mechaFlat.STR = (data.mechaFlat.STR ?? 0) + p.strAdd;
+        if (p.intAdd != null) data.mechaFlat.INT = (data.mechaFlat.INT ?? 0) + p.intAdd;
+        if (p.vitAdd != null) data.mechaFlat.VIT = (data.mechaFlat.VIT ?? 0) + p.vitAdd;
+        if (p.wisAdd != null) data.mechaFlat.WIS = (data.mechaFlat.WIS ?? 0) + p.wisAdd;
+        if (p.dexAdd != null) data.mechaFlat.DEX = (data.mechaFlat.DEX ?? 0) + p.dexAdd;
+        if (p.agiAdd != null) data.mechaFlat.AGI = (data.mechaFlat.AGI ?? 0) + p.agiAdd;
+        if (p.lukAdd != null) data.mechaFlat.LUK = (data.mechaFlat.LUK ?? 0) + p.lukAdd;
+        if (p.capAdd != null) data.mechaFlat.CAP = (data.mechaFlat.CAP ?? 0) + p.capAdd;
+      }
+    }
   }
 
   // spec/063: 味方の作戦スロットはプリセット別に PresetTacticSlot から取得する
@@ -307,6 +386,7 @@ export async function runBattle(
   const partyAttributeResistances = mergeAttributeResistancesFromRelics(relicsPerMember);
 
   const partyInput: PartyMemberInput[] = [];
+  const verificationPartyStats: { displayName: string; before: DerivedStats; after: DerivedStats }[] = [];
   const partyIconFilenames: (string | null)[] = [];
   const colForSlot = [
     Math.max(1, Math.min(3, preset.slot1BattleCol ?? 1)),
@@ -320,10 +400,12 @@ export async function runBattle(
 
   const initialPartyHpMp: { currentHp: number; currentMp: number }[] = [];
 
+  const DERIVED_STAT_KEYS = ["HP", "MP", "PATK", "MATK", "PDEF", "MDEF", "HIT", "EVA", "LUCK"] as const;
+
   for (const charId of order) {
     const c = characters.find((x) => x.id === charId);
     if (!c) continue;
-    const base: BaseStats = {
+    const rawBase: BaseStats = {
       STR: c.STR,
       INT: c.INT,
       VIT: c.VIT,
@@ -333,7 +415,35 @@ export async function runBattle(
       LUK: c.LUK,
       CAP: c.CAP,
     };
+    const relicStatBonuses: { stat: string; percent: number }[] = [];
+    for (const cr of c.characterRelics ?? []) {
+      const ri = cr.relicInstance;
+      if (!ri) continue;
+      const b1 = parseRelicStatBonus(ri.statBonus1);
+      if (b1) relicStatBonuses.push(b1);
+      const b2 = parseRelicStatBonus(ri.statBonus2);
+      if (b2) relicStatBonuses.push(b2);
+    }
+    const mechData = c.category === "mech" ? mechPartDataByCharId.get(c.id) : undefined;
+    const base = computeEffectiveBaseStats(rawBase, {
+      relicStatBonuses,
+      mechaFlat: mechData?.mechaFlat,
+      frameMultiplier: mechData?.frameMultiplier ?? undefined,
+    });
     const tacticSlots: TacticSlotInput[] = tacticSlotsByCharId.get(c.id) ?? [];
+
+    const derivedBonus: Partial<DerivedStats> = {};
+    for (const ce of c.characterEquipments ?? []) {
+      const stats = ce.equipmentInstance?.stats;
+      if (!stats || typeof stats !== "object" || Array.isArray(stats)) continue;
+      const s = stats as Record<string, unknown>;
+      for (const key of DERIVED_STAT_KEYS) {
+        const v = s[key];
+        if (typeof v !== "number") continue;
+        const add = v;
+        (derivedBonus as Record<string, number>)[key] = ((derivedBonus as Record<string, number>)[key] ?? 0) + add;
+      }
+    }
 
     // メカは装備パーツのスキル、それ以外は CharacterSkill（battle_active）
     let skills: Record<string, SkillDataForBattle> = {};
@@ -381,6 +491,24 @@ export async function runBattle(
         param: (cr.relicInstance!.relicPassiveEffect!.param as Record<string, unknown>) ?? {},
       }));
 
+    const before = computeDerivedStats(base);
+    const after: DerivedStats = {
+      HP: before.HP + (derivedBonus.HP ?? 0),
+      MP: before.MP + (derivedBonus.MP ?? 0),
+      PATK: before.PATK + (derivedBonus.PATK ?? 0),
+      MATK: before.MATK + (derivedBonus.MATK ?? 0),
+      PDEF: before.PDEF + (derivedBonus.PDEF ?? 0),
+      MDEF: before.MDEF + (derivedBonus.MDEF ?? 0),
+      HIT: before.HIT + (derivedBonus.HIT ?? 0),
+      EVA: before.EVA + (derivedBonus.EVA ?? 0),
+      LUCK: before.LUCK + (derivedBonus.LUCK ?? 0),
+    };
+    verificationPartyStats.push({
+      displayName: c.category === "protagonist" && user?.name ? user.name : c.displayName,
+      before,
+      after,
+    });
+
     partyInput.push({
       displayName: c.category === "protagonist" && user?.name ? user.name : c.displayName,
       base,
@@ -388,6 +516,7 @@ export async function runBattle(
       skills,
       attributeResistances,
       relicPassiveEffects,
+      derivedBonus: Object.keys(derivedBonus).length > 0 ? derivedBonus : undefined,
     });
     partyIconFilenames.push(c.iconFilename);
     const override = initialHpMpByCharacterId?.[c.id];
@@ -441,5 +570,201 @@ export async function runBattle(
     summary: battle.summary,
     partyCharacterIds: order,
     defeatedEnemyIds,
+    verificationPartyStats,
   };
+}
+
+/** 検証ログ用: 指定プリセットの編成について装備前・装備後の戦闘ステを返す。探索トップのテーブル表示用。 */
+export async function getPartyVerificationStats(
+  presetId: string,
+  userId: string
+): Promise<{ displayName: string; before: DerivedStats; after: DerivedStats }[]> {
+  const preset = await prisma.partyPreset.findFirst({
+    where: { id: presetId, userId },
+    include: { slot1Character: true },
+  });
+  if (!preset?.slot1Character) return [];
+
+  const user = await userRepository.findById(userId);
+  const characterIds = [
+    preset.slot1CharacterId,
+    preset.slot2CharacterId,
+    preset.slot3CharacterId,
+  ].filter(Boolean) as string[];
+
+  const characters = await prisma.character.findMany({
+    where: { id: { in: characterIds }, userId },
+    select: {
+      id: true,
+      category: true,
+      displayName: true,
+      STR: true,
+      INT: true,
+      VIT: true,
+      WIS: true,
+      DEX: true,
+      AGI: true,
+      LUK: true,
+      CAP: true,
+      characterRelics: {
+        where: { relicInstanceId: { not: null } },
+        select: {
+          relicInstance: {
+            select: { statBonus1: true, statBonus2: true },
+          },
+        },
+      },
+      characterEquipments: {
+        select: { equipmentInstance: { select: { stats: true } } },
+      },
+    },
+  });
+
+  const mechIds = characters.filter((x) => x.category === "mech").map((x) => x.id);
+  const mechPartDataByCharId = new Map<
+    string,
+    { mechaFlat: Partial<BaseStats>; frameMultiplier: Record<string, number> | null }
+  >();
+  if (mechIds.length > 0) {
+    const mechEquips = await prisma.mechaEquipment.findMany({
+      where: { characterId: { in: mechIds } },
+      select: {
+        characterId: true,
+        mechaPartInstance: {
+          select: {
+            mechaPartType: {
+              select: {
+                slot: true,
+                statRates: true,
+                strAdd: true,
+                intAdd: true,
+                vitAdd: true,
+                wisAdd: true,
+                dexAdd: true,
+                agiAdd: true,
+                lukAdd: true,
+                capAdd: true,
+              },
+            },
+          },
+        },
+        mechaPartType: {
+          select: {
+            slot: true,
+            statRates: true,
+            strAdd: true,
+            intAdd: true,
+            vitAdd: true,
+            wisAdd: true,
+            dexAdd: true,
+            agiAdd: true,
+            lukAdd: true,
+            capAdd: true,
+          },
+        },
+      },
+    });
+    for (const eq of mechEquips) {
+      const partType = eq.mechaPartInstance?.mechaPartType ?? eq.mechaPartType;
+      if (!partType || !("slot" in partType)) continue;
+      const slot = (partType as { slot: string }).slot;
+      let data = mechPartDataByCharId.get(eq.characterId);
+      if (!data) {
+        data = { mechaFlat: {}, frameMultiplier: null };
+        mechPartDataByCharId.set(eq.characterId, data);
+      }
+      if (slot === "frame") {
+        const rates = (partType as { statRates?: unknown }).statRates;
+        data.frameMultiplier =
+          rates && typeof rates === "object" && !Array.isArray(rates)
+            ? (rates as Record<string, number>)
+            : null;
+      } else {
+        const p = partType as {
+          strAdd?: number | null;
+          intAdd?: number | null;
+          vitAdd?: number | null;
+          wisAdd?: number | null;
+          dexAdd?: number | null;
+          agiAdd?: number | null;
+          lukAdd?: number | null;
+          capAdd?: number | null;
+        };
+        if (p.strAdd != null) data.mechaFlat.STR = (data.mechaFlat.STR ?? 0) + p.strAdd;
+        if (p.intAdd != null) data.mechaFlat.INT = (data.mechaFlat.INT ?? 0) + p.intAdd;
+        if (p.vitAdd != null) data.mechaFlat.VIT = (data.mechaFlat.VIT ?? 0) + p.vitAdd;
+        if (p.wisAdd != null) data.mechaFlat.WIS = (data.mechaFlat.WIS ?? 0) + p.wisAdd;
+        if (p.dexAdd != null) data.mechaFlat.DEX = (data.mechaFlat.DEX ?? 0) + p.dexAdd;
+        if (p.agiAdd != null) data.mechaFlat.AGI = (data.mechaFlat.AGI ?? 0) + p.agiAdd;
+        if (p.lukAdd != null) data.mechaFlat.LUK = (data.mechaFlat.LUK ?? 0) + p.lukAdd;
+        if (p.capAdd != null) data.mechaFlat.CAP = (data.mechaFlat.CAP ?? 0) + p.capAdd;
+      }
+    }
+  }
+
+  const DERIVED_STAT_KEYS = ["HP", "MP", "PATK", "MATK", "PDEF", "MDEF", "HIT", "EVA", "LUCK"] as const;
+  const order = [preset.slot1CharacterId, preset.slot2CharacterId, preset.slot3CharacterId].filter(
+    Boolean
+  ) as string[];
+
+  const result: { displayName: string; before: DerivedStats; after: DerivedStats }[] = [];
+  for (const charId of order) {
+    const c = characters.find((x) => x.id === charId);
+    if (!c) continue;
+    const rawBase: BaseStats = {
+      STR: c.STR,
+      INT: c.INT,
+      VIT: c.VIT,
+      WIS: c.WIS,
+      DEX: c.DEX,
+      AGI: c.AGI,
+      LUK: c.LUK,
+      CAP: c.CAP,
+    };
+    const relicStatBonuses: { stat: string; percent: number }[] = [];
+    for (const cr of c.characterRelics ?? []) {
+      const ri = cr.relicInstance;
+      if (!ri) continue;
+      const b1 = parseRelicStatBonus(ri.statBonus1);
+      if (b1) relicStatBonuses.push(b1);
+      const b2 = parseRelicStatBonus(ri.statBonus2);
+      if (b2) relicStatBonuses.push(b2);
+    }
+    const mechData = c.category === "mech" ? mechPartDataByCharId.get(c.id) : undefined;
+    const base = computeEffectiveBaseStats(rawBase, {
+      relicStatBonuses,
+      mechaFlat: mechData?.mechaFlat,
+      frameMultiplier: mechData?.frameMultiplier ?? undefined,
+    });
+    const derivedBonus: Partial<DerivedStats> = {};
+    for (const ce of c.characterEquipments ?? []) {
+      const stats = ce.equipmentInstance?.stats;
+      if (!stats || typeof stats !== "object" || Array.isArray(stats)) continue;
+      const s = stats as Record<string, unknown>;
+      for (const key of DERIVED_STAT_KEYS) {
+        const v = s[key];
+        if (typeof v !== "number") continue;
+        const add = v;
+        (derivedBonus as Record<string, number>)[key] = ((derivedBonus as Record<string, number>)[key] ?? 0) + add;
+      }
+    }
+    const before = computeDerivedStats(base);
+    const after: DerivedStats = {
+      HP: before.HP + (derivedBonus.HP ?? 0),
+      MP: before.MP + (derivedBonus.MP ?? 0),
+      PATK: before.PATK + (derivedBonus.PATK ?? 0),
+      MATK: before.MATK + (derivedBonus.MATK ?? 0),
+      PDEF: before.PDEF + (derivedBonus.PDEF ?? 0),
+      MDEF: before.MDEF + (derivedBonus.MDEF ?? 0),
+      HIT: before.HIT + (derivedBonus.HIT ?? 0),
+      EVA: before.EVA + (derivedBonus.EVA ?? 0),
+      LUCK: before.LUCK + (derivedBonus.LUCK ?? 0),
+    };
+    result.push({
+      displayName: c.category === "protagonist" && user?.name ? user.name : c.displayName,
+      before,
+      after,
+    });
+  }
+  return result;
 }

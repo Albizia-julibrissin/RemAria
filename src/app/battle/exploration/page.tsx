@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import {
   getCurrentExpeditionSummary,
   getExplorationLastBattleDisplay,
+  getExplorationPartyStatsVerification,
   getExplorationPendingSkillDisplay,
   getExplorationResumeSummary,
   getExplorationRoundConsumablesAndParty,
@@ -16,6 +17,7 @@ import { ExplorationFinishClient } from "../exploration-finish-client";
 import { ExplorationSkillEventBlock } from "./exploration-skill-event-block";
 import { ExplorationAfterBattleStatusClient } from "./exploration-after-battle-status-client";
 import { ExplorationNextButton } from "./exploration-next-button";
+import { ExplorationVerificationStatsTable } from "./exploration-verification-stats-table";
 
 type PageProps = { searchParams?: Promise<{ step?: string }> };
 
@@ -68,6 +70,9 @@ export default async function ExplorationBattlePage(props: PageProps) {
 
   // 進行中（059 Phase 2b）: lastBattle → pendingSkill → resume の順で表示を決定
   if (current.state === "in_progress") {
+    const showVerificationLog = process.env.NEXT_PUBLIC_SHOW_VERIFICATION_LOG === "true";
+    const verificationStats = showVerificationLog ? await getExplorationPartyStatsVerification() : null;
+
     const lastBattle = await getExplorationLastBattleDisplay();
     if (lastBattle && lastBattle.success) {
       const battleResult = lastBattle;
@@ -106,6 +111,9 @@ export default async function ExplorationBattlePage(props: PageProps) {
           <h1 className="text-2xl font-bold text-text-primary">
             開拓者たちは敵性存在と接触した…！
           </h1>
+          {verificationStats && verificationStats.length > 0 && (
+            <ExplorationVerificationStatsTable stats={verificationStats} />
+          )}
           <div className="mt-4">
             <BattleFullView data={battleResult.result} hideSummaryTop />
           </div>
@@ -177,6 +185,9 @@ export default async function ExplorationBattlePage(props: PageProps) {
           <h1 className="text-2xl font-bold text-text-primary">
             開拓者たちは困難に遭遇した…！
           </h1>
+          {verificationStats && verificationStats.length > 0 && (
+            <ExplorationVerificationStatsTable stats={verificationStats} />
+          )}
           <div className="mt-4">
             <ExplorationSkillEventBlock
               key={pendingSkill.eventKey}
@@ -223,6 +234,9 @@ export default async function ExplorationBattlePage(props: PageProps) {
         <p className="mt-2 text-text-muted">
           {resume.themeName} / {resume.areaName} — 進行中の探索に復帰しました
         </p>
+        {verificationStats && verificationStats.length > 0 && (
+          <ExplorationVerificationStatsTable stats={verificationStats} />
+        )}
         <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-4 space-y-2">
           <ExplorationAfterBattleStatusClient
             partyDisplayNames={resume.partyDisplayNames}

@@ -33,7 +33,10 @@ function run(cmd: string): { ok: boolean; out?: string } {
 
 function main(): void {
   loadEnv();
-  const execOpts = { encoding: "utf-8" as const, stdio: ["pipe", "pipe", "pipe"] };
+  const execOpts: ExecSyncOptions = {
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"] as const,
+  };
 
   console.log("=== バックアップ・復元で使う Postgres クライアントのバージョン ===\n");
 

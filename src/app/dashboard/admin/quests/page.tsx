@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminBackButton } from "../admin-back-button";
 import { getAdminQuestList } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
 
@@ -26,12 +27,7 @@ export default async function AdminQuestsPage() {
   return (
     <main className="min-h-screen bg-base p-8">
       <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/dashboard"
-          className="text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-        >
-          ← ダッシュボード
-        </Link>
+        <AdminBackButton />
         <Link
           href="/dashboard/admin/content"
           className="text-sm text-text-muted hover:text-brass"

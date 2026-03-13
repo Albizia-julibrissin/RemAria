@@ -44,7 +44,7 @@ export const RELIC_GROUP_APPRAISAL_CONFIG: Record<string, RelicGroupAppraisalCon
   },
 };
 
-/** 戦闘属性耐性の7属性（圧縮～極性）。表示順・テーブル列用。 */
+/** 戦闘属性耐性の7属性（圧縮～極星）。表示順・テーブル列用。 */
 export const ATTRIBUTE_RESISTANCE_KEYS = [
   "crush",
   "slash",
@@ -55,7 +55,7 @@ export const ATTRIBUTE_RESISTANCE_KEYS = [
   "polarity",
 ] as const;
 
-/** 属性コード → 表示名（docs/skill_fields_ja, 14_battle_attributes_tactics 準拠） */
+/** 属性コード → 表示名（正本。docs/skill_fields_ja.md の attribute 行と揃える。変更時は両方更新する） */
 export const ATTRIBUTE_RESISTANCE_LABELS: Record<(typeof ATTRIBUTE_RESISTANCE_KEYS)[number], string> = {
   crush: "圧縮",
   slash: "切創",
@@ -63,5 +63,5 @@ export const ATTRIBUTE_RESISTANCE_LABELS: Record<(typeof ATTRIBUTE_RESISTANCE_KE
   burn: "焼損",
   freeze: "凍傷",
   corrode: "侵食",
-  polarity: "極性",
+  polarity: "極星",
 };

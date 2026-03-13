@@ -1,10 +1,14 @@
 "use client";
 
-// 装備装着モーダル：スロット候補をステータス一覧で表示し、装着する
+// 装備装着モーダル：スロット候補をステータス一覧で表示し、装着する。HP/MP 含め stats の値をそのまま表示。
 
 import { useRef, useEffect } from "react";
 import { EQUIPMENT_STAT_KEYS, EQUIPMENT_STAT_LABELS } from "@/lib/craft/equipment-stat-gen";
 import type { EquipmentInstanceWithEquipped } from "@/server/actions/craft";
+
+/** モーダルで表示するステータス（EQUIPMENT_STAT_KEYS に HP/MP 含む）。戦闘時も同値がそのまま加算される（spec/071）。 */
+const DISPLAY_STAT_KEYS = EQUIPMENT_STAT_KEYS;
+const DISPLAY_STAT_LABELS = EQUIPMENT_STAT_LABELS;
 
 type Props = {
   isOpen: boolean;
@@ -73,55 +77,57 @@ export function EquipEquipmentModal({
           {availableEquipment.length === 0 ? (
             <p className="text-sm text-text-muted">このスロットに装着できる装備がありません。</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[480px] border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-base-border text-left text-text-muted">
-                    <th className="py-2 pr-3 font-medium">名前</th>
-                    {EQUIPMENT_STAT_KEYS.map((key) => (
-                      <th key={key} className="py-2 px-1 text-center font-medium">
-                        {EQUIPMENT_STAT_LABELS[key]}
-                      </th>
-                    ))}
-                    <th className="w-20 py-2 pl-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {availableEquipment.map((eq) => (
-                    <tr
-                      key={eq.id}
-                      className="border-b border-base-border/70 text-text-primary hover:bg-base-border/30"
-                    >
-                      <td className="py-2 pr-3 font-medium">{eq.equipmentTypeName}</td>
-                      {EQUIPMENT_STAT_KEYS.map((key) => {
-                        const val = eq.stats?.[key];
-                        return (
-                          <td key={key} className="py-2 px-1 text-center tabular-nums">
-                            {val != null && val !== 0 ? (
-                              <span className={val > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
-                                {val > 0 ? "+" : ""}{val}
-                              </span>
-                            ) : (
-                              <span className="text-text-muted">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="py-2 pl-2">
-                        <button
-                          type="button"
-                          onClick={() => onEquip(slotCode, eq.id)}
-                          disabled={isPending}
-                          className="rounded border border-brass bg-brass px-2 py-1 text-xs font-medium text-white hover:bg-brass-hover disabled:opacity-50"
-                        >
-                          装着
-                        </button>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[480px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-base-border text-left text-text-muted">
+                      <th className="py-2 pr-3 font-medium">名前</th>
+                      {DISPLAY_STAT_KEYS.map((key) => (
+                        <th key={key} className="py-2 px-1 text-center font-medium">
+                          {DISPLAY_STAT_LABELS[key]}
+                        </th>
+                      ))}
+                      <th className="w-20 py-2 pl-2"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {availableEquipment.map((eq) => (
+                      <tr
+                        key={eq.id}
+                        className="border-b border-base-border/70 text-text-primary hover:bg-base-border/30"
+                      >
+                        <td className="py-2 pr-3 font-medium">{eq.equipmentTypeName}</td>
+                        {DISPLAY_STAT_KEYS.map((key) => {
+                          const val = eq.stats?.[key];
+                          return (
+                            <td key={key} className="py-2 px-1 text-center tabular-nums">
+                              {val != null && val !== 0 ? (
+                                <span className={val > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                                  {val > 0 ? "+" : ""}{val}
+                                </span>
+                              ) : (
+                                <span className="text-text-muted">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="py-2 pl-2">
+                          <button
+                            type="button"
+                            onClick={() => onEquip(slotCode, eq.id)}
+                            disabled={isPending}
+                            className="rounded border border-brass bg-brass px-2 py-1 text-xs font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+                          >
+                            装着
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
