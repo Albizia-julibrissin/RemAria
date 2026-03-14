@@ -94,7 +94,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 通貨 | User の gameCurrencyBalance / premiumCurrencyFreeBalance / premiumCurrencyPaidBalance。消費時は CurrencyTransaction に履歴。 |
+| 通貨 | User の premiumCurrencyFreeBalance / premiumCurrencyPaidBalance（GRA）。消費時は無償から優先。CurrencyTransaction に履歴。gameCurrencyBalance は廃止（docs/076）。 |
 | 仲間の格納 | 既存の Character テーブル。category = "companion"。 |
 | **雇用可能回数** | **新規**：User に `companionHireCount`（Int, default 0）のようなカラムを追加する想定。購入で +1、作成で -1。 |
 | 工業スキル | **新規**：スキルマスタ（Skill 等）と習得テーブル（CharacterSkill：characterId, skillId）を用意。MVP では工業スキル 5 種類をマスタに登録。 |

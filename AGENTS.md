@@ -71,7 +71,7 @@
 | クエスト（ストーリー・研究） | spec/054_quests, **docs/054_quest_and_research_design.md** | `src/server/actions/quest.ts`, `src/app/dashboard/quests/`。探索 finish で area_clear、戦闘勝利で enemy_defeat 進捗。研究ポイント報酬・解放は A1 以降で拡張。 |
 | 任務による機能解放（テーマ・研究グループ） | spec/068_quest_unlock_themes_and_research, **docs/068_quest_unlock_themes_and_research.md** | 報告時に UserExplorationThemeUnlock / UserResearchGroupUnlock に挿入。`getExplorationMenu` でテーマ限定、`getResearchMenu` で isAvailable を任務解放のみに。管理画面で開拓任務に解放テーマ・研究グループを紐づけ。 |
 | 装備の派生戦闘ステ加算（HP/MP 含む） | spec/071_equipment_derived_stats_in_battle | `src/lib/battle/run-battle-with-party.ts`（derivedBonus 加算）、`src/server/actions/battle.ts`（装備取得・合算）。実装プランは **docs/072_equipment_hp_mp_implementation_plan.md**。 |
-| 市場（出品・購入・最安消化・手数料） | spec/075_market, **docs/065_market_design.md** | 未実装。設計は 065、API・データ・実装フェーズは **spec/075_market.md** §7。Item.marketListable 拡張、MarketListing, MarketTransaction。 |
+| 市場（出品・購入・最安消化・手数料） | spec/075_market, **docs/065_market_design.md** | **Phase 1・2・3 実装済み**。User.marketUnlocked、Item.marketListable / marketMin、MarketListing / MarketTransaction / MarketListingEvent。購入・出品・取下げ・履歴の 4 画面、有効期限・期限切れ自動取下げ、価格履歴、同時出品数上限。**通貨履歴強化**（Phase 3）：CurrencyTransaction に beforeBalance/afterBalance、reason コード化、運営ビューは管理画面「通貨履歴（ユーザー別）」で確認。`src/server/actions/market.ts`、`src/lib/constants/market.ts`、`src/lib/constants/currency-transaction-reasons.ts`、`src/app/dashboard/market/`、`src/app/dashboard/admin/currency-history/`。 |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
 

@@ -2,22 +2,31 @@
 
 import Link from "next/link";
 import { getResearchMenu } from "@/server/actions/research";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { ResearchUnlockButton } from "./research-unlock-button";
 import { GameIcon } from "@/components/icons/game-icon";
 
 export default async function ResearchPage() {
   const result = await getResearchMenu();
 
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   if (!result.success) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">研究</h1>
-        <p className="mt-4 text-text-muted">
+        <MenuPageHeaderClient title="研究局" description="設備やレシピを解放する" currentPath="/dashboard/research" />
+        <p className="text-text-muted">
           {result.error === "UNAUTHORIZED" ? "ログインしてください。" : result.error}
         </p>
         <Link href="/login" className="mt-4 inline-block text-brass hover:underline">
           ログインへ
         </Link>
+        <footer className="mt-8 border-t border-base-border pt-4">
+          <Link href="/dashboard" className={footerLinkClass}>
+            ← 開拓拠点に戻る
+          </Link>
+        </footer>
       </main>
     );
   }
@@ -26,21 +35,12 @@ export default async function ResearchPage() {
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/dashboard"
-          className="text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-        >
-          ← ダッシュボード
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-text-primary">研究</h1>
-      <p className="mt-2 text-text-muted">
-        研究グループごとに解放対象が並びます。必要なアイテムを消費して解放すると、設備の建設やクラフトレシピが利用可能になります。
-        派生型以外をすべて解放すると、次の研究グループが利用可能になります。
-      </p>
-
-      <section className="mt-8 max-w-2xl space-y-8">
+      <MenuPageHeaderClient
+        title="研究局"
+        description="設備やレシピを解放する。研究グループごとに解放対象が並び、必要なアイテムを消費して解放すると設備建設・クラフトレシピが利用可能に。派生型以外をすべて解放すると次の研究グループが利用可能になります。"
+        currentPath="/dashboard/research"
+      />
+      <section className="mt-6 max-w-2xl space-y-8">
         {groups.map((group) => (
           <div
             key={group.id}
@@ -100,6 +100,11 @@ export default async function ResearchPage() {
           </div>
         ))}
       </section>
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard" className={footerLinkClass}>
+          ← 開拓拠点に戻る
+        </Link>
+      </footer>
     </main>
   );
 }

@@ -20,6 +20,14 @@ export type ConstructionRecipeItem = {
   amount: number;
 };
 
+/** 建造レシピ＋在庫・不足数（UI用） */
+export type ConstructionRecipeRow = {
+  itemName: string;
+  amount: number;
+  stock: number;
+  shortfall: number;
+};
+
 export type PlaceFacilityResult =
   | { success: true; facilityInstanceId: string; facilityName: string }
   | { success: false; error: string; message: string };
@@ -79,6 +87,38 @@ export async function getConstructionRecipe(
     itemCode: inp.item.code,
     amount: inp.amount,
   }));
+}
+
+/**
+ * 指定設備種別の建設レシピ＋在庫・不足数。建造フォームのグリッド表示用。
+ */
+export async function getConstructionRecipeWithStock(
+  facilityTypeId: string,
+  variantCode: string = VARIANT_BASE
+): Promise<ConstructionRecipeRow[] | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const recipe = await getConstructionRecipe(facilityTypeId, variantCode);
+  if (!recipe || recipe.length === 0) return recipe;
+
+  const itemIds = recipe.map((r) => r.itemId);
+  const inventories = await prisma.userInventory.findMany({
+    where: { userId: session.userId, itemId: { in: itemIds } },
+    select: { itemId: true, quantity: true },
+  });
+  const stockByItemId = new Map(inventories.map((i) => [i.itemId, i.quantity]));
+
+  return recipe.map((r) => {
+    const stock = stockByItemId.get(r.itemId) ?? 0;
+    const shortfall = Math.max(0, r.amount - stock);
+    return {
+      itemName: r.itemName,
+      amount: r.amount,
+      stock,
+      shortfall,
+    };
+  });
 }
 
 /**

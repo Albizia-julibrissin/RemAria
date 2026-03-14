@@ -203,12 +203,12 @@ async function runTest(): Promise<void> {
     await prisma.user.update({
       where: { id: adminUser.id },
       data: {
-        gameCurrencyBalance: 5000,
         premiumCurrencyFreeBalance: 500,
         premiumCurrencyPaidBalance: 500,
+        marketUnlocked: true, // spec/075: 管理人で市場を利用可能に
       },
     });
-    console.log("管理人に通貨を付与");
+    console.log("管理人に GRA 付与・市場アンロック");
   }
 
   const test2Hash = await bcrypt.hash(TEST_USER_2.password, 10);

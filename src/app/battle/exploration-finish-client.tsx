@@ -69,7 +69,7 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
         return;
       }
       setSummary(result.summary);
-      // 報酬内容を視認できるよう、ここではリフレッシュしない。「ダッシュボードへ戻る」で遷移する
+      // 報酬内容を視認できるよう、ここではリフレッシュしない。「開拓拠点へ戻る」で遷移する
     });
   };
 
@@ -127,7 +127,7 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
               onClick={handleBackToDashboard}
               className="rounded-md bg-base-border px-4 py-2 text-sm font-medium text-text-primary hover:bg-base hover:opacity-90"
             >
-              ダッシュボードへ戻る
+              開拓拠点へ戻る
             </button>
           </div>
         </div>

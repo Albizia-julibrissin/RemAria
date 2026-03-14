@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { getCraftRecipes } from "@/server/actions/craft";
 import { EQUIPMENT_SLOT_LABELS } from "@/lib/constants/equipment-slots";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { CraftExecuteButton } from "./craft-execute-button";
 
 function slotLabel(slot: string): string {
@@ -12,38 +13,39 @@ function slotLabel(slot: string): string {
 export default async function CraftPage() {
   const recipes = await getCraftRecipes();
 
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   if (!recipes) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">アイテムクラフト</h1>
-        <p className="mt-4 text-text-muted">ログインしてください。</p>
+        <MenuPageHeaderClient title="工房" description="装備や消耗品を製作する" currentPath="/dashboard/craft" />
+        <p className="text-text-muted">ログインしてください。</p>
         <Link href="/login" className="mt-4 inline-block text-brass hover:underline">
           ログインへ
         </Link>
+        <footer className="mt-8 border-t border-base-border pt-4">
+          <Link href="/dashboard" className={footerLinkClass}>
+            ← 開拓拠点に戻る
+          </Link>
+        </footer>
       </main>
     );
   }
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/dashboard"
-          className="text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-        >
-          ← ダッシュボード
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-text-primary">アイテムクラフト</h1>
-      <p className="mt-2 text-text-muted">
-        レシピを選んで実行すると、必要な資源を消費して装備・消耗品を作成します。装備は個体ごとにステータスがランダムで決まります。
-      </p>
-      <p className="mt-1 text-sm text-text-muted">
-        <Link href="/dashboard/bag" className="text-brass hover:underline">倉庫</Link>
+      <MenuPageHeaderClient
+        title="工房"
+        description="装備や消耗品を製作する。レシピを選んで実行すると必要な資源を消費して装備・消耗品を作成。装備は個体ごとにステータスがランダムで決まります。"
+        currentPath="/dashboard/craft"
+      />
+      <p className="mb-4 text-sm text-text-muted">
+        <Link href="/dashboard/bag" className="text-brass hover:underline">物資庫</Link>
         で所持数を確認できます。
       </p>
 
-      <section className="mt-8 rounded-lg border border-base-border bg-base-elevated p-6 max-w-2xl">
+      <section className="rounded-lg border border-base-border bg-base-elevated p-6 max-w-2xl">
         <h2 className="text-lg font-medium text-text-primary">レシピ一覧</h2>
         {recipes.length === 0 ? (
           <p className="mt-4 text-text-muted">レシピがありません。</p>
@@ -79,6 +81,11 @@ export default async function CraftPage() {
           </ul>
         )}
       </section>
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard" className={footerLinkClass}>
+          ← 開拓拠点に戻る
+        </Link>
+      </footer>
     </main>
   );
 }

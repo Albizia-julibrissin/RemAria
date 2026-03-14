@@ -7,7 +7,6 @@ import { GraDisplay } from "@/components/currency/gra-display";
 
 type CharacterSummary = {
   id: string;
-  // Prisma 側では string 型だが、実際の値は "protagonist" | "companion" を想定
   category: string;
   displayName: string;
   iconFilename: string | null;
@@ -23,7 +22,9 @@ interface CharacterSummaryCardProps {
 export function CharacterSummaryCard({ characters, balances }: CharacterSummaryCardProps) {
   const options = useMemo(
     () =>
-      characters.filter((c) => c.category === "protagonist" || c.category === "companion"),
+      characters.filter((c) =>
+        c.category === "protagonist" || c.category === "companion" || c.category === "mech"
+      ),
     [characters]
   );
 
@@ -35,6 +36,7 @@ export function CharacterSummaryCard({ characters, balances }: CharacterSummaryC
   if (!options.length || !selectedId) return null;
 
   const selected = options.find((c) => c.id === selectedId) ?? options[0]!;
+  const isMech = selected.category === "mech";
 
   const level = selected.level ?? 1;
   const totalExp = selected.experiencePoints ?? 0;
@@ -100,14 +102,18 @@ export function CharacterSummaryCard({ characters, balances }: CharacterSummaryC
         <div className="flex items-center justify-between text-[11px] text-text-muted">
           <span>経験値</span>
           <span className="tabular-nums">
-            {gainedInLevel.toLocaleString()} / {neededThisLevel.toLocaleString()}
+            {isMech ? "— / —" : `${gainedInLevel.toLocaleString()} / ${neededThisLevel.toLocaleString()}`}
           </span>
         </div>
-        <div className="mt-1 h-2 rounded-full bg-base-border overflow-hidden">
-          <div
-            className="h-full bg-brass transition-[width]"
-            style={{ width: `${ratio * 100}%` }}
-          />
+        <div className="mt-1 h-2 rounded-full overflow-hidden bg-base-border">
+          {isMech ? (
+            <div className="h-full w-full bg-error" aria-hidden />
+          ) : (
+            <div
+              className="h-full bg-brass transition-[width]"
+              style={{ width: `${ratio * 100}%` }}
+            />
+          )}
         </div>
       </div>
 

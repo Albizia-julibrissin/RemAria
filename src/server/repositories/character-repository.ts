@@ -52,7 +52,14 @@ export async function getProtagonistByUserId(userId: string) {
 export async function getCharactersByUserId(userId: string) {
   return prisma.character.findMany({
     where: { userId },
-    select: { id: true, category: true, displayName: true, iconFilename: true },
+    select: {
+      id: true,
+      category: true,
+      displayName: true,
+      iconFilename: true,
+      level: true,
+      experiencePoints: true,
+    },
     orderBy: { createdAt: "asc" },
   });
 }

@@ -25,7 +25,7 @@ export function RecruitPurchaseButtons({
 
   function handlePurchase() {
     startTransition(async () => {
-      const result: PurchaseCompanionHireResult = await purchaseCompanionHire("premium");
+      const result: PurchaseCompanionHireResult = await purchaseCompanionHire();
       if (result.success) {
         router.refresh();
       } else {

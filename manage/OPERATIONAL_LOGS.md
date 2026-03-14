@@ -9,7 +9,7 @@
 
 | 種類 | 内容 | 現状 | 参照 |
 |------|------|------|------|
-| **通貨取引** | 誰が・いつ・何で・いくら増減したか。課金連携時は Order/外部ID 紐づけ。 | `CurrencyTransaction` あり。ゲーム開始・仲間雇用で記録済み。before/after 残高は未保存。 | SECURITY_READINESS §2, ECONOMY_DESIGN |
+| **通貨取引** | 誰が・いつ・何で・いくら増減したか。課金連携時は Order/外部ID 紐づけ。 | `CurrencyTransaction` あり。**GRA を扱う処理はすべて記録**（ゲーム開始・任務報酬・仲間雇用・市場購入/成約）。beforeBalance/afterBalance・reason コード化済み（spec/075 Phase 3）。運営ビューは管理画面「通貨履歴（ユーザー別）」で確認可。 | SECURITY_READINESS §2, ECONOMY_DESIGN, spec/075 |
 | **ログイン試行** | 成功/失敗・IP・時刻。異常な連続失敗の検知用。 | 未実装。 | SECURITY_READINESS §1（PRE-PAID） |
 | **管理画面操作** | 誰（管理者）が・いつ・どのマスタをどう変更したか。 | 未実装。 | — |
 | **本番DB操作の記録** | マイグレーション・マスタ同期・復元を「誰が・いつ・どの環境に」実行したか。 | 手順は PRODUCTION_RELEASE_GUIDE にあり。**実行履歴の保存**は未実装（手動メモ or Cursor 依頼ログで賄う想定）。 | PRODUCTION_RELEASE_GUIDE §6–9 |

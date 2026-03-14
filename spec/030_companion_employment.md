@@ -46,9 +46,8 @@
 
 ### 3.1 雇用可能回数の購入（purchaseCompanionHire）
 
-- **paymentType**：`"game"` または `"premium"`。
-- ゲーム通貨：User.gameCurrencyBalance が 1000 以上であること。
-- 課金通貨：User.premiumCurrencyFreeBalance + premiumCurrencyPaidBalance の合計が 100 以上であること。消費は無償→有償の順。
+- **支払い**：**GRA のみ**（User.premiumCurrencyFreeBalance + premiumCurrencyPaidBalance）。gameCurrencyBalance は廃止（docs/076）。
+- GRA が 100 以上であること。消費は**無償→有償の順**。
 
 ### 3.2 仲間の作成（createCompanion）
 
@@ -196,11 +195,11 @@
 
 ## 8. 例（最低3ケース）
 
-### ケース1：購入成功（ゲーム通貨）
+### ケース1：購入成功（GRA）
 
-- 前提：gameCurrencyBalance >= 1000。
-- 操作：paymentType = "game" で purchaseCompanionHire。
-- 期待：gameCurrencyBalance が 1000 減り、companionHireCount が 1 増える。CurrencyTransaction に reason=companion_hire_purchase で記録。
+- 前提：GRA（無償＋有償合計）>= 100。
+- 操作：purchaseCompanionHire（GRA で支払い。無償から優先消費）。
+- 期待：premiumCurrencyFreeBalance / premiumCurrencyPaidBalance が合計 100 減り、companionHireCount が 1 増える。CurrencyTransaction に reason=companion_hire_purchase で記録。
 
 ### ケース2：仲間作成 → 詳細へ
 

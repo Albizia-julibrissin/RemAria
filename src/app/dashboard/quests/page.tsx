@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { getQuestList } from "@/server/actions/quest";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { QuestListClient } from "./quest-list-client";
 
 const FILTERS = [
@@ -26,14 +27,26 @@ export default async function QuestsPage({
 
   const result = await getQuestList(filter);
 
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   if (!result.success) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">開拓任務</h1>
-        <p className="mt-4 text-text-muted">{result.error === "UNAUTHORIZED" ? "ログインしてください。" : result.error}</p>
+        <MenuPageHeaderClient
+          title="開拓任務"
+          description="使命・研究・特殊・一般の開拓任務の進捗"
+          currentPath="/dashboard/quests"
+        />
+        <p className="text-text-muted">{result.error === "UNAUTHORIZED" ? "ログインしてください。" : result.error}</p>
         <Link href="/login" className="mt-4 inline-block text-brass hover:underline">
           ログインへ
         </Link>
+        <footer className="mt-8 border-t border-base-border pt-4">
+          <Link href="/dashboard" className={footerLinkClass}>
+            ← 開拓拠点に戻る
+          </Link>
+        </footer>
       </main>
     );
   }
@@ -42,21 +55,12 @@ export default async function QuestsPage({
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/dashboard"
-          className="text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-        >
-          ← ダッシュボード
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-text-primary">開拓任務</h1>
-      <p className="mt-2 text-text-muted">
-        使命・研究・特殊・一般の開拓任務の進捗を確認できます。条件を満たすと報告可能になり、報酬が付与されます。
-        達成した任務は「クリア報告」でメッセージを確認し、確認するとクリア済みとして記録されます。
-      </p>
-
-      <nav className="mt-6 flex gap-2 border-b border-base-border" aria-label="開拓任務フィルタ">
+      <MenuPageHeaderClient
+        title="開拓任務"
+        description="使命・研究・特殊・一般の開拓任務の進捗。条件を満たすと報告可能になり報酬が付与されます。達成した任務は「クリア報告」でメッセージを確認するとクリア済みとして記録されます。"
+        currentPath="/dashboard/quests"
+      />
+      <nav className="mt-2 flex gap-2 border-b border-base-border" aria-label="開拓任務フィルタ">
         {FILTERS.map((f) => (
           <Link
             key={f.value}
@@ -79,6 +83,11 @@ export default async function QuestsPage({
           <QuestListClient quests={quests} />
         )}
       </section>
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard" className={footerLinkClass}>
+          ← 開拓拠点に戻る
+        </Link>
+      </footer>
     </main>
   );
 }

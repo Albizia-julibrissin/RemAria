@@ -2,7 +2,7 @@
 //
 // 目的:
 // - Item.maxOwnedPerUser を一括設定する。
-//   - 探索用資源「基本探索キット」のみ maxOwnedPerUser = 30000
+//   - 探索用資源「基本探索キット」のみ maxOwnedPerUser = 3000
 //   - それ以外の全アイテムは maxOwnedPerUser = 99999
 //
 // 前提:
@@ -32,17 +32,17 @@ async function main() {
     });
     console.log(`探索キット以外のアイテム ${updatedOthers.count} 件を maxOwnedPerUser=99999 に更新しました。`);
 
-    // 探索キット（basic_exploration_kit）のみ 30000 に設定
+    // 探索キット（basic_exploration_kit）のみ 3000 に設定
     const updatedKit = await prisma.item.updateMany({
       where: {
         code: "basic_exploration_kit",
       },
       data: {
-        maxOwnedPerUser: 30000,
+        maxOwnedPerUser: 3000,
       },
     });
     console.log(
-      `basic_exploration_kit（基本探索キット） ${updatedKit.count} 件を maxOwnedPerUser=30000 に更新しました。`
+      `basic_exploration_kit（基本探索キット） ${updatedKit.count} 件を maxOwnedPerUser=3000 に更新しました。`
     );
 
     console.log("完了しました。");

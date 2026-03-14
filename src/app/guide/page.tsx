@@ -6,7 +6,7 @@ import Link from "next/link";
 import { BattleAttributesGuideSection } from "@/components/guide/battle-attributes-guide-section";
 
 const menuItems: { href: string; label: string; desc: string; wip?: boolean }[] = [
-  { href: "/dashboard", label: "ダッシュボード", desc: "探索の開始・進行中探索の続き・メニューへの入口。作戦室へのショートカット。" },
+  { href: "/dashboard", label: "開拓拠点", desc: "探索の開始・進行中探索の続き・メニューへの入口。作戦室へのショートカット。" },
   { href: "/dashboard/characters", label: "居住区", desc: "キャラクター一覧・詳細。ステータス割り振り・装備・遺物の装着・スキルレベル。" },
   { href: "/dashboard/recruit", label: "人材局", desc: "仲間の雇用・解雇。" },
   { href: "/dashboard/facilities", label: "機工区", desc: "設備の配置・製造一括受け取り・建設・解体。" },
@@ -60,9 +60,9 @@ export default function GuidePage() {
         <section className="mt-8">
           <h2 className="text-xl font-semibold text-text-primary border-b border-base-border pb-2">2. 1日の基本の流れ（推奨ループ）</h2>
           <ol className="mt-3 list-decimal list-inside space-y-2 text-text-primary text-sm">
-            <li><strong>ログイン</strong> → ダッシュボードを開く。</li>
+            <li><strong>ログイン</strong> → 開拓拠点を開く。</li>
             <li><strong>製造の受け取り</strong>：機工区で、完了した製造を「一括受け取り」する。</li>
-            <li><strong>探索に出撃</strong>：ダッシュボードの「探索」で、テーマ・エリア・パーティプリセット・持ち込み消耗品を選んで「探索を開始」。戦闘や技能イベントが発生したら、画面の指示に従って「次へ」を押して進める。</li>
+            <li><strong>探索に出撃</strong>：開拓拠点の「探索」で、テーマ・エリア・パーティプリセット・持ち込み消耗品を選んで「探索を開始」。戦闘や技能イベントが発生したら、画面の指示に従って「次へ」を押して進める。</li>
             <li><strong>帰還</strong>：探索を終えたら「帰還」で報酬（素材・遺物・経験値など）を受け取る。</li>
             <li><strong>育成の見直し</strong>：レベルアップしている場合は「居住区」でキャラを選び、ステータス割り振りをする。装備や遺物の変更もここで。</li>
             <li><strong>作戦の確認</strong>：「作戦室」でパーティプリセットと作戦スロット（誰がどの条件でどのスキルを使うか）を設定する。</li>
@@ -92,10 +92,10 @@ export default function GuidePage() {
         <section className="mt-8">
           <h2 className="text-xl font-semibold text-text-primary border-b border-base-border pb-2">4. 探索の流れ（ざっくり）</h2>
           <ol className="mt-3 list-decimal list-inside space-y-2 text-text-primary text-sm">
-            <li>ダッシュボードで <strong>テーマ・エリア</strong> を選び、<strong>パーティプリセット</strong>（誰を連れていくか）と <strong>持ち込み消耗品</strong> を選択して「探索を開始」。</li>
+            <li>開拓拠点で <strong>テーマ・エリア</strong> を選び、<strong>パーティプリセット</strong>（誰を連れていくか）と <strong>持ち込み消耗品</strong> を選択して「探索を開始」。</li>
             <li>探索画面に移ったら、<strong>技能判定</strong>や<strong>戦闘</strong>が順に発生します。戦闘は自動で進行し、ログで経過を確認。HP/MP は戦闘をまたいで持ち越されます。</li>
             <li>規定回数の戦闘のあと、「強敵に挑む」→ 勝利すると「領域主に挑む」のチャンスが出る場合があります。</li>
-            <li>「帰還」を選ぶと探索終了。<strong>報酬画面</strong>でドロップ（素材・遺物など）と経験値を確認し、受け取ってダッシュボードに戻ります。</li>
+            <li>「帰還」を選ぶと探索終了。<strong>報酬画面</strong>でドロップ（素材・遺物など）と経験値を確認し、受け取って開拓拠点に戻ります。</li>
           </ol>
         </section>
 
@@ -134,7 +134,7 @@ export default function GuidePage() {
         <section className="mt-8">
           <h2 className="text-xl font-semibold text-text-primary border-b border-base-border pb-2">8. 困ったときは</h2>
           <ul className="mt-3 list-disc list-inside space-y-1 text-text-primary text-sm">
-            <li><strong>進行中の探索をやめたい</strong>：ダッシュボードの「進行中の探索」から「探索を中止」を選べます（報酬は受け取れません）。</li>
+            <li><strong>進行中の探索をやめたい</strong>：開拓拠点の「進行中の探索」から「探索を中止」を選べます（報酬は受け取れません）。</li>
             <li><strong>チャットのマナー</strong>：他プレイヤーへの誹謗中傷は控え、運営の注意に従ってください。ミュート・ブロック・通報機能は未実装です（実装予定）。</li>
             <li><strong>不具合や要望</strong>：運営の案内に従って問い合わせてください。</li>
           </ul>

@@ -19,8 +19,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // 通貨（docs/08_database_schema.md）
-  gameCurrencyBalance         Int @default(0)
+  // 通貨（docs/08_database_schema.md）。GRA = 無償+有償。gameCurrencyBalance は廃止（docs/076）。
   premiumCurrencyFreeBalance  Int @default(0)
   premiumCurrencyPaidBalance  Int @default(0)
   /// 研究記録書（研究解放で消費）。クエスト報酬等で付与。docs/054。
@@ -77,6 +76,12 @@ model User {
   /// spec/068: 任務クリアで解禁した研究グループ
   researchGroupUnlocks    UserResearchGroupUnlock[]
   notifications Notification[]
+  /// spec/075: 市場解放済みなら true。任務側でオンにする。
+  marketUnlocked          Boolean   @default(false)
+  marketListings          MarketListing[]
+  marketListingEvents    MarketListingEvent[]
+  marketTransactionsAsBuyer  MarketTransaction[] @relation("MarketBuyer")
+  marketTransactionsAsSeller MarketTransaction[] @relation("MarketSeller")
 }
 
 /// docs/066: 通知。種別（quest_accepted 等）・タイトル・本文・リンク・既読日時。
@@ -423,6 +428,12 @@ model Item {
   consumableEffect      Json?
   /// 探索1回あたりの持ち込み上限（個数）。null は対象外または無制限。
   maxCarryPerExpedition  Int?
+  /// spec/075: true のアイテムのみ市場に出品可能。
+  marketListable         Boolean   @default(false)
+  /// spec/075: 出品時の単価下限。NULL ならグローバル定数を使用。
+  marketMinPricePerUnit  Int?
+  /// spec/075: 出品時の数量下限。NULL ならグローバル定数を使用。
+  marketMinQuantity      Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -436,8 +447,62 @@ model Item {
   dropTableEntries DropTableEntry[]
   researchUnlockCosts ResearchUnlockCost[]
   explorationAreaCosts ExplorationAreaCost[]
+  /// spec/075: 市場出品
+  marketListings       MarketListing[]
+  marketListingEvents MarketListingEvent[]
+  marketTransactions  MarketTransaction[]
 
   @@index([skillId])
+}
+
+/// spec/075: 市場出品（1行 = 1 listing）。部分消化で quantity を減らし 0 で削除。
+model MarketListing {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity    Int       // 出品数量（部分消化で減る。0 で削除）
+  pricePerUnit Int      // 単価（ゲーム通貨）
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime? // Phase 2 で使用。NULL は無期限
+
+  @@index([itemId, pricePerUnit, createdAt])
+  @@index([userId])
+}
+
+/// spec/075: 成約ログ・価格履歴の元データ。匿名のため画面では buyer/seller を返さない。
+model MarketTransaction {
+  id            String   @id @default(cuid())
+  itemId        String
+  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  pricePerUnit  Int
+  quantity      Int
+  buyerUserId   String
+  buyer         User     @relation("MarketBuyer", fields: [buyerUserId], references: [id], onDelete: Cascade)
+  sellerUserId  String
+  seller        User     @relation("MarketSeller", fields: [sellerUserId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@index([itemId])
+  @@index([buyerUserId])
+  @@index([sellerUserId])
+}
+
+/// spec/075 Phase 2.1: 手動取り下げ・期限切れ自動取下げの履歴。表示用スナップショット。
+model MarketListingEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String   // cancelled | expired
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity    Int
+  pricePerUnit Int
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 /// spec/049: 探索・報酬用ドロップテーブル（エリア別・枠由来別のアイテム候補）。
@@ -1037,16 +1102,22 @@ model CharacterSkill {
   @@index([skillId])
 }
 
+/// 通貨増減の履歴。監査・法的要件のため全 GRA 処理で記録。spec/075 Phase 3, manage/OPERATIONAL_LOGS.md §2.2
 model CurrencyTransaction {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  currencyType String   // game / premium_free / premium_paid
-  amount       Int      // 正: 増加, 負: 消費
-  reason       String?
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currencyType  String   // premium_free / premium_paid（game は廃止）
+  amount        Int      // 正: 増加, 負: 消費
+  /// 変更前の当該通貨残高。監査用。
+  beforeBalance Int?
+  /// 変更後の当該通貨残高。afterBalance = beforeBalance + amount と整合させる。
+  afterBalance  Int?
+  /// 理由コード。CURRENCY_REASON_* 定数で一覧管理。manage/OPERATIONAL_LOGS.md
+  reason        String?
   referenceType String?
   referenceId   String?
-  createdAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([userId])
   @@index([userId, createdAt])

@@ -20,6 +20,10 @@ const config: Config = {
     "game-icons--wooden-crate", // 物資庫
     "game-icons--feather", // 開拓任務
     "game-icons--battle-gear", // 作戦室
+    "game-icons--hand-bag", // 市場・購入
+    "game-icons--shop", // 市場・出品
+    "game-icons--weight-scale", // 市場・ダッシュボード（天秤）
+    "game-icons--hourglass", // 市場・履歴
   ],
   theme: {
     extend: {

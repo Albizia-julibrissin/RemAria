@@ -30,6 +30,9 @@ export function AdminItemCreateForm({ skills }: Props) {
   const [consumableEffectJson, setConsumableEffectJson] = useState("");
   const [maxCarry, setMaxCarry] = useState("");
   const [maxOwned, setMaxOwned] = useState("");
+  const [marketListable, setMarketListable] = useState(false);
+  const [marketMinPrice, setMarketMinPrice] = useState("");
+  const [marketMinQty, setMarketMinQty] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +49,15 @@ export function AdminItemCreateForm({ skills }: Props) {
       maxOwnedPerUser:
         maxOwned.trim() !== "" && /^\d+$/.test(maxOwned.trim())
           ? parseInt(maxOwned.trim(), 10)
+          : null,
+      marketListable,
+      marketMinPricePerUnit:
+        marketMinPrice.trim() !== "" && /^\d+$/.test(marketMinPrice.trim())
+          ? parseInt(marketMinPrice.trim(), 10)
+          : null,
+      marketMinQuantity:
+        marketMinQty.trim() !== "" && /^\d+$/.test(marketMinQty.trim())
+          ? parseInt(marketMinQty.trim(), 10)
           : null,
     };
     startTransition(async () => {
@@ -174,6 +186,47 @@ export function AdminItemCreateForm({ skills }: Props) {
           min={0}
           value={maxOwned}
           onChange={(e) => setMaxOwned(e.target.value)}
+          className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          id="marketListable"
+          type="checkbox"
+          checked={marketListable}
+          onChange={(e) => setMarketListable(e.target.checked)}
+          className="rounded border-base-border"
+        />
+        <label htmlFor="marketListable" className="text-sm font-medium text-text-muted">
+          marketListable（市場出品可。spec/075）
+        </label>
+      </div>
+
+      <div>
+        <label htmlFor="marketMinPrice" className="block text-sm font-medium text-text-muted">
+          marketMinPricePerUnit（出品単価下限。空でグローバル定数使用）
+        </label>
+        <input
+          id="marketMinPrice"
+          type="number"
+          min={0}
+          value={marketMinPrice}
+          onChange={(e) => setMarketMinPrice(e.target.value)}
+          className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="marketMinQty" className="block text-sm font-medium text-text-muted">
+          marketMinQuantity（出品数量下限。空でグローバル定数使用）
+        </label>
+        <input
+          id="marketMinQty"
+          type="number"
+          min={0}
+          value={marketMinQty}
+          onChange={(e) => setMarketMinQty(e.target.value)}
           className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
         />
       </div>

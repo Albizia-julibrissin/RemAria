@@ -18,8 +18,7 @@
 | name | String | NOT NULL | 表示名。**重複可**。**主人公の表示名もこの値のみを使用**（二重管理しない）。 |
 | createdAt | DateTime | NOT NULL, default now() | 作成日時 |
 | updatedAt | DateTime | NOT NULL, updatedAt | 更新日時 |
-| gameCurrencyBalance | Int | NOT NULL, default 0 | ゲーム通貨残高 |
-| premiumCurrencyFreeBalance | Int | NOT NULL, default 0 | 課金通貨（無償分） |
+| premiumCurrencyFreeBalance | Int | NOT NULL, default 0 | GRA（無償分）。市場・仲間雇用等で消費時はこちらから優先。 |
 | premiumCurrencyPaidBalance | Int | NOT NULL, default 0 | 課金通貨（有償分） |
 | birthdate | DateTime | NULL可 | 生年月日 |
 | country | String | NULL可 | 国コード |

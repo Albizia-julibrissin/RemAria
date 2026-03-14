@@ -3,9 +3,13 @@
 import Link from "next/link";
 import { getIndustrial } from "@/server/actions/initial-area";
 import { getUnlockedFacilityTypes } from "@/server/actions/facilities-placement";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { ReceiveAllForm } from "./receive-all-form";
 import { PlaceFacilityForm } from "./place-facility-form";
-import { DismantleFacilityButton } from "./dismantle-facility-button";
+import { FacilityRow } from "./facility-row";
+
+const FACILITIES_DESCRIPTION =
+  "設備配置と生産の管理。設備の確認・生産の受け取り（全設備一括・最大24時間分）。";
 
 export default async function FacilitiesPage() {
   const [data, unlockedTypes] = await Promise.all([
@@ -16,11 +20,23 @@ export default async function FacilitiesPage() {
   if (!data) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">工業</h1>
-        <p className="mt-4 text-text-muted">ログインしてください。</p>
+        <MenuPageHeaderClient
+          title="機工区"
+          description={FACILITIES_DESCRIPTION}
+          currentPath="/dashboard/facilities"
+        />
+        <p className="text-text-muted">ログインしてください。</p>
         <Link href="/login" className="mt-4 inline-block text-brass hover:underline">
           ログインへ
         </Link>
+        <footer className="mt-8 pt-4 border-t border-base-border">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+          >
+            ← 開拓拠点に戻る
+          </Link>
+        </footer>
       </main>
     );
   }
@@ -30,80 +46,39 @@ export default async function FacilitiesPage() {
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/dashboard"
-          className="text-text-muted hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-        >
-          ← ダッシュボード
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-text-primary">工業</h1>
-      <p className="mt-2 text-text-muted">
-        設備の確認・生産の受け取りができます。受け取りは全設備一括で、最大24時間分まで（docs/019）。
-        <Link href="/dashboard/warehouse" className="ml-2 text-brass hover:underline">
-          倉庫で所持数を確認
-        </Link>
-      </p>
+      <MenuPageHeaderClient
+        title="機工区"
+        description={FACILITIES_DESCRIPTION}
+        currentPath="/dashboard/facilities"
+      />
 
-      <section className="mt-8 rounded-lg border border-base-border bg-base-elevated p-6 max-w-2xl">
+      <section id="operating-facilities" className="rounded-lg border border-base-border bg-base-elevated p-6 max-w-2xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-medium text-text-primary">設備</h2>
+            <h2 className="text-lg font-medium text-text-primary">
+              稼働設備
+              <a href="#facility-build" className="ml-2 text-sm text-brass hover:text-brass-hover">
+                設備建造へ →
+              </a>
+            </h2>
             <p className="mt-2 text-sm text-text-muted">
-              コスト {usedCost} / {maxCost} ・ 配置 {usedSlots} / {maxSlots}
+              稼働中コスト <span className="text-success">{usedCost}</span> / <span className="text-success">{maxCost}</span>
+              {"　"}
+              稼働設備数 <span className="text-success">{usedSlots}</span> / <span className="text-success">{maxSlots}</span>
             </p>
           </div>
           <ReceiveAllForm hasReceivable={hasReceivable} />
         </div>
 
         {facilities.length === 0 ? (
-          <p className="mt-6 text-text-muted">設備がありません。</p>
+          <p className="mt-6 text-text-muted">稼働設備がありません。</p>
         ) : (
-          <ul className="mt-6 space-y-4">
+          <ul className="mt-6 space-y-2">
             {facilities.map((f) => (
-              <li key={f.id} className="rounded border border-base-border bg-base p-4">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium text-text-primary">{f.facilityName}</span>
-                    <span className="ml-2 text-sm text-text-muted">コスト {f.cost}</span>
-                    {f.isForced && (
-                      <span className="ml-2 text-xs text-text-muted">（初期配置）</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {f.receivableCycles > 0 && (
-                      <span className="text-sm text-brass">
-                        受け取り可能: {f.receivableOutputAmount}個（{f.receivableCycles}サイクル）
-                      </span>
-                    )}
-                    {!f.isForced && (
-                      <DismantleFacilityButton
-                        facilityInstanceId={f.id}
-                        facilityName={f.facilityName}
-                      />
-                    )}
-                  </div>
-                </div>
-                {f.recipe && (
-                  <div className="mt-2 text-sm text-text-muted">
-                    <span>{f.recipe.cycleMinutes}分ごと</span>
-                    {f.recipe.inputs.length > 0 && (
-                      <span>
-                        {" "}
-                        ・ 消費: {f.recipe.inputs.map((i) => `${i.itemName} ${i.amount}`).join(" + ")}
-                      </span>
-                    )}
-                    <span> → {f.recipe.outputItemName} {f.recipe.outputAmount}個</span>
-                  </div>
-                )}
-              </li>
+              <FacilityRow key={f.id} facility={f} />
             ))}
           </ul>
         )}
-        <p className="mt-4 text-xs text-text-muted">
-          生産チェーン: 川→水 / 浄水→飲料水 / 小麦畑→小麦 / 製粉→小麦粉 / 包装→携帯食料（1時間で100個）
-        </p>
       </section>
 
       <PlaceFacilityForm
@@ -113,6 +88,15 @@ export default async function FacilitiesPage() {
         usedCost={usedCost}
         maxCost={maxCost}
       />
+
+      <footer className="mt-8 pt-4 border-t border-base-border">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          ← 開拓拠点に戻る
+        </Link>
+      </footer>
     </main>
   );
 }

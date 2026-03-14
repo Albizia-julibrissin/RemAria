@@ -9,6 +9,7 @@ import {
   getBattleSkillsForCharacters,
   getTacticsSkillCatalogForCharacters,
 } from "@/server/actions/tactics";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { TacticsEditorClient } from "./tactics-editor-client";
 import { CreatePresetForm } from "./create-preset-form";
 
@@ -19,28 +20,38 @@ export default async function TacticsRoomPage({
 }) {
   const { presetId } = await searchParams;
 
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   // プリセット一覧表示時のみ軽量APIで取得（id・name・3スロットの表示名＋上限）
   if (!presetId) {
     const result = await getPartyPresetListForTacticsPage();
     if ("error" in result) {
       return (
         <main className="min-h-screen bg-base p-8">
-          <h1 className="text-2xl font-bold text-text-primary">作戦室</h1>
-          <p className="mt-2 text-text-muted">ログインしてください。</p>
-          <p className="mt-8">
-            <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">← ダッシュボードへ</Link>
-          </p>
+          <MenuPageHeaderClient
+            title="作戦室"
+            description="パーティプリセットと作戦スロットの設定"
+            currentPath="/dashboard/tactics"
+          />
+          <p className="text-text-muted">ログインしてください。</p>
+          <footer className="mt-8 border-t border-base-border pt-4">
+            <Link href="/dashboard" className={footerLinkClass}>
+              ← 開拓拠点に戻る
+            </Link>
+          </footer>
         </main>
       );
     }
     const { presets, presetLimit } = result;
-    const canCreateMore = presets.length < presetLimit;
 
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">作戦室</h1>
-        <p className="mt-2 text-text-muted">パーティプリセットを選び、編成と作戦スロットを設定します。</p>
-
+        <MenuPageHeaderClient
+          title="作戦室"
+          description="パーティプリセットと作戦スロットの設定。プリセットを選び、編成と作戦スロットを設定します。"
+          currentPath="/dashboard/tactics"
+        />
         {presets.length === 0 ? (
           <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
             <p className="text-text-muted">プリセットがありません。新規作成してください。</p>
@@ -73,12 +84,11 @@ export default async function TacticsRoomPage({
             </div>
           </>
         )}
-
-        <p className="mt-8">
-          <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-            ← ダッシュボードへ
+        <footer className="mt-8 border-t border-base-border pt-4">
+          <Link href="/dashboard" className={footerLinkClass}>
+            ← 開拓拠点に戻る
           </Link>
-        </p>
+        </footer>
       </main>
     );
   }
@@ -87,13 +97,22 @@ export default async function TacticsRoomPage({
   if (!preset) {
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">作戦室</h1>
-        <p className="mt-2 text-error">指定したプリセットが見つかりません。</p>
+        <MenuPageHeaderClient
+          title="作戦室"
+          description="パーティプリセットと作戦スロットの設定"
+          currentPath="/dashboard/tactics"
+        />
+        <p className="text-error">指定したプリセットが見つかりません。</p>
         <p className="mt-4">
           <Link href="/dashboard/tactics" className="text-sm text-brass hover:text-brass-hover">
             ← プリセット一覧へ
           </Link>
         </p>
+        <footer className="mt-8 border-t border-base-border pt-4">
+          <Link href="/dashboard" className={footerLinkClass}>
+            ← 開拓拠点に戻る
+          </Link>
+        </footer>
       </main>
     );
   }
@@ -113,13 +132,18 @@ export default async function TacticsRoomPage({
 
   return (
     <main className="min-h-screen bg-base p-8">
-      <div className="mb-4 flex items-center gap-4">
+      <MenuPageHeaderClient
+        title="作戦室"
+        description="パーティプリセットと作戦スロットの設定"
+        currentPath="/dashboard/tactics"
+      />
+      <p className="mb-4">
         <Link href="/dashboard/tactics" className="text-sm text-brass hover:text-brass-hover">
           ← プリセット一覧
         </Link>
-        <span className="text-text-muted">|</span>
-        <h1 className="text-2xl font-bold text-text-primary">作戦室：{preset.name ?? "編成編集"}</h1>
-      </div>
+        <span className="mx-2 text-text-muted">|</span>
+        <span className="text-lg font-semibold text-text-primary">{preset.name ?? "編成編集"}</span>
+      </p>
 
       <TacticsEditorClient
         preset={preset}
@@ -129,12 +153,11 @@ export default async function TacticsRoomPage({
         battleSkillsByCharacter={battleSkillsByCharacter}
         skillCatalog={skillCatalog}
       />
-
-      <p className="mt-8">
-        <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-          ← ダッシュボードへ
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard" className={footerLinkClass}>
+          ← 開拓拠点に戻る
         </Link>
-      </p>
+      </footer>
     </main>
   );
 }

@@ -57,6 +57,7 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
     title: "運用",
     links: [
       { href: "/dashboard/admin/users", label: "登録済みユーザ一覧" },
+      { href: "/dashboard/admin/currency-history", label: "通貨履歴（ユーザー別）" },
     ],
   },
 ];

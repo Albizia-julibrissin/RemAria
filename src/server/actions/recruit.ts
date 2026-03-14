@@ -6,11 +6,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { characterRepository } from "@/server/repositories/character-repository";
-import {
-  COMPANION_HIRE_PRICE_GAME,
-  COMPANION_HIRE_PRICE_PREMIUM,
-  COMPANION_MAX_COUNT,
-} from "@/lib/constants/companion";
+import { COMPANION_HIRE_PRICE_PREMIUM, COMPANION_MAX_COUNT } from "@/lib/constants/companion";
+import { CURRENCY_REASON_COMPANION_HIRE_PURCHASE } from "@/lib/constants/currency-transaction-reasons";
 import { DISPLAY_NAME_MAX_BYTES, DISPLAY_NAME_MAX_CHARS } from "@/lib/constants/protagonist";
 import { getProtagonistIconFilenames } from "@/server/lib/protagonist-icons";
 
@@ -18,16 +15,14 @@ export type CompanionHireState = {
   companionHireCount: number;
   companionCount: number;
   companionMaxCount: number;
-  gameCurrencyBalance: number;
   premiumFreeBalance: number;
   premiumPaidBalance: number;
-  priceGame: number;
   pricePremium: number;
 };
 
 export type PurchaseCompanionHireResult =
   | { success: true; companionHireCount: number }
-  | { success: false; error: "INSUFFICIENT_GAME" | "INSUFFICIENT_PREMIUM"; message: string; shortfall: number };
+  | { success: false; error: "INSUFFICIENT_PREMIUM"; message: string; shortfall: number };
 
 export type CreateCompanionResult =
   | { success: true; characterId: string }
@@ -53,7 +48,6 @@ export async function getCompanionHireState(): Promise<CompanionHireState | null
     where: { id: session.userId },
     select: {
       companionHireCount: true,
-      gameCurrencyBalance: true,
       premiumCurrencyFreeBalance: true,
       premiumCurrencyPaidBalance: true,
     },
@@ -64,57 +58,19 @@ export async function getCompanionHireState(): Promise<CompanionHireState | null
     companionHireCount: user.companionHireCount,
     companionCount,
     companionMaxCount: COMPANION_MAX_COUNT,
-    gameCurrencyBalance: user.gameCurrencyBalance,
     premiumFreeBalance: user.premiumCurrencyFreeBalance,
     premiumPaidBalance: user.premiumCurrencyPaidBalance,
-    priceGame: COMPANION_HIRE_PRICE_GAME,
     pricePremium: COMPANION_HIRE_PRICE_PREMIUM,
   };
 }
 
-/** 雇用可能回数を 1 購入（ゲーム通貨 or 課金通貨）。課金は無償→有償の順で消費。spec/030 */
-export async function purchaseCompanionHire(
-  paymentType: "game" | "premium"
-): Promise<PurchaseCompanionHireResult> {
+/** 雇用可能回数を 1 購入（GRA のみ。無償→有償の順で消費）。spec/030, docs/076 */
+export async function purchaseCompanionHire(): Promise<PurchaseCompanionHireResult> {
   const session = await getSession();
   if (!session.userId) {
-    return { success: false, error: "INSUFFICIENT_GAME", message: "ログインしてください", shortfall: COMPANION_HIRE_PRICE_GAME };
+    return { success: false, error: "INSUFFICIENT_PREMIUM", message: "ログインしてください", shortfall: COMPANION_HIRE_PRICE_PREMIUM };
   }
-  if (paymentType === "game") {
-    const user = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { gameCurrencyBalance: true, companionHireCount: true },
-    });
-    if (!user || user.gameCurrencyBalance < COMPANION_HIRE_PRICE_GAME) {
-      const shortfall = user ? Math.max(0, COMPANION_HIRE_PRICE_GAME - user.gameCurrencyBalance) : COMPANION_HIRE_PRICE_GAME;
-      return { success: false, error: "INSUFFICIENT_GAME", message: `ゲーム通貨が足りません（あと ${shortfall} 必要）`, shortfall };
-    }
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: session.userId },
-        data: {
-          gameCurrencyBalance: { decrement: COMPANION_HIRE_PRICE_GAME },
-          companionHireCount: { increment: 1 },
-        },
-      });
-      await tx.currencyTransaction.create({
-        data: {
-          userId: session.userId!,
-          currencyType: "game",
-          amount: -COMPANION_HIRE_PRICE_GAME,
-          reason: "companion_hire_purchase",
-          referenceType: "user",
-          referenceId: session.userId,
-        },
-      });
-    });
-    const updated = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: { companionHireCount: true },
-    });
-    return { success: true, companionHireCount: updated?.companionHireCount ?? 1 };
-  }
-  // premium: 無償→有償の順で消費
+  // GRA: 無償→有償の順で消費
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
     select: {
@@ -132,6 +88,11 @@ export async function purchaseCompanionHire(
   }
   const fromFree = Math.min(COMPANION_HIRE_PRICE_PREMIUM, user.premiumCurrencyFreeBalance);
   const fromPaid = COMPANION_HIRE_PRICE_PREMIUM - fromFree;
+  const beforeFree = user.premiumCurrencyFreeBalance;
+  const beforePaid = user.premiumCurrencyPaidBalance;
+  const afterFree = beforeFree - fromFree;
+  const afterPaid = beforePaid - fromPaid;
+
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: session.userId },
@@ -147,7 +108,9 @@ export async function purchaseCompanionHire(
           userId: session.userId!,
           currencyType: "premium_free",
           amount: -fromFree,
-          reason: "companion_hire_purchase",
+          beforeBalance: beforeFree,
+          afterBalance: afterFree,
+          reason: CURRENCY_REASON_COMPANION_HIRE_PURCHASE,
           referenceType: "user",
           referenceId: session.userId,
         },
@@ -159,7 +122,9 @@ export async function purchaseCompanionHire(
           userId: session.userId!,
           currencyType: "premium_paid",
           amount: -fromPaid,
-          reason: "companion_hire_purchase",
+          beforeBalance: beforePaid,
+          afterBalance: afterPaid,
+          reason: CURRENCY_REASON_COMPANION_HIRE_PURCHASE,
           referenceType: "user",
           referenceId: session.userId,
         },

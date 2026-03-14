@@ -11,7 +11,7 @@
   - 内部では `premiumCurrencyFreeBalance` / `premiumCurrencyPaidBalance` の 2 残高を保持。
   - プレイヤーには「課金通貨」として **合計 1 つの数値**で表示。
   - 消費時は **無償分から先に使う**（従来どおり）。
-- ゲーム内通貨（`gameCurrencyBalance`）の扱い（継続・廃止・用途縮小）は別途検討。**画面表示は一旦オミット**（カラムは残す）。
+- **ゲーム内通貨（`gameCurrencyBalance`）は廃止**。市場・仲間雇用は **GRA** に統一。DB からカラム削除済み（docs/076）。
 
 ### 1.1 表示名・アイコン（GRA / グラ）
 
@@ -23,32 +23,32 @@
 
 ## 2. 有償課金：価格（日本円 → 通貨）
 
-| 円（税込想定） | 付与通貨 |
-|----------------|----------|
-| 490円          | 777      |
-| 980円          | 1,577    |
-| 2,200円        | 3,577    |
-| 4,480円        | 7,777    |
-
-まとめ買いで **約 10％お得** になるラインを想定。
+| 価格        | GRA       | 実際の割引      |
+| --------- | --------- | ---------- |
+| ¥100      | 777       | 基準         |
+| ¥490      | 4000      | 約4.9%      |
+| ¥1980     | 16500     | 約6.8%      |
+| ¥4980     | 43000     | 約11.1%     |
+| **¥8500** | **77777** | **約14.7%** |
 
 ---
 
 ## 3. 無償通貨の付与
 
-- **初期付与**: 500 通貨（GRA）をアカウント作成時に付与。実装は `ensureGameStartGrants`（`src/server/actions/initial-area.ts`）、登録処理から呼び出し。
+- **初期付与**: 3000 通貨（GRA）をアカウント作成時に付与。実装は `ensureGameStartGrants`（`src/server/actions/initial-area.ts`）、登録処理から呼び出し。
 - **ストーリークエスト**: クリア報酬として通貨を付与。
 - **デイリー**: 今後実装するデイリーミッション・ログインボーナス等で付与する想定。
 
 ## 3.1 ゲーム開始時付与（新規登録時）
 
-- **500 GRA**（無償課金通貨）。`CurrencyTransaction` に reason: `game_start` で記録。
-- **携帯食料 1000 個**（Item code: `portable_ration`）。`UserInventory` に加算。定数は `src/lib/constants/initial-area.ts`。
+- **3000 GRA**（無償課金通貨）。`CurrencyTransaction` に reason: `game_start` で記録。
+- **基本探索キット 500 個**（Item code: `basic_exploration_kit`）。`UserInventory` に加算。定数は `src/lib/constants/initial-area.ts`（`INITIAL_GRANT_ITEM_AMOUNT`）。
 
 ---
 
 ## 4. 実装・運用との対応
 
 - 通貨増減は必ず **CurrencyTransaction** に記録する（manage/SECURITY_READINESS.md 参照）。
+- **GRA を扱う処理はすべて履歴に残す**：ゲーム開始付与・任務報酬・仲間雇用枠購入・市場購入/成約。**市場**に限らず、有償利用も想定し**訴訟・監査・法的要件**に備える（spec/075 §3.6）。**Phase 3 実施済み**：beforeBalance/afterBalance 記録・reason コード化（`src/lib/constants/currency-transaction-reasons.ts`）、運営ビューは管理画面「通貨履歴（ユーザー別）」で確認可。
 - 有償付与時は **Order** と紐付け、サーバ側で SKU → 金額 → 付与量を決定する。
 - 表示は **GRA** として合算を表示。クリックで無償・有償の内訳を表示（`src/components/currency/gra-display.tsx`）。定数は `src/lib/constants/currency.ts`。

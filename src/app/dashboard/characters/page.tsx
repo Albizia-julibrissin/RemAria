@@ -5,6 +5,8 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { getProtagonist } from "@/server/actions/protagonist";
 import { characterRepository } from "@/server/repositories/character-repository";
+import { getRequiredExpForLevel } from "@/lib/level";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 
 const CATEGORY_ORDER = { protagonist: 0, companion: 1, mech: 2 } as const;
 const CATEGORY_LABEL: Record<string, string> = {
@@ -34,13 +36,18 @@ export default async function CharactersListPage() {
       (CATEGORY_ORDER[b.category as keyof typeof CATEGORY_ORDER] ?? 99)
   );
 
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   return (
     <main className="min-h-screen bg-base p-8">
-      <h1 className="text-2xl font-bold text-text-primary">キャラクター</h1>
-      <p className="mt-2 text-text-muted">所持キャラの一覧です。</p>
-
+      <MenuPageHeaderClient
+        title="居住区"
+        description="キャラクター一覧・詳細"
+        currentPath="/dashboard/characters"
+      />
       {sorted.length === 0 ? (
-        <p className="mt-6 text-text-muted">キャラがいません。</p>
+        <p className="text-text-muted">キャラがいません。</p>
       ) : (
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((c) => (
@@ -67,18 +74,34 @@ export default async function CharactersListPage() {
                     </p>
                     <p className="text-sm text-text-muted">{CATEGORY_LABEL[c.category] ?? c.category}</p>
                   </div>
+                  <div className="flex-shrink-0 text-right text-xs text-text-muted tabular-nums">
+                    {c.category === "mech" ? (
+                      <>Lv {c.level ?? 1}<br />経験値 — / —</>
+                    ) : (
+                      (() => {
+                        const lv = c.level ?? 1;
+                        const totalExp = c.experiencePoints ?? 0;
+                        const currentLevelExp = getRequiredExpForLevel(lv);
+                        const nextLevelExp = getRequiredExpForLevel(lv + 1);
+                        const gainedInLevel = Math.max(0, totalExp - currentLevelExp);
+                        const neededThisLevel = Math.max(1, nextLevelExp - currentLevelExp);
+                        return (
+                          <>Lv {lv}<br />経験値 {gainedInLevel.toLocaleString()} / {neededThisLevel.toLocaleString()}</>
+                        );
+                      })()
+                    )}
+                  </div>
                 </div>
               </Link>
             </li>
           ))}
         </ul>
       )}
-
-      <p className="mt-8">
-        <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-          ← ダッシュボードへ
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard" className={footerLinkClass}>
+          ← 開拓拠点に戻る
         </Link>
-      </p>
+      </footer>
     </main>
   );
 }

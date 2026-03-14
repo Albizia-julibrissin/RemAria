@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { createNotification } from "@/server/actions/notification";
 import { grantStackableItem } from "@/server/lib/inventory";
+import { CURRENCY_REASON_QUEST_REWARD } from "@/lib/constants/currency-transaction-reasons";
 
 export type QuestListItem = {
   questId: string;
@@ -305,6 +306,15 @@ async function grantQuestRewards(
     items.forEach((i) => itemNames.set(i.id, i.name));
   }
 
+  const beforeBalanceFree =
+    gra > 0
+      ? (await prisma.user.findUnique({
+          where: { id: userId },
+          select: { premiumCurrencyFreeBalance: true },
+        }))?.premiumCurrencyFreeBalance ?? 0
+      : 0;
+  const afterBalanceFree = beforeBalanceFree + gra;
+
   await prisma.$transaction(async (tx) => {
     if (gra > 0 || researchPoint > 0) {
       await tx.user.update({
@@ -320,7 +330,9 @@ async function grantQuestRewards(
             userId,
             currencyType: "premium_free",
             amount: gra,
-            reason: "quest_reward",
+            beforeBalance: beforeBalanceFree,
+            afterBalance: afterBalanceFree,
+            reason: CURRENCY_REASON_QUEST_REWARD,
             referenceType: "quest",
             referenceId: questId,
           },

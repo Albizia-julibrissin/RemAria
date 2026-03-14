@@ -11,6 +11,7 @@ import {
   INITIAL_GRANT_ITEM_AMOUNT,
   INITIAL_GRANT_ITEM_CODE,
 } from "@/lib/constants/initial-area";
+import { CURRENCY_REASON_GAME_START } from "@/lib/constants/currency-transaction-reasons";
 import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 import { grantStackableItem } from "@/server/lib/inventory";
 
@@ -91,7 +92,7 @@ export async function ensureInitialFacilities(userId: string): Promise<void> {
 }
 
 /**
- * ゲーム開始時付与：500 GRA（無償）と基本探索キット 5000 個。
+ * ゲーム開始時付与：3000 GRA（無償）と基本探索キット 500 個。
  * 新規登録時に 1 回だけ呼ぶ。manage/ECONOMY_DESIGN.md。
  */
 export async function ensureGameStartGrants(userId: string): Promise<void> {
@@ -99,6 +100,13 @@ export async function ensureGameStartGrants(userId: string): Promise<void> {
     where: { code: INITIAL_GRANT_ITEM_CODE },
     select: { id: true },
   });
+
+  const beforeBalance =
+    (await prisma.user.findUnique({
+      where: { id: userId },
+      select: { premiumCurrencyFreeBalance: true },
+    }))?.premiumCurrencyFreeBalance ?? 0;
+  const afterBalance = beforeBalance + INITIAL_GRA_AMOUNT;
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
@@ -110,7 +118,9 @@ export async function ensureGameStartGrants(userId: string): Promise<void> {
         userId,
         currencyType: "premium_free",
         amount: INITIAL_GRA_AMOUNT,
-        reason: "game_start",
+        beforeBalance,
+        afterBalance,
+        reason: CURRENCY_REASON_GAME_START,
         referenceType: "user",
         referenceId: userId,
       },

@@ -1,10 +1,10 @@
 /**
  * ゲーム開始時付与（manage/ECONOMY_DESIGN.md）。
- * 新規登録時に 500 GRA と基本探索キット 5000 個を付与する。
+ * 新規登録時に 3000 GRA と基本探索キット 500 個を付与する。
  */
-export const INITIAL_GRA_AMOUNT = 500;
+export const INITIAL_GRA_AMOUNT = 3000;
 export const INITIAL_GRANT_ITEM_CODE = "basic_exploration_kit";
-export const INITIAL_GRANT_ITEM_AMOUNT = 5000;
+export const INITIAL_GRANT_ITEM_AMOUNT = 500;
 
 /**
  * spec/035: 強制配置する 5 設備の名前（表示順）。

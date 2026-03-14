@@ -34,11 +34,11 @@ export default async function ExplorationBattlePage(props: PageProps) {
       <main className="min-h-screen bg-base p-8">
         <h1 className="text-2xl font-bold text-text-primary">探索戦闘</h1>
         <p className="mt-2 text-text-muted">
-          進行中の探索がありません。ダッシュボードから新しい探索を開始してください。
+          進行中の探索がありません。開拓拠点から新しい探索を開始してください。
         </p>
         <p className="mt-4">
           <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-            ← ダッシュボードへ
+            ← 開拓拠点へ
           </Link>
         </p>
       </main>
@@ -207,7 +207,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
           </div>
           <p className="mt-6">
             <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-              ← ダッシュボードへ
+              ← 開拓拠点へ
             </Link>
           </p>
         </main>
@@ -222,7 +222,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
           <p className="mt-2 text-text-muted">{resume.message}</p>
           <p className="mt-4">
             <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-              ← ダッシュボードへ
+              ← 開拓拠点へ
             </Link>
           </p>
         </main>
@@ -253,7 +253,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
         <p className="mt-6 flex gap-4">
           <ExplorationNextButton useAdvanceAction />
           <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover self-center">
-            ← ダッシュボードへ
+            ← 開拓拠点へ
           </Link>
         </p>
       </main>
@@ -266,7 +266,7 @@ export default async function ExplorationBattlePage(props: PageProps) {
       <p className="mt-2 text-text-muted">進行中の探索がありません。</p>
       <p className="mt-4">
         <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-          ← ダッシュボードへ
+          ← 開拓拠点へ
         </Link>
       </p>
     </main>

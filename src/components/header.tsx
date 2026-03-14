@@ -35,7 +35,7 @@ export function Header({ isLoggedIn, activeUserCount, unreadNotificationCount = 
           <Link
             href={isLoggedIn ? "/dashboard" : "/"}
             className="flex items-center hover:text-brass transition-colors"
-            aria-label="RE:mAria ダッシュボードへ"
+            aria-label="RE:mAria 開拓拠点へ"
           >
             <Image
               src="/images/logo-remaria.png"

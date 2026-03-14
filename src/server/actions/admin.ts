@@ -274,6 +274,12 @@ export type AdminItemRow = {
   maxCarryPerExpedition: number | null;
   /** ユーザー別の所持数上限（スタック可能アイテム用）。null は上限なし扱い。 */
   maxOwnedPerUser: number | null;
+  /** spec/075: 市場出品可。true のアイテムのみ出品可能。 */
+  marketListable: boolean;
+  /** spec/075: 出品時の単価下限。NULL ならグローバル定数。 */
+  marketMinPricePerUnit: number | null;
+  /** spec/075: 出品時の数量下限。NULL ならグローバル定数。 */
+  marketMinQuantity: number | null;
 };
 
 /**
@@ -321,6 +327,67 @@ export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
   }));
 }
 
+/** 通貨履歴（運営ビュー）用。ユーザーを email または id で検索。spec/075 Phase 3, manage/OPERATIONAL_LOGS.md §2.3 */
+export async function getAdminUserForCurrencyHistory(
+  query: string
+): Promise<{ id: string; email: string; name: string } | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const q = query.trim();
+  if (!q) return null;
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [{ id: q }, { email: q }],
+    },
+    select: { id: true, email: true, name: true },
+  });
+  return user;
+}
+
+export type AdminCurrencyTransactionRow = {
+  id: string;
+  currencyType: string;
+  amount: number;
+  beforeBalance: number | null;
+  afterBalance: number | null;
+  reason: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  createdAt: Date;
+};
+
+/** 指定ユーザーの CurrencyTransaction 一覧（createdAt 降順）。運営ビュー用。 */
+export async function getAdminCurrencyHistory(
+  userId: string
+): Promise<{ user: { id: string; email: string; name: string }; transactions: AdminCurrencyTransactionRow[] } | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true },
+  });
+  if (!user) return null;
+  const rows = await prisma.currencyTransaction.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  return {
+    user: { id: user.id, email: user.email, name: user.name },
+    transactions: rows.map((r) => ({
+      id: r.id,
+      currencyType: r.currencyType,
+      amount: r.amount,
+      beforeBalance: r.beforeBalance,
+      afterBalance: r.afterBalance,
+      reason: r.reason,
+      referenceType: r.referenceType,
+      referenceId: r.referenceId,
+      createdAt: r.createdAt,
+    })),
+  };
+}
+
 /**
  * アイテム一覧（管理用）。テストユーザー1のみ。
  */
@@ -338,6 +405,9 @@ export async function getAdminItemList(): Promise<AdminItemRow[] | null> {
       consumableEffect: true,
       maxCarryPerExpedition: true,
       maxOwnedPerUser: true,
+      marketListable: true,
+      marketMinPricePerUnit: true,
+      marketMinQuantity: true,
       skill: { select: { name: true } },
     },
   });
@@ -351,6 +421,9 @@ export async function getAdminItemList(): Promise<AdminItemRow[] | null> {
     consumableEffect: r.consumableEffect,
     maxCarryPerExpedition: r.maxCarryPerExpedition,
     maxOwnedPerUser: r.maxOwnedPerUser,
+    marketListable: r.marketListable,
+    marketMinPricePerUnit: r.marketMinPricePerUnit,
+    marketMinQuantity: r.marketMinQuantity,
   }));
 }
 
@@ -442,6 +515,9 @@ export async function getAdminItem(itemId: string): Promise<AdminItemDetail | nu
       consumableEffect: true,
       maxCarryPerExpedition: true,
       maxOwnedPerUser: true,
+      marketListable: true,
+      marketMinPricePerUnit: true,
+      marketMinQuantity: true,
       skill: { select: { name: true } },
     },
   });
@@ -456,6 +532,9 @@ export async function getAdminItem(itemId: string): Promise<AdminItemDetail | nu
     consumableEffect: item.consumableEffect,
     maxCarryPerExpedition: item.maxCarryPerExpedition,
     maxOwnedPerUser: item.maxOwnedPerUser,
+    marketListable: item.marketListable,
+    marketMinPricePerUnit: item.marketMinPricePerUnit,
+    marketMinQuantity: item.marketMinQuantity,
   };
 }
 
@@ -716,6 +795,12 @@ export type UpdateAdminItemInput = {
   maxCarryPerExpedition: number | null;
   /** ユーザー別所持数上限。null は上限なし。 */
   maxOwnedPerUser: number | null;
+  /** spec/075: 市場出品可 */
+  marketListable: boolean;
+  /** spec/075: 出品単価下限。null でグローバル定数使用。 */
+  marketMinPricePerUnit: number | null;
+  /** spec/075: 出品数量下限。null でグローバル定数使用。 */
+  marketMinQuantity: number | null;
 };
 
 export async function updateAdminItem(
@@ -753,6 +838,19 @@ export async function updateAdminItem(
       ? input.maxOwnedPerUser
       : null;
 
+  const marketMinPrice =
+    input.marketMinPricePerUnit != null &&
+    Number.isInteger(input.marketMinPricePerUnit) &&
+    input.marketMinPricePerUnit >= 0
+      ? input.marketMinPricePerUnit
+      : null;
+  const marketMinQty =
+    input.marketMinQuantity != null &&
+    Number.isInteger(input.marketMinQuantity) &&
+    input.marketMinQuantity >= 0
+      ? input.marketMinQuantity
+      : null;
+
   const skillId = input.skillId?.trim() || null;
   if (input.category === "skill_book" && !skillId) {
     return { success: false, error: "スキル分析書の場合は skillId を選択してください。" };
@@ -771,6 +869,9 @@ export async function updateAdminItem(
           : (consumableEffect as Prisma.InputJsonValue),
       maxCarryPerExpedition: maxCarry,
       maxOwnedPerUser: maxOwned,
+      marketListable: input.marketListable,
+      marketMinPricePerUnit: marketMinPrice,
+      marketMinQuantity: marketMinQty,
     },
   });
   return { success: true };
@@ -816,6 +917,19 @@ export async function createAdminItem(
       ? input.maxOwnedPerUser
       : null;
 
+  const marketMinPrice =
+    input.marketMinPricePerUnit != null &&
+    Number.isInteger(input.marketMinPricePerUnit) &&
+    input.marketMinPricePerUnit >= 0
+      ? input.marketMinPricePerUnit
+      : null;
+  const marketMinQty =
+    input.marketMinQuantity != null &&
+    Number.isInteger(input.marketMinQuantity) &&
+    input.marketMinQuantity >= 0
+      ? input.marketMinQuantity
+      : null;
+
   const skillId = input.skillId?.trim() || null;
   if (input.category === "skill_book" && !skillId) {
     return { success: false, error: "スキル分析書の場合は skillId を選択してください。" };
@@ -833,6 +947,9 @@ export async function createAdminItem(
           : (consumableEffect as Prisma.InputJsonValue),
       maxCarryPerExpedition: maxCarry,
       maxOwnedPerUser: maxOwned,
+      marketListable: input.marketListable,
+      marketMinPricePerUnit: marketMinPrice,
+      marketMinQuantity: marketMinQty,
     },
     select: { id: true },
   });

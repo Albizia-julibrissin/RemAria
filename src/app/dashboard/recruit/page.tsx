@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { getProtagonist } from "@/server/actions/protagonist";
 import { getCompanionHireState } from "@/server/actions/recruit";
+import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { RecruitPurchaseButtons } from "./recruit-purchase-buttons";
 import { GraDisplay } from "@/components/currency/gra-display";
 
@@ -20,11 +21,16 @@ export default async function RecruitPage() {
 
   const canCreate = state.companionHireCount >= 1 && state.companionCount < state.companionMaxCount;
 
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   return (
     <main className="min-h-screen bg-base p-8">
-      <h1 className="text-2xl font-bold text-text-primary">人材局</h1>
-      <p className="mt-2 text-text-muted">仲間を雇用するには「雇用可能回数」を購入し、名前・アイコンを決めて仲間を作成します。</p>
-
+      <MenuPageHeaderClient
+        title="人材局"
+        description="仲間を雇用・解雇する。雇用可能回数を購入し、名前・アイコンを決めて仲間を作成します。"
+        currentPath="/dashboard/recruit"
+      />
       <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6 space-y-4">
         <h2 className="text-lg font-medium text-text-primary">現在の状態</h2>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
@@ -73,12 +79,11 @@ export default async function RecruitPage() {
           </p>
         )}
       </div>
-
-      <p className="mt-8">
-        <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-          ← ダッシュボードへ
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard" className={footerLinkClass}>
+          ← 開拓拠点に戻る
         </Link>
-      </p>
+      </footer>
     </main>
   );
 }

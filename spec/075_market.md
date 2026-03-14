@@ -28,7 +28,7 @@
 
 ## 1. 目的
 
-- **スタック型アイテム**のうち **Item.marketListable = true** のものだけを出品可能とし、プレイヤー間でゲーム通貨（`User.gameCurrencyBalance`）による売買を行う。
+- **スタック型アイテム**のうち **Item.marketListable = true** のものだけを出品可能とし、プレイヤー間で **GRA**（`User.premiumCurrencyFreeBalance` / `premiumCurrencyPaidBalance`）による売買を行う。購入時は**無償 GRA から先に消費**し、売り手への成約金は**すべて無償 GRA**で付与する（docs/076）。
 - **購入は常に最安の listing から消化**（部分消化・partially fill）し、特定の出品者を指定できないようにして実質トレードを防ぐ。
 - 成約時は**手数料 10％を売り手から控除**し、通貨は購入時に即確保する。**購入処理は 1 つの DB トランザクション**で完結させる。
 
@@ -68,7 +68,7 @@
 | userId | String, FK→User | 出品者 |
 | itemId | String, FK→Item | 出品アイテム |
 | quantity | Int, NOT NULL | 出品数量（部分消化で減る。0 で削除） |
-| pricePerUnit | Int, NOT NULL | 単価（ゲーム通貨） |
+| pricePerUnit | Int, NOT NULL | 単価（GRA） |
 | createdAt | DateTime | 出品日時。同額最安時の消化順に利用。 |
 | expiresAt | DateTime? | 有効期限（Phase 2 で使用。NULL は無期限） |
 
@@ -98,7 +98,14 @@
 - **getMarketUserHistory**：MarketTransaction（成約）と MarketListingEvent（取り下げ・自動取下げ）をマージし、当該ユーザー分を createdAt 降順で返す。種別（成約/買い/売り・手動取り下げ・期限切れ自動戻し）を判別できるようにする。
 - **遺物の履歴**：成約・取下げに遺物を含める想定。MarketListingEvent の例は itemId ベースだが、Phase 2 の遺物実装時に **itemId nullable + relicInstanceId nullable** で拡張するか、**遺物用の別イベントテーブル**を用意すればよい。その時点で選択する。
 
-### 3.6 グローバル規定（定数または設定テーブル）
+### 3.6 通貨履歴（GRA・監査・法的要件）
+
+- 市場では **GRA**（無償・有償の両方）を使用する。有償通貨の利用もあり得るため、**訴訟・監査・法的要件**に備え、**通貨の増減はすべて履歴に残す**必要がある（manage/SECURITY_READINESS.md §2、manage/ECONOMY_DESIGN.md、manage/OPERATIONAL_LOGS.md 参照）。
+- **成約時の記録**：買い手の GRA 減算（無償→有償の順で消費）ごとに **CurrencyTransaction** に `currencyType: premium_free` または `premium_paid`、`amount`（負）、`reason: "market_purchase"` で記録する。売り手への入金（手数料控除後・無償 GRA）ごとに **CurrencyTransaction** に `currencyType: premium_free`、`amount`（正）、`reason: "market_sale"` で記録する。
+- Phase 1 の buyFromMarket 実装では上記のとおり **CurrencyTransaction への挿入をすでに行っている**。Phase 2 で履歴画面を追加しても、通貨の流れは CurrencyTransaction で追跡可能である。
+- **運営による確認**：問い合わせ・不正検知のために、特定ユーザーの CurrencyTransaction 一覧を管理画面や簡易コマンドで確認できるようにするのは、manage/OPERATIONAL_LOGS.md §2.3（課金開始後）で想定している。市場利用開始後、必要に応じて Phase 3 で通貨履歴の強化（before/after 残高・reasonCode 化・運営ビュー）を行う。
+
+### 3.7 グローバル規定（定数または設定テーブル）
 
 - **最低価格・最低出品単位**：**アイテムごとに Item マスタ**の marketMinPricePerUnit / marketMinQuantity で持つ。管理画面のアイテムマスタで編集可能。NULL のときは**グローバル定数**（例: MARKET_MIN_PRICE_PER_UNIT_GLOBAL, MARKET_MIN_QUANTITY_GLOBAL）を使用する。
 - **手数料率**：成約額の 10％を売り手から控除。**端数は切り捨て**（整数のみ。例: 成約額 33 なら手数料 3、売り手受け取り 30）。
@@ -123,10 +130,10 @@
 - **検証**: セッションの userId が買い手。在庫・通貨はトランザクション内で確認。
 - **処理**（**1 つの DB トランザクション内で完結**）:
   1. 対象 itemId の最安 listing を **FOR UPDATE** で取得（複数買う場合は複数 listing を順に処理するまでループ）。
-  2. 必要総額 = Σ(各 listing の pricePerUnit × 今回そこから買う数量) を計算。買い手の gameCurrencyBalance ≥ 必要総額であることを確認。
-  3. 買い手の gameCurrencyBalance を減算。
+  2. 必要総額 = Σ(各 listing の pricePerUnit × 今回そこから買う数量) を計算。買い手の GRA（無償＋有償合計）≥ 必要総額であることを確認。
+  3. 買い手の GRA を減算（**無償分から先に消費**。足りなければ有償から）。
   4. 各 listing の quantity を減らす（0 になった行は削除）。売り手ごとに受け取り額（手数料 10％控除後）を集計。
-  5. 各売り手の gameCurrencyBalance に加算。
+  5. 各売り手の **premiumCurrencyFreeBalance** に加算（成約金はすべて無償 GRA）。
   6. 成約ごとに MarketTransaction に 1 行挿入。
   7. 買い手の UserInventory に itemId を quantity 分加算（既存行があれば quantity 加算、なければ INSERT）。**加算後の所持数が Item.maxOwnedPerUser を超える場合は購入を拒否**し、トランザクションをロールバックする。
   8. コミット。
@@ -190,27 +197,71 @@
   - User に市場解放フラグ（例: marketUnlocked, Boolean, default false）を追加。各市場 API で未解放ならエラー。
   - Item に marketListable（必須）、marketMinPricePerUnit / marketMinQuantity（任意）を追加。
   - MarketListing を新規作成。複合インデックス (itemId, pricePerUnit, createdAt) を定義。
-  - MarketTransaction を新規作成。Phase 2 で MarketListingEvent（履歴用：手動取り下げ・期限切れ自動取下げ）を新規作成。
+  - MarketTransaction を新規作成。MarketListingEvent（履歴用）は **Phase 2.1** で新規作成。
 - **グローバル規定**
   - 最低価格・最低出品単位の **NULL 時フォールバックは定数**で 1 セット用意（例: MARKET_MIN_PRICE_PER_UNIT_GLOBAL, MARKET_MIN_QUANTITY_GLOBAL）。
 - **API**
-  - listMarketItem（出品）、buyFromMarket（購入・1 トランザクション・部分消化・行ロック）、cancelMarketListing（取り下げ）、getMarketList（一覧・最安/在庫）。Phase 2 で getMarketUserHistory（履歴：成約・手動取り下げ・期限切れ自動取下げ）。
+  - listMarketItem（出品）、buyFromMarket（購入・1 トランザクション・部分消化・行ロック）、cancelMarketListing（取り下げ）、getMarketList（一覧・最安/在庫）。getMarketUserHistory（履歴）は **Phase 2.1** で追加。
 - **管理**
   - Item マスタ編集で marketListable（と任意で marketMinPricePerUnit / marketMinQuantity）を編集可能にする。
 - **画面**
-  - 画面構成・遷移は **§9 市場画面の構成・遷移** を参照。**購入・出品・取下げ・履歴**の 4 つのボタンで分岐し、それぞれ別画面で構成する。Phase 2 で履歴画面に自動取下げが載り、プレイヤーが確認できる。
+  - 画面構成・遷移は **§9 市場画面の構成・遷移** を参照。**購入・出品・取下げ**の 3 画面を実装する。**履歴**画面は **Phase 2.1** で追加し、Phase 2.2 で期限切れ自動取下げが履歴に載る。
 - **範囲外**
   - 価格履歴表示・出品有効期限・同時出品数上限・上限価格は Phase 2 以降。市場の「解放条件」は開拓任務側で制御し、本 Phase では「解放済みなら使える」前提のみ。
+- **Phase 1 完了時**：スタック型の出品・購入・取り下げ・一覧（getMarketList）が動き、**購入・出品・取下げ**の 3 画面が利用可能。履歴画面・履歴 API は未実装。価格履歴・有効期限・同時出品数上限は未実装。
 
-### Phase 2：価格履歴・出品制約の強化
+### Phase 2.1：履歴基盤
 
-- getMarketPriceHistory を実装し、直近 50 件（定数 MARKET_PRICE_HISTORY_LIMIT = 50）の AVG / MEDIAN / MIN / MAX を返す。市場画面で価格履歴を表示。
-- 同時出品数上限を導入。定数 MARKET_MAX_LISTINGS_DEFAULT（と将来サブスク用 MARKET_MAX_LISTINGS_SUBSCRIPTION）を参照し、ユーザーのサブスク状態に応じた上限で listMarketItem をチェックする。
-- 出品の有効期限（expiresAt）を MarketListing に追加。定数 MARKET_LISTING_DEFAULT_DAYS で N 日後をセットする。**期限切れ時は自動で取り下げ**：在庫を UserInventory に戻し、listing を削除。**一覧参照時または購入時に検知して処理**。対象は**今回取得・参照する itemId（または listing）に紐づく期限切れのみ**（全件スキャンは行わない）。**自動取下げを履歴に記録**するため MarketListingEvent（kind=expired）に 1 行挿入し、getMarketUserHistory で「期限切れで自動戻し」として表示する。
-- 上限価格（グローバルまたは Item 別）を任意で導入し、出品時の単価が上限を超えないようにする。
-- Item 別 marketMinPricePerUnit / marketMinQuantity を listMarketItem のバリデーションで使用する（NULL ならグローバル定数）。
+- **スキーマ**
+  - **MarketListingEvent** を新規作成（userId, kind: 'cancelled' | 'expired', itemId, quantity, pricePerUnit, createdAt 等。§3.5 参照）。
+- **API**
+  - **getMarketUserHistory** を実装。MarketTransaction（成約）と MarketListingEvent（手動取り下げ）をマージし、当該ユーザー分を createdAt 降順で返す。Phase 2.2 で kind=expired（期限切れ自動取下げ）が追加される。
+- **処理**
+  - cancelMarketListing 実行時に MarketListingEvent に kind=cancelled で 1 行挿入（§3.5）。
+- **画面**
+  - **履歴**画面を追加。成約（買った/売った）と手動取り下げを時系列表示。期限切れ自動取下げは Phase 2.2 で履歴に載る。
+- **Phase 2.1 完了時**：履歴画面が利用可能。成約・手動取り下げが履歴で確認できる。期限切れ自動取下げの記録・表示は未実装。
 
-### Phase 3：運用・UX の調整（任意）
+### Phase 2.2：有効期限と自動取下げ
+
+- **スキーマ**
+  - MarketListing に **expiresAt**（DateTime?, Phase 2 で使用。NULL は無期限）を追加。
+- **定数**
+  - 出品時の有効期限 N 日を**定数**で持つ（例: MARKET_LISTING_DEFAULT_DAYS = 7）。
+- **処理**
+  - listMarketItem 時に expiresAt = now + N 日をセットする。
+  - **期限切れの自動取下げ**：在庫を UserInventory に戻し、listing を削除。**getMarketList・getMyListings・buyFromMarket・listMarketItem** の各処理で、対象となる itemId（または listing）に紐づく期限切れのみを検知して自動取下げ（§3 参照）。listMarketItem では主に当該ユーザーの同時出品数判定に影響する期限切れを整理する。
+  - 自動取下げ時に **MarketListingEvent に kind=expired** で 1 行挿入。getMarketUserHistory で「期限切れで自動戻し」として表示する。
+- **Phase 2.2 完了時**：出品に有効期限が付き、期限切れは自動で取り下げられ、履歴に「期限切れで自動戻し」が表示される。
+
+### Phase 2.3：価格履歴
+
+- **API**
+  - **getMarketPriceHistory** を実装。指定 itemId の直近 **50 件**（定数 MARKET_PRICE_HISTORY_LIMIT = 50）の成約から AVG / MEDIAN / MIN / MAX を返す。
+- **画面**
+  - 購入画面で、アイテム詳細・価格履歴を表示する（§8.2）。
+- **Phase 2.3 完了時**：購入画面で価格履歴（直近成約の統計）が確認できる。
+
+### Phase 2.4：出品制約の強化
+
+- **定数**
+  - 同時出品数上限を**定数**で持つ（例: MARKET_MAX_LISTINGS_DEFAULT = 10、将来サブスク用 MARKET_MAX_LISTINGS_SUBSCRIPTION = 20）。ユーザーのサブスク状態に応じて listMarketItem 時に上限をチェック。サブスク未実装時は通常の定数のみ使用。
+- **バリデーション**
+  - listMarketItem で**同時出品数上限**をチェック（有効な listing 件数が上限未満であること）。getMyListings は自動取下げ処理後の有効な listing のみ返すため、件数判定は有効なもののみでよい。
+  - **Item 別** marketMinPricePerUnit / marketMinQuantity を listMarketItem のバリデーションで使用する（NULL ならグローバル定数）。
+  - **上限価格**（グローバルまたは Item 別）を任意で導入し、出品時の単価が上限を超えないようにする。
+- **Phase 2.4 完了時**：同時出品数上限・Item 別最低価格/数量（と任意で上限価格）が効く。Phase 2 のスタック型まわりの仕様が一通り揃う。
+
+### Phase 3：通貨履歴の強化（監査・法的要件）
+
+- 市場では GRA（無償・有償）を使用するため、**通貨の履歴**が訴訟・監査・法的要件に影響する（§3.6 通貨履歴、manage/SECURITY_READINESS.md、manage/OPERATIONAL_LOGS.md 参照）。
+- **やること**：
+  - **CurrencyTransaction の拡張**：manage の PRE-PAID 要件に合わせ、**beforeBalance / afterBalance**（または delta と整合する残高）を記録する。有償付与時は Order との紐づけを維持する。
+  - **reasonCode 化**：reason をコード（例: `market_purchase`, `market_sale`, `companion_hire_purchase`, `game_start`）で一覧管理し、運営・監査で参照しやすくする。
+  - **通貨履歴の運営ビュー**：特定ユーザーの CurrencyTransaction 一覧を管理画面または簡易コマンドで確認できるようにする（問い合わせ対応・不正検知）。manage/OPERATIONAL_LOGS.md §2.3。
+- **Phase 3 完了時**：通貨の増減経路が before/after 残高付きで追跡可能になり、運営がユーザー別の通貨履歴を確認できる。
+
+### Phase 4：運用・UX の調整（任意）
 
 - 有効期限のデフォルト値（例: 7 日）の見直し、価格履歴の N や表示形式の調整。
 - 成約通知（売り手向け「成約しました」）の有無・匿名性の調整。
@@ -240,7 +291,7 @@
 
 - **一覧**: 買える**アイテム**を種別（資源／消耗品／設計図／スキル分析書）でフィルタ可能にし、アイテムごとに「最安単価」「その価格で買える数量」を表示する。
 - **購入フロー**: アイテムを選び、**購入数量**を入力して購入。成約すると **UserInventory の数量が増える**（在庫の変動のみで完結）。
-- **詳細・価格履歴**: アイテム行のクリックで詳細や価格履歴（直近の成約価格・AVG 等）を表示。Phase 2 で表示。
+- **詳細・価格履歴**: アイテム行のクリックで詳細や価格履歴（直近の成約価格・AVG 等）を表示。**Phase 2.3** で表示。
 - **所持上限**: 購入後の所持数が Item.maxOwnedPerUser を超える場合は購入を拒否（075 既存）。
 
 ### 8.3 購入側の画面・機能（遺物・別枠）
@@ -265,7 +316,7 @@
 
 | ボタン／画面 | 内容 | 主な API |
 |--------------|------|----------|
-| **購入** | 購入専用画面。スタック型はアイテム一覧（種別フィルタ）・最安・在庫・数量入力で購入。遺物は遺物出品一覧（1個ずつ・サマリ表示）で「この1個を購入」。価格履歴は Phase 2 で表示。 | getMarketList, getMarketRelicList（遺物用・別枠）, buyFromMarket, buyRelicFromMarket（遺物用・別枠）, getMarketPriceHistory |
+| **購入** | 購入専用画面。スタック型はアイテム一覧（種別フィルタ）・最安・在庫・数量入力で購入。遺物は遺物出品一覧（1個ずつ・サマリ表示）で「この1個を購入」。価格履歴は Phase 2.3 で表示。 | getMarketList, getMarketRelicList（遺物用・別枠）, buyFromMarket, buyRelicFromMarket（遺物用・別枠）, getMarketPriceHistory |
 | **出品** | 出品専用画面。スタック型は itemId・数量・単価入力で出品。遺物は「この遺物を出品」で 1 個＋単価（装着中は出品候補に出さない）。 | listMarketItem, listRelicOnMarket（遺物用・別枠） |
 | **取下げ** | 現在出品中の **スタック型 listing** と **遺物 listing** を一覧。各行に「取り下げ」。 | getMyListings, getMyRelicListings（遺物用）, cancelMarketListing, cancelRelicListing（遺物用） |
 | **履歴** | 成約・手動取り下げ・期限切れ自動取下げを時系列表示。遺物の成約も履歴に含める。 | getMarketUserHistory |
@@ -276,22 +327,30 @@
 
 - **入口**：**ダッシュボード**に「市場」ボタンを置き、そこから市場画面へ遷移する。URL は例: `/dashboard/market`。**ボタンは常に表示**するが、市場解放済みでないユーザーは**無効化**し、**ツールチップで理由**（例: 「〇〇任務をクリアすると利用可能」）を表示する。遷移は解放済みの場合のみ可能（解放条件は開拓任務側で制御）。
 - **市場画面**に遷移すると、**4 つのボタン**（購入・出品・取下げ・履歴）を表示し、押したボタンに対応する**画面**を表示する。デフォルトでどれを表示するかは実装で決める（例: 購入）。
-- **購入**画面: 種別（スタック型：資源/消耗品/設計図/スキル分析書、遺物）で切り替え、一覧・購入フォーム。スタック型はアイテム一覧 → 詳細・価格履歴（Phase 2）→ 数量入力 → 購入。遺物は遺物出品一覧（1個ずつ）→ 詳細 → 「この1個を購入」。
+- **購入**画面: 種別（スタック型：資源/消耗品/設計図/スキル分析書、遺物）で切り替え、一覧・購入フォーム。スタック型はアイテム一覧 → 詳細・価格履歴（Phase 2.3）→ 数量入力 → 購入。遺物は遺物出品一覧（1個ずつ）→ 詳細 → 「この1個を購入」。
 - **出品**画面: スタック型は所持アイテムから選択・数量・単価入力。遺物は装着していない遺物のみ選択・単価入力。
 - **取下げ**画面: 自分の出品一覧（スタック型＋遺物）。取り下げ後は一覧再取得・トースト等。
 - **履歴**画面: getMarketUserHistory で成約・取り下げ・期限切れ自動取下げを種別表示。
 
 ### 9.3 Phase ごとの対応
 
-- **Phase 1**：**スタック型のみ**（資源・消耗品・設計図・スキル分析書）。4 画面（購入・出品・取下げ）。履歴画面は Phase 2。
-- **Phase 2**：履歴画面、価格履歴表示、有効期限・自動取下げ。**遺物の出品・購入**は Phase 2 以降の別枠で実装（データ構造・API・画面を §8.3, 8.4 に合わせて追加）。
+- **Phase 1**：**スタック型のみ**（資源・消耗品・設計図・スキル分析書）。3 画面（購入・出品・取下げ）。履歴画面は未実装。
+- **Phase 2.1**：履歴画面を追加。成約・手動取り下げを履歴で表示。
+- **Phase 2.2**：有効期限・期限切れ自動取下げ。履歴に「期限切れで自動戻し」を表示。
+- **Phase 2.3**：購入画面で価格履歴を表示。
+- **Phase 2.4**：同時出品数上限・Item 別最低価格/数量（と任意で上限価格）。
+- **通貨履歴**：成約時の GRA 増減は Phase 1 から **CurrencyTransaction** に記録済み（§3.6）。有償利用もあり得るため監査・法的要件を考慮する。強化（before/after 残高・運営ビュー）は **Phase 3**。
+- **Phase 3**：通貨履歴の強化（before/after 残高・reasonCode 化・運営ビュー）。manage/SECURITY_READINESS §2、OPERATIONAL_LOGS §2.2–2.3 参照。
+- **Phase 4**：運用・UX の調整（有効期限見直し、成約通知、匿名性など）。
+- **遺物の出品・購入**は Phase 2 以降の別枠で実装（データ構造・API・画面を §8.3, 8.4 に合わせて追加）。
 
 ------------------------------------------------------------------------
 
 ## 10. 参照
 
-- 取引対象の種別・購入・出品の画面想定: 本 spec **§8**。市場画面の構成・遷移: 本 spec **§9**。
+- 取引対象の種別・購入・出品の画面想定: 本 spec **§8**。市場画面の構成・遷移: 本 spec **§9**。通貨履歴・監査: 本 spec **§3.6**、**Phase 3**。
 - 設計の正本: `docs/065_market_design.md`
+- 通貨・監査要件: `manage/SECURITY_READINESS.md` §2、`manage/ECONOMY_DESIGN.md`、`manage/OPERATIONAL_LOGS.md`
 - アイテム・所持: `spec/045_inventory_and_items.md`
 - クエスト・任務: `spec/054_quests.md`
 - DB スキーマ概要: `docs/08_database_schema.md`

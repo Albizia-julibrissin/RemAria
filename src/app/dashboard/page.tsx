@@ -32,6 +32,7 @@ export default async function DashboardPage() {
             email: true,
             premiumCurrencyFreeBalance: true,
             premiumCurrencyPaidBalance: true,
+            marketUnlocked: true,
           },
         })
       : Promise.resolve(null),
@@ -41,7 +42,7 @@ export default async function DashboardPage() {
     getCurrentExpeditionSummary(),
     session?.userId
       ? prisma.character.findMany({
-          where: { userId: session.userId, category: { in: ["protagonist", "companion"] } },
+          where: { userId: session.userId, category: { in: ["protagonist", "companion", "mech"] } },
           select: {
             id: true,
             category: true,
@@ -85,15 +86,27 @@ export default async function DashboardPage() {
     { href: "/dashboard/bag", label: "物資庫", sub: "所持アイテムの確認", icon: "wooden-crate" },
     // 開拓任務: spec/054_quests.md
     { href: "/dashboard/quests", label: "開拓任務", sub: "使命・研究・特殊・一般の開拓任務の進捗", icon: "feather" },
+    // 市場: spec/075_market.md（解放時のみ有効）
+    { href: "/dashboard/market", label: "市場", sub: "出品・購入", icon: "weight-scale" },
   ] as const;
+
+  const marketUnlocked = userForDashboard?.marketUnlocked ?? false;
 
   return (
     <main className="min-h-screen bg-base p-8">
       <div className="max-w-5xl mx-auto">
         {/* 2カラム：左 = ぱっと見たい情報 / 右 = メニュー */}
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          {/* 左カラム：探索・キャラサマリ */}
+          {/* 左カラム：キャラサマリ・探索 */}
           <div className="space-y-6">
+            {/* キャラサマリ（主人公/仲間のアイコン・レベル・経験値、ドロップダウンで切り替え） */}
+            {charactersForSummary.length > 0 && (
+              <CharacterSummaryCard
+                characters={charactersForSummary}
+                balances={balances}
+              />
+            )}
+
             {/* 探索（進行中があれば「再開」＋「撤退」、なければ新規開始） */}
             <section>
               <div className="max-w-md">
@@ -105,37 +118,44 @@ export default async function DashboardPage() {
                 />
               </div>
             </section>
-
-            {/* キャラサマリ（主人公/仲間のアイコン・レベル・経験値、ドロップダウンで切り替え） */}
-            {charactersForSummary.length > 0 && (
-              <CharacterSummaryCard
-                characters={charactersForSummary}
-                balances={balances}
-              />
-            )}
-
           </div>
 
           {/* 右カラム：機能メニュー（居住区・人材局・機工区・研究局・工房・物資庫・開拓任務・作戦室 など） */}
           <div className="space-y-4">
             <section>
               <div className="grid gap-2 sm:grid-cols-2">
-                {subMenuLinks.map(({ href, label, sub, icon }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    title={sub}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-3 py-1.5 text-sm text-text-primary whitespace-nowrap transition-colors hover:border-brass hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
-                  >
-                    {icon && (
-                      <GameIcon
-                        name={icon}
-                        className="w-4 h-4 text-brass"
-                      />
-                    )}
-                    <span className="font-medium">{label}</span>
-                  </Link>
-                ))}
+                {subMenuLinks.map(({ href, label, sub, icon }) => {
+                  const isMarket = href === "/dashboard/market";
+                  const disabled = isMarket && !marketUnlocked;
+                  const title = disabled
+                    ? "開拓任務をクリアすると利用可能になります"
+                    : sub;
+                  if (disabled) {
+                    return (
+                      <span
+                        key={href}
+                        title={title}
+                        className="inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-3 py-1.5 text-sm text-text-muted whitespace-nowrap opacity-70"
+                      >
+                        {icon && <GameIcon name={icon} className="w-4 h-4" />}
+                        <span className="font-medium">{label}</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      title={title}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-base-border bg-base px-3 py-1.5 text-sm text-text-primary whitespace-nowrap transition-colors hover:border-brass hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                    >
+                      {icon && (
+                        <GameIcon name={icon} className="w-4 h-4 text-brass" />
+                      )}
+                      <span className="font-medium">{label}</span>
+                    </Link>
+                  );
+                })}
 
                 {/* 作戦室：探索前の準備として常に見えるようにメニュー側にも配置 */}
                 <Link

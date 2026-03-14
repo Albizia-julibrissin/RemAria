@@ -184,7 +184,7 @@
 - **1 回の探索（Expedition）は 1 テーマ内の 1 エリアに対してのみ行う**。
 - 出撃可能メンバーは主人公＋仲間＋メカの 1〜3 体。作戦スロットは `039` のパーティプリセットをそのまま利用する。
 - 探索開始時に、持ち込む探索用消耗品の種類・数量を指定し、**Expedition 内の専用ストック**として扱う（バッグからはあらかじめ消費）。
-- 探索開始時に、**エリアごとに定義された出撃コスト**（基本探索キット等）をユーザー在庫から消費する。出撃コストは `ExplorationArea` 毎にマスタで定義し、MVP では「全エリア共通で **基本探索キット 100（1回分）**」を標準とし、将来の拡張で「特定エリアのみ追加アイテムも要求する」形に対応する。
+- 探索開始時に、**エリアごとに定義された出撃コスト**（基本探索キット等）をユーザー在庫から消費する。出撃コストは `ExplorationArea` 毎にマスタで定義し、MVP では「全エリア共通で **基本探索キット 10（1回分）**」を標準とし、将来の拡張で「特定エリアのみ追加アイテムも要求する」形に対応する。
 - `continueExploration` の呼び出しごとに、「技能判定イベント」または「戦闘イベント」または「結果イベント」を 1 回進める。
 - **探索イベントの発生判定**：**各イベント（戦闘・技能など）が終了するたびに**、次に発生させるイベント種別を抽選する（事前にキューを積まない方式）。技能イベントの発生確率はエリアの `baseSkillEventRate` で制御する。
 - **イベント種別の拡張**：技能イベントに限らず、将来的に他の探索イベント（例：技能強制成功、ハイアンドローで連勝すると報酬枠が増え続ける等、射幸・ラッキー要素）を追加できるよう、イベント種別を汎用的に扱う設計とする。MVP では「戦闘」と「技能」のみ実装。
@@ -239,7 +239,7 @@
 
 - `ExplorationTheme`：id, name, displayOrder, unlockRequirements など。
 - `ExplorationArea`：id, themeId, name, difficultyRank, baseDropMin, baseDropMax, baseSkillEventRate, enemyGroupIds, bossIds など。
-- `ExplorationAreaCost`：areaId, itemId, quantity。**エリアごとの出撃コスト**を定義するテーブル。MVP では「全エリアに対して基本探索キット（1回分=100 単位）1行だけ」を持たせる想定だが、将来的に「特定エリアのみ追加アイテム（例：探索許可証アイテム）も要求する」行を追加できるようにしておく。
+- `ExplorationAreaCost`：areaId, itemId, quantity。**エリアごとの出撃コスト**を定義するテーブル。MVP では「全エリアに対して基本探索キット（1回分=10 単位）1行だけ」を持たせる想定だが、将来的に「特定エリアのみ追加アイテム（例：探索許可証アイテム）も要求する」行を追加できるようにしておく。
 - `Expedition`：id, userId, areaId, partySnapshot, state, remainingNormalBattles, strongEnemyCleared, areaLordCleared, battleWinCount, skillSuccessCount, expGained, createdAt, finishedAt など。
 
 ### 7.2 ドロップテーブル（報酬 Phase5 の正本）

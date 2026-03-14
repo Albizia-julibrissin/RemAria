@@ -27,7 +27,7 @@ export default async function BattlePracticePage() {
         </p>
         <p className="mt-6">
           <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-            ← ダッシュボードへ
+            ← 開拓拠点へ
           </Link>
         </p>
       </main>
@@ -45,7 +45,7 @@ export default async function BattlePracticePage() {
       </div>
       <p className="mt-6">
         <Link href="/dashboard" className="text-sm text-brass hover:text-brass-hover">
-          ← ダッシュボードへ
+          ← 開拓拠点へ
         </Link>
       </p>
     </main>
