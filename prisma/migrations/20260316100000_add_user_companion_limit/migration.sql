@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "companionLimit" INTEGER NOT NULL DEFAULT 10;

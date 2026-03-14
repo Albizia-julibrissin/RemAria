@@ -11,7 +11,6 @@ import {
   updateAdminFacilityType,
   deleteAdminFacilityType,
   updateAdminFacilityConstructionInputs,
-  createAdminFacilityVariantBase,
 } from "@/server/actions/admin";
 
 const KIND_OPTIONS: { value: string; label: string }[] = [
@@ -38,37 +37,11 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
   const [description, setDescription] = useState(facility.description ?? "");
   const [cost, setCost] = useState(String(facility.cost));
 
-  // 建設材料は型（variant）ごとにローカル state。key: variantCode
-  const [constructionByVariant, setConstructionByVariant] = useState<
-    Record<string, { itemId: string; amount: number }[]>
-  >(() => {
-    const init: Record<string, { itemId: string; amount: number }[]> = {};
-    for (const v of facility.variants) {
-      init[v.variantCode] = v.constructionInputs.map((inp) => ({
-        itemId: inp.itemId,
-        amount: inp.amount,
-      }));
-    }
-    return init;
-  });
-  const [constructionSaving, setConstructionSaving] = useState<string | null>(null);
-  const [addingBase, setAddingBase] = useState(false);
-
-  const handleAddBaseVariant = () => {
-    setAddingBase(true);
-    createAdminFacilityVariantBase(facility.id).then((result) => {
-      setAddingBase(false);
-      setMessage(
-        result.success
-          ? { type: "ok", text: "基本型を追加しました。建設材料を設定してください。" }
-          : { type: "error", text: result.error ?? "追加に失敗しました。" }
-      );
-      if (result.success) {
-        setConstructionByVariant((prev) => ({ ...prev, base: [] }));
-        router.refresh();
-      }
-    });
-  };
+  // 建設材料は 1 設備 1 レシピ（docs/078 派生型廃止）
+  const [constructionInputs, setConstructionInputs] = useState<{ itemId: string; amount: number }[]>(
+    () => facility.constructionInputs.map((inp) => ({ itemId: inp.itemId, amount: inp.amount }))
+  );
+  const [constructionSaving, setConstructionSaving] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,23 +76,16 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
     });
   };
 
-  const updateVariantInputs = (variantCode: string, updater: (prev: { itemId: string; amount: number }[]) => { itemId: string; amount: number }[]) => {
-    setConstructionByVariant((prev) => ({
-      ...prev,
-      [variantCode]: updater(prev[variantCode] ?? []),
-    }));
+  const addConstructionRow = () => {
+    setConstructionInputs((prev) => [...prev, { itemId: items[0]?.id ?? "", amount: 1 }]);
   };
 
-  const addConstructionRow = (variantCode: string) => {
-    updateVariantInputs(variantCode, (prev) => [...prev, { itemId: items[0]?.id ?? "", amount: 1 }]);
+  const removeConstructionRow = (index: number) => {
+    setConstructionInputs((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const removeConstructionRow = (variantCode: string, index: number) => {
-    updateVariantInputs(variantCode, (prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const setConstructionRow = (variantCode: string, index: number, field: "itemId" | "amount", value: string | number) => {
-    updateVariantInputs(variantCode, (prev) => {
+  const setConstructionRow = (index: number, field: "itemId" | "amount", value: string | number) => {
+    setConstructionInputs((prev) => {
       const next = [...prev];
       if (!next[index]) return next;
       if (field === "itemId") next[index] = { ...next[index], itemId: value as string };
@@ -128,17 +94,16 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
     });
   };
 
-  const saveConstruction = (variantCode: string) => {
-    const inputs = constructionByVariant[variantCode] ?? [];
-    const normalized: AdminFacilityConstructionInputEntry[] = inputs
+  const saveConstruction = () => {
+    const normalized: AdminFacilityConstructionInputEntry[] = constructionInputs
       .filter((r) => r.itemId && r.amount >= 1)
       .map((r) => ({ itemId: r.itemId, amount: r.amount }));
-    setConstructionSaving(variantCode);
-    updateAdminFacilityConstructionInputs(facility.id, variantCode, normalized).then((result) => {
-      setConstructionSaving(null);
+    setConstructionSaving(true);
+    updateAdminFacilityConstructionInputs(facility.id, normalized).then((result) => {
+      setConstructionSaving(false);
       setMessage(
         result.success
-          ? { type: "ok", text: `型「${variantCode}」の建設材料を保存しました。` }
+          ? { type: "ok", text: "建設材料を保存しました。" }
           : { type: "error", text: result.error ?? "保存に失敗しました。" }
       );
       if (result.success) router.refresh();
@@ -224,88 +189,65 @@ export function AdminFacilityTypeEditForm({ facility, items }: Props) {
         </div>
       </form>
 
-      {/* 建設材料（型ごと） */}
-      {facility.variants.length === 0 && (
-        <section className="border-t border-base-border pt-8">
-          <h2 className="text-lg font-medium text-text-primary">建設材料（型ごと）</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            この設備には型が登録されていません。機工区で建設するには「基本型」が必要です。
-          </p>
-          <button
-            type="button"
-            disabled={addingBase}
-            onClick={handleAddBaseVariant}
-            className="mt-3 rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
-          >
-            {addingBase ? "追加中…" : "基本型を追加"}
-          </button>
-        </section>
-      )}
-      {facility.variants.length > 0 && (
-        <section className="border-t border-base-border pt-8">
-          <h2 className="text-lg font-medium text-text-primary">建設材料（型ごと）</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            設備を設置するときに消費するアイテム。機工区の設置画面で参照されます。
-          </p>
-          {facility.variants.map((v) => (
-            <div key={v.facilityVariantId} className="mt-4 rounded border border-base-border bg-base-elevated p-4">
-              <h3 className="text-sm font-medium text-text-muted">
-                型: {v.variantCode} {v.variantName ? `（${v.variantName}）` : ""}
-              </h3>
-              <div className="mt-2 space-y-2">
-                {(constructionByVariant[v.variantCode] ?? []).map((row, idx) => (
-                  <div key={idx} className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={row.itemId}
-                      onChange={(e) => setConstructionRow(v.variantCode, idx, "itemId", e.target.value)}
-                      className="rounded border border-base-border bg-base px-2 py-1.5 text-text-primary text-sm min-w-[140px]"
-                    >
-                      <option value="">選択</option>
-                      {items.map((it) => (
-                        <option key={it.id} value={it.id}>
-                          {it.name}（{it.code}）
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={1}
-                      value={row.amount}
-                      onChange={(e) => setConstructionRow(v.variantCode, idx, "amount", e.target.value)}
-                      className="w-16 rounded border border-base-border bg-base px-2 py-1.5 text-text-primary text-sm"
-                    />
-                    <span className="text-text-muted text-sm">個</span>
-                    <button
-                      type="button"
-                      onClick={() => removeConstructionRow(v.variantCode, idx)}
-                      className="text-error text-sm hover:underline"
-                    >
-                      削除
-                    </button>
-                  </div>
-                ))}
+      {/* 建設材料（1 設備 1 レシピ、docs/078） */}
+      <section className="border-t border-base-border pt-8">
+        <h2 className="text-lg font-medium text-text-primary">建設材料</h2>
+        <p className="mt-1 text-sm text-text-muted">
+          設備を設置するときに消費するアイテム。機工区の設置画面で参照されます。
+        </p>
+        <div className="mt-4 rounded border border-base-border bg-base-elevated p-4">
+          <div className="space-y-2">
+            {constructionInputs.map((row, idx) => (
+              <div key={idx} className="flex flex-wrap items-center gap-2">
+                <select
+                  value={row.itemId}
+                  onChange={(e) => setConstructionRow(idx, "itemId", e.target.value)}
+                  className="min-w-[140px] rounded border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
+                >
+                  <option value="">選択</option>
+                  {items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.name}（{it.code}）
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  value={row.amount}
+                  onChange={(e) => setConstructionRow(idx, "amount", e.target.value)}
+                  className="w-16 rounded border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
+                />
+                <span className="text-sm text-text-muted">個</span>
                 <button
                   type="button"
-                  onClick={() => addConstructionRow(v.variantCode)}
-                  className="text-sm text-brass hover:underline"
+                  onClick={() => removeConstructionRow(idx)}
+                  className="text-sm text-error hover:underline"
                 >
-                  + 行を追加
+                  削除
                 </button>
               </div>
-              <div className="mt-3">
-                <button
-                  type="button"
-                  disabled={constructionSaving === v.variantCode}
-                  onClick={() => saveConstruction(v.variantCode)}
-                  className="rounded bg-brass/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-brass disabled:opacity-50"
-                >
-                  {constructionSaving === v.variantCode ? "保存中…" : "建設材料を保存"}
-                </button>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
+            ))}
+            <button
+              type="button"
+              onClick={addConstructionRow}
+              className="text-sm text-brass hover:underline"
+            >
+              + 行を追加
+            </button>
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              disabled={constructionSaving}
+              onClick={saveConstruction}
+              className="rounded bg-brass/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-brass disabled:opacity-50"
+            >
+              {constructionSaving ? "保存中…" : "建設材料を保存"}
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* 削除 */}
       <section className="border-t border-base-border pt-8">

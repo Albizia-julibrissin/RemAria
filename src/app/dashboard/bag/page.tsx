@@ -14,7 +14,7 @@ const ALL_TAB_IDS = [
   "consumable",
   "blueprint",
   "skill_book",
-  "paid",
+  "special",
   "equipment",
   "mecha_parts",
   "relic",

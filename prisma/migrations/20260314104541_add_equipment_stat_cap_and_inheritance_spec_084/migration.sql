@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "EquipmentInstance" ADD COLUMN     "capCeiling" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "inheritanceFailCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "statCap" INTEGER NOT NULL DEFAULT 0;

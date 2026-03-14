@@ -40,11 +40,13 @@ export function RegisterForm() {
           name="accountId"
           type="text"
           required
+          minLength={3}
+          maxLength={24}
           autoComplete="username"
           className="w-full bg-base-elevated border border-base-border rounded px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
           placeholder="my_id_123"
         />
-        <p className="text-xs text-text-muted">3〜32文字。英数字とアンダースコアのみ。重複不可。</p>
+        <p className="text-xs text-text-muted">3〜24文字。英数字とアンダースコアのみ。重複不可。</p>
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="password" className="text-sm text-text-muted">

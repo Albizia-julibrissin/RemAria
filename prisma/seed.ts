@@ -123,6 +123,76 @@ async function seedAdminSkillBooks(adminEmail: string): Promise<void> {
   console.log("管理人: スキル分析書（メテオスォーム）を10冊所持");
 }
 
+/** 管理人に緊急製造指示書を3枚付与。spec/083。アイテムが DB に存在すること前提。 */
+async function seedAdminEmergencyProductionOrder(adminEmail: string): Promise<void> {
+  const admin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+  if (!admin) return;
+
+  const item = await prisma.item.findUnique({
+    where: { code: "emergency_production_order" },
+    select: { id: true },
+  });
+  if (!item) return;
+
+  await prisma.userInventory.upsert({
+    where: { userId_itemId: { userId: admin.id, itemId: item.id } },
+    create: { userId: admin.id, itemId: item.id, quantity: 3 },
+    update: { quantity: 3 },
+  });
+  console.log("管理人: 緊急製造指示書を3枚所持");
+}
+
+/** 管理人に cotton / cotton_equip_part / iron / iron_equip_part を各10000個付与。アイテムが DB に存在すること前提。 */
+async function seedAdminCraftMaterials(adminEmail: string): Promise<void> {
+  const admin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+  if (!admin) return;
+
+  const codes = ["cotton", "cotton_equip_part", "iron", "iron_equip_part"];
+  const items = await prisma.item.findMany({
+    where: { code: { in: codes } },
+    select: { id: true, code: true },
+  });
+  for (const item of items) {
+    await prisma.userInventory.upsert({
+      where: { userId_itemId: { userId: admin.id, itemId: item.id } },
+      create: { userId: admin.id, itemId: item.id, quantity: 10000 },
+      update: { quantity: 10000 },
+    });
+  }
+  if (items.length > 0) {
+    console.log(`管理人: ${items.map((i) => i.code).join(", ")} を各10000個所持`);
+  }
+}
+
+/** docs/079: letter_of_recommendation が存在する場合、闇市で 2000 GRA 販売として登録する。 */
+async function ensureSystemShopLetterOfRecommendation(): Promise<void> {
+  const item = await prisma.item.findUnique({
+    where: { code: "letter_of_recommendation" },
+    select: { id: true },
+  });
+  if (!item) return;
+
+  await prisma.systemShopItem.upsert({
+    where: {
+      marketType_itemId: { marketType: "underground", itemId: item.id },
+    },
+    create: {
+      marketType: "underground",
+      itemId: item.id,
+      priceGRA: 2000,
+      displayOrder: 0,
+    },
+    update: { priceGRA: 2000 },
+  });
+  console.log("闇市: letter_of_recommendation を 2000 GRA で登録");
+}
+
 /** テスト用データのみ投入。マスタは事前に DB に存在すること（バックアップ復元など）。 */
 async function runTest(): Promise<void> {
   const adminConfig = getAdminSeedConfig();
@@ -203,8 +273,8 @@ async function runTest(): Promise<void> {
     await prisma.user.update({
       where: { id: adminUser.id },
       data: {
-        premiumCurrencyFreeBalance: 500,
-        premiumCurrencyPaidBalance: 500,
+        premiumCurrencyFreeBalance: 1500,
+        premiumCurrencyPaidBalance: 1500,
         marketUnlocked: true, // spec/075: 管理人で市場を利用可能に
       },
     });
@@ -226,6 +296,8 @@ async function runTest(): Promise<void> {
 
   await seedAdminConsumables(adminConfig.email);
   await seedAdminSkillBooks(adminConfig.email);
+  await seedAdminEmergencyProductionOrder(adminConfig.email);
+  await seedAdminCraftMaterials(adminConfig.email);
 
   const adminForSeed = await prisma.user.findUnique({
     where: { email: adminConfig.email },
@@ -269,6 +341,7 @@ async function main(): Promise<void> {
     console.log("マスタはシードでは投入しません。バックアップ復元または管理画面で用意してください。");
   }
   await runTest();
+  await ensureSystemShopLetterOfRecommendation();
 }
 
 main()

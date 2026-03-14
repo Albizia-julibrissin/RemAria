@@ -62,7 +62,7 @@ export function PlaceFacilityForm({
     if (!selectedTypeId || !canBuild) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await placeFacility(selectedTypeId, "base");
+      const result = await placeFacility(selectedTypeId);
       if (result.success) {
         router.refresh();
         setMessage(`「${result.facilityName}」を配置しました。`);

@@ -55,28 +55,18 @@ export function CharacterRelicSection({
     });
   };
 
-  const availableRelics = allRelics.filter(
-    (r) => r.equippedCharacterId === null || r.equippedCharacterId === characterId
-  );
-
   const availableForModal =
     modalSlot != null
-      ? availableRelics.filter((r) => {
-          const row = slots.find((s) => s.slot === modalSlot);
-          return row?.relicInstance?.id !== r.id;
-        })
+      ? allRelics.filter((r) => r.equippedCharacterId === null)
       : [];
 
   return (
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
-      <h2 className="text-lg font-medium text-text-primary">遺物（4枠）</h2>
-      <p className="mt-1 text-sm text-text-muted">
-        探索で入手した遺物の原石を鑑定すると遺物が手に入ります。ここで装着すると戦闘で属性耐性などが反映されます。
-      </p>
+      <h2 className="text-lg font-medium text-text-primary">遺物</h2>
       <ul className="mt-4 space-y-3">
         {slots.map((row) => {
-          const available = availableRelics.filter(
-            (r) => row.relicInstance?.id !== r.id
+          const available = allRelics.filter(
+            (r) => r.equippedCharacterId === null
           );
           return (
             <li

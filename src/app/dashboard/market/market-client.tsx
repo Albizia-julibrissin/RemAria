@@ -35,7 +35,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   consumable: "消耗品",
   blueprint: "設計図",
   skill_book: "スキル分析書",
-  paid: "有料",
+  special: "特別",
 };
 
 export function MarketClient({

@@ -9,7 +9,13 @@ import { isEquipmentSlot } from "@/lib/constants/equipment-slots";
 import {
   type EquipmentStatGenConfig,
   generateEquipmentStatsFromConfig,
+  generateEquipmentStatsWithFixedCap,
 } from "@/lib/craft/equipment-stat-gen";
+import {
+  TEMPER_MATERIAL_MULTIPLIER,
+  INHERIT_BASE_SUCCESS_RATE_PERCENT,
+  INHERIT_SUCCESS_RATE_INCREMENT,
+} from "@/lib/constants/craft";
 import {
   type MechaPartStatGenConfig,
   generateMechaPartStatsFromConfig,
@@ -48,7 +54,21 @@ export type CraftRecipeRow = {
 };
 
 export type ExecuteCraftResult =
-  | { success: true; message: string; equipmentInstanceId?: string; mechaPartInstanceId?: string; itemId?: string; quantity?: number }
+  | {
+      success: true;
+      message: string;
+      equipmentInstanceId?: string;
+      equipmentTypeName?: string;
+      equipmentStats?: Record<string, number>;
+      statCap?: number;
+      capCeiling?: number;
+      mechaPartInstanceId?: string;
+      mechaPartTypeName?: string;
+      mechaPartStats?: Record<string, number>;
+      mechaPartSlot?: string;
+      itemId?: string;
+      quantity?: number;
+    }
   | { success: false; error: string; message: string };
 
 export type CharacterEquipmentSlot = {
@@ -121,9 +141,56 @@ export async function getCraftRecipes(): Promise<CraftRecipeRow[] | null> {
           itemName: r.outputItem.name,
         };
       }
-      return { kind: r.outputKind as "item", itemName: "不明" };
+      return { kind: "item" as const, itemId: "", itemName: "" };
     })(),
   }));
+}
+
+export type RecipeMaterialStockRow = {
+  itemId: string;
+  itemName: string;
+  required: number;
+  stock: number;
+};
+
+/**
+ * 指定レシピの材料ごとの必要数とユーザー在庫を返す。製造準備モーダル用。
+ */
+export async function getRecipeMaterialStocks(
+  recipeId: string
+): Promise<{ materialRows: RecipeMaterialStockRow[] } | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const unlocked = await prisma.userCraftRecipeUnlock.findFirst({
+    where: { userId: session.userId, craftRecipeId: recipeId },
+  });
+  if (!unlocked) return null;
+
+  const recipe = await prisma.craftRecipe.findMany({
+    where: { id: recipeId },
+    include: {
+      inputs: { include: { item: { select: { id: true, name: true } } } },
+    },
+  });
+  const r = recipe[0];
+  if (!r?.inputs.length) return { materialRows: [] };
+
+  const itemIds = r.inputs.map((i) => i.itemId);
+  const stocks = await prisma.userInventory.findMany({
+    where: { userId: session.userId, itemId: { in: itemIds } },
+    select: { itemId: true, quantity: true },
+  });
+  const stockByItemId = new Map(stocks.map((s) => [s.itemId, s.quantity]));
+
+  const materialRows: RecipeMaterialStockRow[] = r.inputs.map((inp) => ({
+    itemId: inp.itemId,
+    itemName: inp.item.name,
+    required: inp.amount,
+    stock: stockByItemId.get(inp.itemId) ?? 0,
+  }));
+
+  return { materialRows };
 }
 
 /**
@@ -207,11 +274,17 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
 
       if (recipe!.outputKind === "equipment" && recipe!.outputEquipmentType && equipmentStatConfig) {
         const stats = generateEquipmentStatsFromConfig(equipmentStatConfig);
+        const statCap =
+          stats != null ? Object.values(stats).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0) : 0;
+        const capCeiling = equipmentStatConfig.capMax;
         const inst = await tx.equipmentInstance.create({
           data: {
             userId,
             equipmentTypeId: recipe!.outputEquipmentTypeId!,
             stats: stats ?? undefined,
+            statCap,
+            capCeiling,
+            inheritanceFailCount: 0,
           },
           select: { id: true },
         });
@@ -219,6 +292,9 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
           kind: "equipment" as const,
           equipmentInstanceId: inst.id,
           name: recipe!.outputEquipmentType!.name,
+          stats: stats ?? {},
+          statCap,
+          capCeiling,
         };
       }
 
@@ -236,6 +312,8 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
           kind: "mecha_part" as const,
           mechaPartInstanceId: inst.id,
           name: recipe!.outputMechaPartType!.name,
+          stats: stats ?? {},
+          slot: recipe!.outputMechaPartType!.slot,
         };
       }
 
@@ -261,6 +339,10 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
         success: true,
         message: `「${result.name}」を1個作成しました。`,
         equipmentInstanceId: result.equipmentInstanceId,
+        equipmentTypeName: result.name,
+        equipmentStats: result.stats,
+        statCap: result.statCap,
+        capCeiling: result.capCeiling,
       };
     }
     if ("mechaPartInstanceId" in result) {
@@ -268,6 +350,9 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
         success: true,
         message: `「${result.name}」を1個作成しました。`,
         mechaPartInstanceId: result.mechaPartInstanceId,
+        mechaPartTypeName: result.name,
+        mechaPartStats: result.stats,
+        mechaPartSlot: result.slot,
       };
     }
     return {
@@ -282,6 +367,470 @@ export async function executeCraft(craftRecipeId: string): Promise<ExecuteCraftR
       return { success: false, error: "INVENTORY", message: "在庫が不足しています。" };
     }
     return { success: false, error: "UNKNOWN", message: "クラフトに失敗しました。" };
+  }
+}
+
+// --- spec/084 鍛錬 ---
+
+export type TemperableEquipmentInputRow = {
+  itemId: string;
+  itemName: string;
+  amount: number;
+};
+
+export type TemperableEquipmentRow = {
+  id: string;
+  equipmentTypeName: string;
+  slot: string;
+  stats: Record<string, number>;
+  statCap: number;
+  capCeiling: number;
+  statsSum: number;
+  recipeId: string | null;
+  recipeName: string | null;
+  requiredInputs: TemperableEquipmentInputRow[];
+};
+
+/**
+ * 鍛錬可能な装備一覧（未装着・statCap/capCeiling 有効・レシピ存在時は必要素材付き）。spec/084 Phase2。
+ */
+export async function getTemperableEquipment(): Promise<TemperableEquipmentRow[] | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const unlockedIds = await prisma.userCraftRecipeUnlock.findMany({
+    where: { userId: session.userId },
+    select: { craftRecipeId: true },
+  });
+  const unlockedSet = new Set(unlockedIds.map((u) => u.craftRecipeId));
+
+  const [instances, recipesByTypeId] = await Promise.all([
+    prisma.equipmentInstance.findMany({
+      where: {
+        userId: session.userId,
+        statCap: { gt: 0 },
+        capCeiling: { gt: 0 },
+      },
+      include: {
+        equipmentType: { select: { name: true, slot: true, statGenConfig: true } },
+        characterEquipments: { take: 1, select: { id: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.craftRecipe.findMany({
+      where: {
+        id: { in: [...unlockedSet] },
+        outputKind: "equipment",
+        outputEquipmentTypeId: { not: null },
+      },
+      orderBy: { code: "asc" },
+      include: {
+        inputs: { include: { item: { select: { id: true, name: true } } } },
+        outputEquipmentType: { select: { id: true } },
+      },
+    }),
+  ]);
+
+  const recipeByEquipmentTypeId = new Map<string | null, (typeof recipesByTypeId)[0]>();
+  for (const r of recipesByTypeId) {
+    const typeId = r.outputEquipmentTypeId ?? r.outputEquipmentType?.id;
+    if (typeId && !recipeByEquipmentTypeId.has(typeId)) {
+      recipeByEquipmentTypeId.set(typeId, r);
+    }
+  }
+
+  const result: TemperableEquipmentRow[] = [];
+  for (const inst of instances) {
+    if (inst.characterEquipments.length > 0) continue; // 装着中は除外
+    const stats =
+      inst.stats && typeof inst.stats === "object" && !Array.isArray(inst.stats)
+        ? (inst.stats as Record<string, number>)
+        : {};
+    const statsSum = Object.values(stats).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
+    if (inst.capCeiling < statsSum) continue; // capCeiling >= sum(stats) でないと鍛錬不可
+    const recipe = recipeByEquipmentTypeId.get(inst.equipmentTypeId) ?? null;
+    const requiredInputs: TemperableEquipmentInputRow[] =
+      recipe?.inputs.map((inp) => ({
+        itemId: inp.itemId,
+        itemName: inp.item.name,
+        amount: inp.amount * TEMPER_MATERIAL_MULTIPLIER,
+      })) ?? [];
+    result.push({
+      id: inst.id,
+      equipmentTypeName: inst.equipmentType.name,
+      slot: inst.equipmentType.slot,
+      stats,
+      statCap: inst.statCap,
+      capCeiling: inst.capCeiling,
+      statsSum,
+      recipeId: recipe?.id ?? null,
+      recipeName: recipe?.name ?? null,
+      requiredInputs,
+    });
+  }
+  return result;
+}
+
+/**
+ * 指定装備の鍛錬に必要な材料の必要数とユーザー在庫を返す。鍛錬準備モーダル用。
+ */
+export async function getTemperMaterialStocks(
+  equipmentInstanceId: string
+): Promise<{ materialRows: RecipeMaterialStockRow[] } | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const equipment = await prisma.equipmentInstance.findFirst({
+    where: { id: equipmentInstanceId, userId: session.userId },
+    include: {
+      equipmentType: { select: { id: true } },
+      characterEquipments: { take: 1, select: { id: true } },
+    },
+  });
+  if (!equipment || equipment.characterEquipments.length > 0) return null;
+
+  const recipe = await prisma.craftRecipe.findFirst({
+    where: { outputEquipmentTypeId: equipment.equipmentTypeId },
+    include: { inputs: { include: { item: { select: { id: true, name: true } } } } },
+  });
+  if (!recipe?.inputs.length) return { materialRows: [] };
+
+  const itemIds = recipe.inputs.map((i) => i.itemId);
+  const stocks = await prisma.userInventory.findMany({
+    where: { userId: session.userId, itemId: { in: itemIds } },
+    select: { itemId: true, quantity: true },
+  });
+  const stockByItemId = new Map(stocks.map((s) => [s.itemId, s.quantity]));
+
+  const multiplier = TEMPER_MATERIAL_MULTIPLIER;
+  const materialRows: RecipeMaterialStockRow[] = recipe.inputs.map((inp) => ({
+    itemId: inp.itemId,
+    itemName: inp.item.name,
+    required: inp.amount * multiplier,
+    stock: stockByItemId.get(inp.itemId) ?? 0,
+  }));
+
+  return { materialRows };
+}
+
+export type TemperEquipmentResult =
+  | { success: true; message: string; stats: Record<string, number>; statCap: number }
+  | { success: false; error: string; message: string };
+
+/**
+ * 装備を鍛錬する。spec/084 §2。素材消費・CAP リロール・stats/statCap 更新。
+ */
+export async function temperEquipment(equipmentInstanceId: string): Promise<TemperEquipmentResult> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
+  }
+
+  const equipment = await prisma.equipmentInstance.findFirst({
+    where: { id: equipmentInstanceId, userId: session.userId },
+    include: {
+      equipmentType: { select: { id: true, statGenConfig: true } },
+      characterEquipments: { take: 1, select: { id: true } },
+    },
+  });
+  if (!equipment) {
+    return { success: false, error: "NOT_FOUND", message: "装備が見つかりません。" };
+  }
+  if (equipment.characterEquipments.length > 0) {
+    return { success: false, error: "EQUIPPED", message: "装着中の装備は鍛錬できません。" };
+  }
+  if (equipment.statCap <= 0 || equipment.capCeiling <= 0) {
+    return { success: false, error: "STAT_CAP_INVALID", message: "この装備は鍛錬できません（ステータス未設定）。" };
+  }
+  const stats =
+    equipment.stats && typeof equipment.stats === "object" && !Array.isArray(equipment.stats)
+      ? (equipment.stats as Record<string, number>)
+      : {};
+  const statsSum = Object.values(stats).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
+  if (equipment.capCeiling < statsSum) {
+    return { success: false, error: "STAT_CAP_INVALID", message: "ステータス合計が上限を超えています。" };
+  }
+
+  const config = parseEquipmentStatGenConfig(equipment.equipmentType.statGenConfig);
+  if (!config) {
+    return { success: false, error: "STAT_GEN_CONFIG_MISSING", message: "この装備種別は鍛錬設定がありません。" };
+  }
+
+  const recipe = await prisma.craftRecipe.findFirst({
+    where: { outputEquipmentTypeId: equipment.equipmentTypeId },
+    orderBy: { code: "asc" },
+    include: { inputs: { include: { item: true } } },
+  });
+  if (!recipe) {
+    return { success: false, error: "RECIPE_NOT_FOUND", message: "この装備の製造レシピが見つかりません。" };
+  }
+
+  const multiplier = TEMPER_MATERIAL_MULTIPLIER;
+  const inventories = await prisma.userInventory.findMany({
+    where: { userId: session.userId },
+    select: { itemId: true, quantity: true },
+  });
+  const qtyByItemId = new Map(inventories.map((i) => [i.itemId, i.quantity]));
+  for (const inp of recipe.inputs) {
+    const need = inp.amount * multiplier;
+    const have = qtyByItemId.get(inp.itemId) ?? 0;
+    if (have < need) {
+      return {
+        success: false,
+        error: "INVENTORY",
+        message: `${inp.item.name}が${need - have}個不足しています。（必要: ${need}）`,
+      };
+    }
+  }
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      for (const inp of recipe.inputs) {
+        const row = await tx.userInventory.findUnique({
+          where: { userId_itemId: { userId: session.userId!, itemId: inp.itemId } },
+        });
+        if (!row || row.quantity < inp.amount * multiplier) throw new Error("INVENTORY");
+        await tx.userInventory.update({
+          where: { userId_itemId: { userId: session.userId!, itemId: inp.itemId } },
+          data: { quantity: row.quantity - inp.amount * multiplier },
+        });
+      }
+
+      const minCap = statsSum;
+      const maxCap = equipment.capCeiling;
+      const newCap = minCap <= maxCap ? Math.floor(Math.random() * (maxCap - minCap + 1)) + minCap : minCap;
+      const newStats = generateEquipmentStatsWithFixedCap(config, newCap);
+      if (!newStats) throw new Error("STAT_GEN_FAILED");
+
+      const newStatCap = Object.values(newStats).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
+      await tx.equipmentInstance.update({
+        where: { id: equipmentInstanceId },
+        data: { stats: newStats, statCap: newStatCap },
+      });
+      return { stats: newStats, statCap: newStatCap };
+    });
+
+    revalidatePath("/dashboard/craft");
+    revalidatePath("/dashboard/bag");
+    return {
+      success: true,
+      message: "鍛錬しました。ステータスが振り直されました。",
+      stats: updated.stats,
+      statCap: updated.statCap,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "INVENTORY") {
+      return { success: false, error: "INVENTORY", message: "在庫が不足しています。" };
+    }
+    return { success: false, error: "UNKNOWN", message: "鍛錬に失敗しました。" };
+  }
+}
+
+// --- spec/084 継承 ---
+
+export type InheritTargetRow = {
+  id: string;
+  equipmentTypeName: string;
+  slot: string;
+  stats: Record<string, number>;
+  statCap: number;
+  capCeiling: number;
+  statsSum: number;
+  inheritanceFailCount: number;
+  nextSuccessRatePercent: number;
+};
+
+export type InheritConsumeOptionRow = {
+  id: string;
+  equipmentTypeName: string;
+  slot: string;
+  statCap: number;
+  capCeiling: number;
+};
+
+/**
+ * 継承の対象候補・消費候補。対象は「現在値が上限CAPに達している」未装着装備のみ。消費は未装着装備すべて（上限CAPでフィルタはUI側）。spec/084 Phase3。
+ */
+export async function getInheritCandidates(): Promise<{
+  targets: InheritTargetRow[];
+  consumeOptions: InheritConsumeOptionRow[];
+} | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const instances = await prisma.equipmentInstance.findMany({
+    where: { userId: session.userId },
+    include: {
+      equipmentType: { select: { name: true, slot: true } },
+      characterEquipments: { take: 1, select: { id: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const targets: InheritTargetRow[] = [];
+  const consumeOptions: InheritConsumeOptionRow[] = [];
+
+  for (const inst of instances) {
+    if (inst.characterEquipments.length > 0) continue;
+    const stats =
+      inst.stats && typeof inst.stats === "object" && !Array.isArray(inst.stats)
+        ? (inst.stats as Record<string, number>)
+        : {};
+    const statsSum = Object.values(stats).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
+    const nextRate = Math.min(
+      100,
+      INHERIT_BASE_SUCCESS_RATE_PERCENT + inst.inheritanceFailCount * INHERIT_SUCCESS_RATE_INCREMENT
+    );
+    consumeOptions.push({
+      id: inst.id,
+      equipmentTypeName: inst.equipmentType.name,
+      slot: inst.equipmentType.slot,
+      statCap: inst.statCap,
+      capCeiling: inst.capCeiling,
+    });
+    const isMaxedToCeiling = inst.capCeiling > 0 && statsSum === inst.capCeiling;
+    if (isMaxedToCeiling) {
+      targets.push({
+        id: inst.id,
+        equipmentTypeName: inst.equipmentType.name,
+        slot: inst.equipmentType.slot,
+        stats,
+        statCap: inst.statCap,
+        capCeiling: inst.capCeiling,
+        statsSum,
+        inheritanceFailCount: inst.inheritanceFailCount,
+        nextSuccessRatePercent: nextRate,
+      });
+    }
+  }
+  return { targets, consumeOptions };
+}
+
+export type InheritEquipmentCapResult =
+  | { success: true; message: string; statCap: number; capCeiling: number }
+  | {
+      success: false;
+      error: string;
+      message: string;
+      reason?: "INHERIT_FAILED";
+      nextSuccessRatePercent?: number;
+    };
+
+/**
+ * 継承を実行する。対象の statCap/capCeiling を消費装備の値に引き上げ。成功率判定あり。spec/084 §3。
+ */
+export async function inheritEquipmentCap(
+  targetEquipmentInstanceId: string,
+  consumeEquipmentInstanceId: string
+): Promise<InheritEquipmentCapResult> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
+  }
+  if (targetEquipmentInstanceId === consumeEquipmentInstanceId) {
+    return { success: false, error: "SAME_EQUIPMENT", message: "対象と消費に同じ装備は指定できません。" };
+  }
+
+  const [target, consume] = await Promise.all([
+    prisma.equipmentInstance.findFirst({
+      where: { id: targetEquipmentInstanceId, userId: session.userId },
+      include: { equipmentType: { select: { name: true } }, characterEquipments: { take: 1 } },
+    }),
+    prisma.equipmentInstance.findFirst({
+      where: { id: consumeEquipmentInstanceId, userId: session.userId },
+      include: { characterEquipments: { take: 1 } },
+    }),
+  ]);
+  if (!target) {
+    return { success: false, error: "NOT_FOUND", message: "対象装備が見つかりません。" };
+  }
+  if (!consume) {
+    return { success: false, error: "NOT_FOUND", message: "消費装備が見つかりません。" };
+  }
+  if (target.characterEquipments.length > 0) {
+    return { success: false, error: "EQUIPPED", message: "対象装備は装着中のため継承できません。" };
+  }
+  if (consume.characterEquipments.length > 0) {
+    return { success: false, error: "EQUIPPED", message: "消費装備は装着中のため継承できません。" };
+  }
+
+  const targetStats =
+    target.stats && typeof target.stats === "object" && !Array.isArray(target.stats)
+      ? (target.stats as Record<string, number>)
+      : {};
+  const targetStatsSum = Object.values(targetStats).reduce(
+    (s, v) => s + (typeof v === "number" ? v : 0),
+    0
+  );
+  if (targetStatsSum !== target.capCeiling) {
+    return {
+      success: false,
+      error: "STAT_SUM_MISMATCH",
+      message: "対象装備は現在値が上限CAPに達している状態でのみ継承できます。",
+    };
+  }
+  if (consume.capCeiling <= target.capCeiling) {
+    return {
+      success: false,
+      error: "CAP_NOT_HIGHER",
+      message: "消費装備の上限CAPが対象より高い必要があります。",
+    };
+  }
+
+  const successRate = Math.min(
+    100,
+    INHERIT_BASE_SUCCESS_RATE_PERCENT + target.inheritanceFailCount * INHERIT_SUCCESS_RATE_INCREMENT
+  );
+  const roll = Math.floor(Math.random() * 100) + 1;
+  const success = roll <= successRate;
+
+  try {
+    if (success) {
+      await prisma.$transaction(async (tx) => {
+        await tx.equipmentInstance.update({
+          where: { id: targetEquipmentInstanceId },
+          data: {
+            statCap: consume.statCap,
+            capCeiling: consume.capCeiling,
+            inheritanceFailCount: 0,
+          },
+        });
+        await tx.equipmentInstance.delete({ where: { id: consumeEquipmentInstanceId } });
+      });
+      revalidatePath("/dashboard/craft");
+      revalidatePath("/dashboard/bag");
+      return {
+        success: true,
+        message: "継承に成功しました。対象装備の上限が引き上げられました。",
+        statCap: consume.statCap,
+        capCeiling: consume.capCeiling,
+      };
+    } else {
+      await prisma.$transaction(async (tx) => {
+        await tx.equipmentInstance.update({
+          where: { id: targetEquipmentInstanceId },
+          data: { inheritanceFailCount: target.inheritanceFailCount + 1 },
+        });
+        await tx.equipmentInstance.delete({ where: { id: consumeEquipmentInstanceId } });
+      });
+      const nextRate = Math.min(
+        100,
+        INHERIT_BASE_SUCCESS_RATE_PERCENT +
+          (target.inheritanceFailCount + 1) * INHERIT_SUCCESS_RATE_INCREMENT
+      );
+      revalidatePath("/dashboard/craft");
+      revalidatePath("/dashboard/bag");
+      return {
+        success: false,
+        error: "INHERIT_FAILED",
+        message: `継承に失敗しました。消費装備は失われました。次の成功率は ${nextRate}％ です。`,
+        reason: "INHERIT_FAILED",
+        nextSuccessRatePercent: nextRate,
+      };
+    }
+  } catch (e) {
+    return { success: false, error: "UNKNOWN", message: "継承の処理に失敗しました。" };
   }
 }
 

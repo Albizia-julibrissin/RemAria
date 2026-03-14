@@ -41,8 +41,6 @@ export type ResearchState = {
   unlockedFacilityTypeIds: string[];
 };
 
-const VARIANT_BASE = "base";
-
 /**
  * 建設可能な設備種別一覧（研究で解放済み）。spec/047。
  */
@@ -62,26 +60,23 @@ export async function getUnlockedFacilityTypes(): Promise<UnlockedFacilityType[]
 }
 
 /**
- * 指定設備種別＋型の建設に必要な資源一覧。spec/047。
+ * 指定設備種別の建設に必要な資源一覧。spec/047, docs/078（派生型廃止で 1 種別 1 レシピ）。
  */
 export async function getConstructionRecipe(
-  facilityTypeId: string,
-  variantCode: string = VARIANT_BASE
+  facilityTypeId: string
 ): Promise<ConstructionRecipeItem[] | null> {
   const session = await getSession();
   if (!session?.userId) return null;
 
-  const variant = await prisma.facilityVariant.findUnique({
-    where: {
-      facilityTypeId_variantCode: { facilityTypeId, variantCode },
-    },
+  const ft = await prisma.facilityType.findUnique({
+    where: { id: facilityTypeId },
     include: {
       constructionInputs: { include: { item: true } },
     },
   });
-  if (!variant) return null;
+  if (!ft || ft.constructionInputs.length === 0) return null;
 
-  return variant.constructionInputs.map((inp) => ({
+  return ft.constructionInputs.map((inp) => ({
     itemId: inp.itemId,
     itemName: inp.item.name,
     itemCode: inp.item.code,
@@ -93,13 +88,12 @@ export async function getConstructionRecipe(
  * 指定設備種別の建設レシピ＋在庫・不足数。建造フォームのグリッド表示用。
  */
 export async function getConstructionRecipeWithStock(
-  facilityTypeId: string,
-  variantCode: string = VARIANT_BASE
+  facilityTypeId: string
 ): Promise<ConstructionRecipeRow[] | null> {
   const session = await getSession();
   if (!session?.userId) return null;
 
-  const recipe = await getConstructionRecipe(facilityTypeId, variantCode);
+  const recipe = await getConstructionRecipe(facilityTypeId);
   if (!recipe || recipe.length === 0) return recipe;
 
   const itemIds = recipe.map((r) => r.itemId);
@@ -124,10 +118,7 @@ export async function getConstructionRecipeWithStock(
 /**
  * 設備を 1 つ配置する。強制受け取り実行後、建設レシピの資源を消費して FacilityInstance を作成。spec/047。
  */
-export async function placeFacility(
-  facilityTypeId: string,
-  variantCode: string = VARIANT_BASE
-): Promise<PlaceFacilityResult> {
+export async function placeFacility(facilityTypeId: string): Promise<PlaceFacilityResult> {
   const session = await getSession();
   if (!session?.userId) {
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
@@ -141,14 +132,12 @@ export async function placeFacility(
     return { success: false, error: "NOT_UNLOCKED", message: "その設備はまだ解放されていません。" };
   }
 
-  const variant = await prisma.facilityVariant.findUnique({
-    where: {
-      facilityTypeId_variantCode: { facilityTypeId, variantCode },
-    },
-    include: { constructionInputs: true, facilityType: { select: { name: true, cost: true } } },
+  const ft = await prisma.facilityType.findUnique({
+    where: { id: facilityTypeId },
+    include: { constructionInputs: true },
   });
-  if (!variant) {
-    return { success: false, error: "NOT_FOUND", message: "指定した型が見つかりません。" };
+  if (!ft || ft.constructionInputs.length === 0) {
+    return { success: false, error: "NOT_FOUND", message: "建設レシピが設定されていません。" };
   }
 
   const user = await prisma.user.findUnique({
@@ -170,7 +159,7 @@ export async function placeFacility(
     where: { userId },
     include: { facilityType: { select: { cost: true } } },
   }).then((list) => list.reduce((s, i) => s + i.facilityType.cost, 0));
-  if (usedCost + variant.facilityType.cost > user.industrialMaxCost) {
+  if (usedCost + ft.cost > user.industrialMaxCost) {
     return { success: false, error: "COST_OVER", message: "コスト上限を超えます。" };
   }
 
@@ -182,7 +171,7 @@ export async function placeFacility(
   });
   const qtyByItemId = new Map(inventories.map((i) => [i.itemId, i.quantity]));
 
-  for (const inp of variant.constructionInputs) {
+  for (const inp of ft.constructionInputs) {
     const have = qtyByItemId.get(inp.itemId) ?? 0;
     if (have < inp.amount) {
       const item = await prisma.item.findUnique({
@@ -199,7 +188,7 @@ export async function placeFacility(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      for (const inp of variant!.constructionInputs) {
+      for (const inp of ft!.constructionInputs) {
         const inv = await tx.userInventory.findUnique({
           where: { userId_itemId: { userId, itemId: inp.itemId } },
         });
@@ -218,13 +207,12 @@ export async function placeFacility(
         data: {
           userId,
           facilityTypeId,
-          variantCode,
           displayOrder: maxOrder + 1,
           isForced: false,
         },
         select: { id: true },
       });
-      return { id: inst.id, name: variant!.facilityType.name };
+      return { id: inst.id, name: ft!.name };
     });
     revalidatePath("/dashboard/facilities");
     return {

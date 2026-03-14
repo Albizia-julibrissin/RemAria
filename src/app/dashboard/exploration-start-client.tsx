@@ -12,6 +12,12 @@ import {
 import type { StackableItem } from "@/server/actions/inventory";
 import { ExplorationAbortClient } from "./exploration-abort-client";
 
+const STORAGE_KEY_THEME = "remaria-exploration-last-theme-id";
+const STORAGE_KEY_AREA = "remaria-exploration-last-area-id";
+const STORAGE_KEY_PRESET = "remaria-exploration-last-preset-id";
+const STORAGE_KEY_CONSUMABLE_ITEM = "remaria-exploration-last-consumable-item-id";
+const STORAGE_KEY_CONSUMABLE_QUANTITY = "remaria-exploration-last-consumable-quantity";
+
 type AreaOption = {
   id: string;
   name: string;
@@ -44,14 +50,24 @@ export function ExplorationStartClient({
   hasOngoingExpedition = false,
 }: Props) {
   const router = useRouter();
-  const [selectedThemeId, setSelectedThemeId] = useState<string | undefined>(
-    themes[0]?.themeId
-  );
+  const [selectedThemeId, setSelectedThemeId] = useState<string | undefined>(() => {
+    if (typeof window === "undefined") return themes[0]?.themeId;
+    const saved = localStorage.getItem(STORAGE_KEY_THEME);
+    return saved && themes.some((t) => t.themeId === saved) ? saved : themes[0]?.themeId;
+  });
 
   /** 持ち込む消耗品の種類（一種類のみ選択。未選択は ''） */
-  const [selectedConsumableItemId, setSelectedConsumableItemId] = useState<string>("");
+  const [selectedConsumableItemId, setSelectedConsumableItemId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(STORAGE_KEY_CONSUMABLE_ITEM) ?? "";
+  });
   /** 選択した種類の持ち込み個数（0 ～ その種類の上限） */
-  const [carryQuantity, setCarryQuantity] = useState<number>(0);
+  const [carryQuantity, setCarryQuantity] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    const q = localStorage.getItem(STORAGE_KEY_CONSUMABLE_QUANTITY);
+    const n = q != null ? parseInt(q, 10) : NaN;
+    return Number.isNaN(n) || n < 0 ? 0 : n;
+  });
 
   const areaOptions: (AreaOption & { recommendedLevel: number; description: string | null })[] = useMemo(() => {
     const theme = themes.find((t) => t.themeId === selectedThemeId) ?? themes[0];
@@ -79,7 +95,10 @@ export function ExplorationStartClient({
   );
 
   const [selectedAreaId, setSelectedAreaId] = useState<string | undefined>();
-  const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>();
+  const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>(() => {
+    if (typeof window === "undefined") return undefined;
+    return localStorage.getItem(STORAGE_KEY_PRESET) ?? undefined;
+  });
   const [isPending, startTransition] = useTransition();
   /** 選択中エリアの出撃コスト（必要数・所持数）。エリア変更で取得。 */
   const [areaCosts, setAreaCosts] = useState<ExplorationAreaCostForStart[]>([]);
@@ -88,15 +107,25 @@ export function ExplorationStartClient({
 
   useEffect(() => {
     if (!selectedAreaId && areaOptions.length > 0) {
-      setSelectedAreaId(areaOptions[0].id);
+      const saved =
+        typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY_AREA) : null;
+      const valid =
+        saved && areaOptions.some((a) => a.id === saved) ? saved : null;
+      setSelectedAreaId(valid ?? areaOptions[0].id);
     } else if (selectedAreaId && !areaOptions.some((a) => a.id === selectedAreaId)) {
-      // テーマ変更などで現在のエリアが候補から外れた場合、先頭に差し替える
       setSelectedAreaId(areaOptions[0]?.id);
     }
   }, [areaOptions, selectedAreaId]);
 
   useEffect(() => {
-    if (!selectedPresetId && presetOptions.length > 0) {
+    if (presetOptions.length === 0) return;
+    if (!selectedPresetId) {
+      const saved =
+        typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY_PRESET) : null;
+      const valid =
+        saved && presetOptions.some((p) => p.id === saved) ? saved : null;
+      setSelectedPresetId(valid ?? presetOptions[0].id);
+    } else if (!presetOptions.some((p) => p.id === selectedPresetId)) {
       setSelectedPresetId(presetOptions[0].id);
     }
   }, [presetOptions, selectedPresetId]);
@@ -133,6 +162,18 @@ export function ExplorationStartClient({
     () => (selectedConsumableItemId ? consumablesWithLimit.find((s) => s.itemId === selectedConsumableItemId) : null),
     [consumablesWithLimit, selectedConsumableItemId]
   );
+
+  useEffect(() => {
+    if (selectedConsumableItemId && consumablesWithLimit.length > 0) {
+      const found = consumablesWithLimit.find((s) => s.itemId === selectedConsumableItemId);
+      if (!found) {
+        setSelectedConsumableItemId("");
+        setCarryQuantity(0);
+      } else {
+        setCarryQuantity((q) => Math.min(q, found.maxCarry));
+      }
+    }
+  }, [consumablesWithLimit, selectedConsumableItemId]);
 
   const handleStart = () => {
     if (!canStart || !selectedAreaId || !selectedPresetId) return;
@@ -183,7 +224,13 @@ export function ExplorationStartClient({
               id="exploration-theme"
               className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
               value={selectedThemeId ?? ""}
-              onChange={(e) => setSelectedThemeId(e.target.value || undefined)}
+              onChange={(e) => {
+                const v = e.target.value || undefined;
+                setSelectedThemeId(v);
+                if (v && typeof window !== "undefined") {
+                  localStorage.setItem(STORAGE_KEY_THEME, v);
+                }
+              }}
               disabled={themes.length === 0 || isPending}
             >
               {themes.length === 0 ? (
@@ -211,7 +258,13 @@ export function ExplorationStartClient({
               id="exploration-area"
               className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
               value={selectedAreaId ?? ""}
-              onChange={(e) => setSelectedAreaId(e.target.value || undefined)}
+              onChange={(e) => {
+                const v = e.target.value || undefined;
+                setSelectedAreaId(v);
+                if (v && typeof window !== "undefined") {
+                  localStorage.setItem(STORAGE_KEY_AREA, v);
+                }
+              }}
               disabled={areaOptions.length === 0 || isPending}
             >
               {areaOptions.length === 0 ? (
@@ -260,7 +313,13 @@ export function ExplorationStartClient({
               id="exploration-preset"
               className="flex-1 rounded-md border border-base-border bg-base px-2 py-1.5 text-sm text-text-primary"
               value={selectedPresetId ?? ""}
-              onChange={(e) => setSelectedPresetId(e.target.value || undefined)}
+              onChange={(e) => {
+                const v = e.target.value || undefined;
+                setSelectedPresetId(v);
+                if (v && typeof window !== "undefined") {
+                  localStorage.setItem(STORAGE_KEY_PRESET, v);
+                }
+              }}
               disabled={presetOptions.length === 0 || isPending}
             >
               {presetOptions.length === 0 ? (
@@ -300,10 +359,14 @@ export function ExplorationStartClient({
                     const id = e.target.value || "";
                     setSelectedConsumableItemId(id);
                     setCarryQuantity(0);
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem(STORAGE_KEY_CONSUMABLE_ITEM, id);
+                      localStorage.setItem(STORAGE_KEY_CONSUMABLE_QUANTITY, "0");
+                    }
                   }}
                   disabled={isPending}
                 >
-                  <option value="">持たない</option>
+                  <option value="">—</option>
                   {consumablesWithLimit.map((s) => (
                     <option key={s.itemId} value={s.itemId}>
                       {s.name}
@@ -319,7 +382,11 @@ export function ExplorationStartClient({
                       value={carryQuantity}
                       onChange={(e) => {
                         const v = parseInt(e.target.value, 10);
-                        setCarryQuantity(Number.isNaN(v) ? 0 : Math.max(0, Math.min(selectedConsumable.maxCarry, v)));
+                        const q = Number.isNaN(v) ? 0 : Math.max(0, Math.min(selectedConsumable.maxCarry, v));
+                        setCarryQuantity(q);
+                        if (typeof window !== "undefined") {
+                          localStorage.setItem(STORAGE_KEY_CONSUMABLE_QUANTITY, String(q));
+                        }
                       }}
                       className="w-14 shrink-0 rounded border border-base-border bg-base px-1.5 py-1 text-right text-sm tabular-nums text-text-primary"
                       disabled={isPending}

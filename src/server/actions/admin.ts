@@ -388,6 +388,51 @@ export async function getAdminCurrencyHistory(
   };
 }
 
+export type AdminItemUsageLogRow = {
+  id: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  quantity: number;
+  reason: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  createdAt: Date;
+};
+
+/** 指定ユーザーの ItemUsageLog 一覧（createdAt 降順）。運営ビュー用。docs/081 */
+export async function getAdminItemUsageHistory(
+  userId: string
+): Promise<{ user: { id: string; email: string; name: string }; logs: AdminItemUsageLogRow[] } | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true },
+  });
+  if (!user) return null;
+  const rows = await prisma.itemUsageLog.findMany({
+    where: { userId },
+    include: { item: { select: { id: true, code: true, name: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  return {
+    user: { id: user.id, email: user.email, name: user.name },
+    logs: rows.map((r) => ({
+      id: r.id,
+      itemId: r.itemId,
+      itemCode: r.item.code,
+      itemName: r.item.name,
+      quantity: r.quantity,
+      reason: r.reason,
+      referenceType: r.referenceType,
+      referenceId: r.referenceId,
+      createdAt: r.createdAt,
+    })),
+  };
+}
+
 /**
  * アイテム一覧（管理用）。テストユーザー1のみ。
  */
@@ -815,7 +860,7 @@ export async function updateAdminItem(
   const code = input.code.trim();
   const name = input.name.trim();
   if (!code || !name) return { success: false, error: "code と name は必須です。" };
-  if (!ITEM_CATEGORIES.includes(input.category as "material" | "consumable" | "blueprint" | "skill_book" | "paid")) {
+  if (!ITEM_CATEGORIES.includes(input.category as "material" | "consumable" | "blueprint" | "skill_book" | "special")) {
     return { success: false, error: "不正な category です。" };
   }
 
@@ -891,7 +936,7 @@ export async function createAdminItem(
   const code = input.code.trim();
   const name = input.name.trim();
   if (!code || !name) return { success: false, error: "code と name は必須です。" };
-  if (!ITEM_CATEGORIES.includes(input.category as "material" | "consumable" | "blueprint" | "skill_book" | "paid")) {
+  if (!ITEM_CATEGORIES.includes(input.category as "material" | "consumable" | "blueprint" | "skill_book" | "special")) {
     return { success: false, error: "不正な category です。" };
   }
 
@@ -1752,7 +1797,7 @@ export async function createAdminFacilityType(
   });
   if (existing) return { success: false, error: "この name は既に使用されています。" };
 
-  const created = await prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
     const ft = await tx.facilityType.create({
       data: {
         name,
@@ -1761,14 +1806,6 @@ export async function createAdminFacilityType(
         cost,
       },
       select: { id: true },
-    });
-    // spec/047: 建設は型（FacilityVariant）単位。必ず基本型 "base" を作成する。
-    await tx.facilityVariant.create({
-      data: {
-        facilityTypeId: ft.id,
-        variantCode: "base",
-        name: "基本型",
-      },
     });
     return ft;
   });
@@ -1816,7 +1853,7 @@ export async function deleteAdminFacilityType(
   return { success: true };
 }
 
-// --- 設備建設材料（FacilityConstructionRecipeInput, spec/047）---
+// --- 設備建設材料（FacilityTypeConstructionInput, spec/047, docs/078）---
 
 export type AdminFacilityConstructionInputRow = {
   itemId: string;
@@ -1825,15 +1862,8 @@ export type AdminFacilityConstructionInputRow = {
   amount: number;
 };
 
-export type AdminFacilityVariantWithInputs = {
-  facilityVariantId: string;
-  variantCode: string;
-  variantName: string | null;
-  constructionInputs: AdminFacilityConstructionInputRow[];
-};
-
 export type AdminFacilityTypeWithConstruction = AdminFacilityTypeDetail & {
-  variants: AdminFacilityVariantWithInputs[];
+  constructionInputs: AdminFacilityConstructionInputRow[];
 };
 
 export async function getAdminFacilityTypeWithConstruction(
@@ -1850,17 +1880,9 @@ export async function getAdminFacilityTypeWithConstruction(
       kind: true,
       description: true,
       cost: true,
-      facilityVariants: {
-        orderBy: { variantCode: "asc" },
-        select: {
-          id: true,
-          variantCode: true,
-          name: true,
-          constructionInputs: {
-            orderBy: { item: { code: "asc" } },
-            include: { item: { select: { id: true, code: true, name: true } } },
-          },
-        },
+      constructionInputs: {
+        orderBy: { item: { code: "asc" } },
+        include: { item: { select: { id: true, code: true, name: true } } },
       },
     },
   });
@@ -1872,16 +1894,11 @@ export async function getAdminFacilityTypeWithConstruction(
     kind: ft.kind,
     description: ft.description,
     cost: ft.cost,
-    variants: ft.facilityVariants.map((v) => ({
-      facilityVariantId: v.id,
-      variantCode: v.variantCode,
-      variantName: v.name,
-      constructionInputs: v.constructionInputs.map((inp) => ({
-        itemId: inp.itemId,
-        itemCode: inp.item.code,
-        itemName: inp.item.name,
-        amount: inp.amount,
-      })),
+    constructionInputs: ft.constructionInputs.map((inp) => ({
+      itemId: inp.itemId,
+      itemCode: inp.item.code,
+      itemName: inp.item.name,
+      amount: inp.amount,
     })),
   };
 }
@@ -1890,19 +1907,16 @@ export type AdminFacilityConstructionInputEntry = { itemId: string; amount: numb
 
 export async function updateAdminFacilityConstructionInputs(
   facilityTypeId: string,
-  variantCode: string,
   inputs: AdminFacilityConstructionInputEntry[]
 ): Promise<{ success: boolean; error?: string }> {
   const ok = await isTestUser1();
   if (!ok) return { success: false, error: "権限がありません。" };
 
-  const variant = await prisma.facilityVariant.findUnique({
-    where: {
-      facilityTypeId_variantCode: { facilityTypeId, variantCode },
-    },
+  const ft = await prisma.facilityType.findUnique({
+    where: { id: facilityTypeId },
     select: { id: true },
   });
-  if (!variant) return { success: false, error: "指定した型（variant）が見つかりません。" };
+  if (!ft) return { success: false, error: "設備種別が見つかりません。" };
 
   const normalized: { itemId: string; amount: number }[] = [];
   const seen = new Set<string>();
@@ -1925,13 +1939,13 @@ export async function updateAdminFacilityConstructionInputs(
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.facilityConstructionRecipeInput.deleteMany({
-      where: { facilityVariantId: variant.id },
+    await tx.facilityTypeConstructionInput.deleteMany({
+      where: { facilityTypeId },
     });
     if (normalized.length > 0) {
-      await tx.facilityConstructionRecipeInput.createMany({
+      await tx.facilityTypeConstructionInput.createMany({
         data: normalized.map((n) => ({
-          facilityVariantId: variant.id,
+          facilityTypeId,
           itemId: n.itemId,
           amount: n.amount,
         })),
@@ -1941,32 +1955,109 @@ export async function updateAdminFacilityConstructionInputs(
   return { success: true };
 }
 
-/** 設備種別に基本型（variantCode=base）が無い場合に作成する。既に base がある場合はエラー。 */
-export async function createAdminFacilityVariantBase(
-  facilityTypeId: string
+// --- 闇市・黒市（SystemShopItem, docs/079）特別アイテムのみ ---
+
+export type AdminSystemShopRow = {
+  id: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  priceGRA: number;
+  displayOrder: number;
+};
+
+/** 特別カテゴリのアイテム一覧（闇市・黒市の品目選択用）。 */
+export async function getAdminSpecialItems(): Promise<
+  { id: string; code: string; name: string }[] | null
+> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.item.findMany({
+    where: { category: "special" },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, name: true },
+  });
+  return rows;
+}
+
+export async function getAdminSystemShopItems(
+  marketType: "underground" | "black"
+): Promise<AdminSystemShopRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  const rows = await prisma.systemShopItem.findMany({
+    where: { marketType },
+    include: { item: { select: { id: true, code: true, name: true } } },
+    orderBy: { displayOrder: "asc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    itemId: r.itemId,
+    itemCode: r.item.code,
+    itemName: r.item.name,
+    priceGRA: r.priceGRA,
+    displayOrder: r.displayOrder,
+  }));
+}
+
+export async function createAdminSystemShopItem(
+  marketType: "underground" | "black",
+  itemId: string,
+  priceGRA: number,
+  displayOrder: number
 ): Promise<{ success: boolean; error?: string }> {
   const ok = await isTestUser1();
   if (!ok) return { success: false, error: "権限がありません。" };
-
-  const ft = await prisma.facilityType.findUnique({
-    where: { id: facilityTypeId },
-    select: { id: true },
+  const item = await prisma.item.findUnique({
+    where: { id: itemId },
+    select: { category: true },
   });
-  if (!ft) return { success: false, error: "設備種別が見つかりません。" };
+  if (!item) return { success: false, error: "アイテムが見つかりません。" };
+  if (item.category !== "special") {
+    return { success: false, error: "闇市・黒市では特別カテゴリのアイテムのみ登録できます。" };
+  }
+  if (!Number.isInteger(priceGRA) || priceGRA < 1) {
+    return { success: false, error: "価格は1以上の整数で指定してください。" };
+  }
+  try {
+    await prisma.systemShopItem.create({
+      data: { marketType, itemId, priceGRA, displayOrder },
+    });
+    return { success: true };
+  } catch (e) {
+    const isUnique = e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002";
+    return {
+      success: false,
+      error: isUnique ? "このアイテムは既に登録されています。" : "登録に失敗しました。",
+    };
+  }
+}
 
-  const existing = await prisma.facilityVariant.findUnique({
-    where: { facilityTypeId_variantCode: { facilityTypeId, variantCode: "base" } },
-    select: { id: true },
+export async function updateAdminSystemShopItem(
+  id: string,
+  priceGRA: number,
+  displayOrder: number
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  if (!Number.isInteger(priceGRA) || priceGRA < 1) {
+    return { success: false, error: "価格は1以上の整数で指定してください。" };
+  }
+  const existing = await prisma.systemShopItem.findUnique({ where: { id } });
+  if (!existing) return { success: false, error: "販売品が見つかりません。" };
+  await prisma.systemShopItem.update({
+    where: { id },
+    data: { priceGRA, displayOrder },
   });
-  if (existing) return { success: false, error: "基本型は既に存在します。" };
+  return { success: true };
+}
 
-  await prisma.facilityVariant.create({
-    data: {
-      facilityTypeId,
-      variantCode: "base",
-      name: "基本型",
-    },
-  });
+export async function deleteAdminSystemShopItem(id: string): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const existing = await prisma.systemShopItem.findUnique({ where: { id } });
+  if (!existing) return { success: false, error: "販売品が見つかりません。" };
+  await prisma.systemShopItem.delete({ where: { id } });
   return { success: true };
 }
 

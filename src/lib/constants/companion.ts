@@ -1,7 +1,7 @@
-// spec/030, docs/13, docs/076: 仲間雇用まわりの定数（GRA のみ）
+// spec/030, docs/13, docs/079/081: 仲間雇用まわりの定数（推薦紹介状で仲間追加）
 
-/** 雇用可能回数 1 回分の GRA 価格（無償→有償の順で消費） */
-export const COMPANION_HIRE_PRICE_PREMIUM = 100;
+/** 推薦紹介状の Item.code。このアイテムを1消費して仲間を1体追加する。 */
+export const LETTER_OF_RECOMMENDATION_ITEM_CODE = "letter_of_recommendation";
 
-/** 1 アカウントが持てる仲間の上限 */
-export const COMPANION_MAX_COUNT = 10;
+/** 1 アカウントが持てる仲間の上限（デフォルト値・フォールバック用）。ユーザー別は User.companionLimit。 */
+export const COMPANION_MAX_COUNT = 5;

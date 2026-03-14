@@ -96,6 +96,36 @@ export function generateEquipmentStatsFromConfig(
 }
 
 /**
+ * 指定した cap を重みで按分して戦闘用ステ補正を生成する。spec/084 鍛錬用。
+ * 重みは config.weights の範囲で乱数し、その cap を按分配分する。
+ */
+export function generateEquipmentStatsWithFixedCap(
+  config: EquipmentStatGenConfig,
+  cap: number
+): Record<string, number> | null {
+  if (!config.weights.length || cap < 0) return null;
+
+  const weightValues: { key: EquipmentStatKey; weight: number }[] = config.weights.map((w) => ({
+    key: w.key,
+    weight: randomInt(Math.max(1, w.weightMin), w.weightMax),
+  }));
+  const totalWeight = weightValues.reduce((s, x) => s + x.weight, 0);
+  if (totalWeight <= 0) return null;
+
+  const result: Record<string, number> = {};
+  let assigned = 0;
+  for (let i = 0; i < weightValues.length; i++) {
+    const isLast = i === weightValues.length - 1;
+    const value = isLast
+      ? cap - assigned
+      : Math.round((cap * weightValues[i].weight) / totalWeight);
+    result[weightValues[i].key] = Math.max(0, value);
+    assigned += result[weightValues[i].key];
+  }
+  return result;
+}
+
+/**
  * 装備種別 code に応じてランダムな戦闘用ステ補正を生成する。
  * 053 移行後は craft では使用しない。seed で statGenConfig を組み立てる参考用。
  */

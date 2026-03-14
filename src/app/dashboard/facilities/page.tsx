@@ -7,6 +7,7 @@ import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { ReceiveAllForm } from "./receive-all-form";
 import { PlaceFacilityForm } from "./place-facility-form";
 import { FacilityRow } from "./facility-row";
+import { UseEmergencyProductionOrderButton } from "./use-emergency-production-order-button";
 
 const FACILITIES_DESCRIPTION =
   "設備配置と生産の管理。設備の確認・生産の受け取り（全設備一括・最大24時間分）。";
@@ -67,7 +68,14 @@ export default async function FacilitiesPage() {
               稼働設備数 <span className="text-success">{usedSlots}</span> / <span className="text-success">{maxSlots}</span>
             </p>
           </div>
-          <ReceiveAllForm hasReceivable={hasReceivable} />
+          <div className="flex flex-wrap items-center gap-2">
+            <UseEmergencyProductionOrderButton
+              emergencyProductionOrderCount={data.emergencyProductionOrderCount}
+              usedSlots={usedSlots}
+              maxSlots={maxSlots}
+            />
+            <ReceiveAllForm hasReceivable={hasReceivable} />
+          </div>
         </div>
 
         {facilities.length === 0 ? (

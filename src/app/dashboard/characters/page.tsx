@@ -1,12 +1,14 @@
-// spec/025_character_list.md - キャラ一覧
+// spec/025_character_list.md - キャラ一覧（居住区）。spec/030: 推薦紹介状で仲間追加
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { getProtagonist } from "@/server/actions/protagonist";
 import { characterRepository } from "@/server/repositories/character-repository";
+import { getCompanionRecruitState } from "@/server/actions/recruit";
 import { getRequiredExpForLevel } from "@/lib/level";
 import { MenuPageHeaderClient } from "../menu-page-header-client";
+import { UseLetterButton } from "./use-letter-button";
 
 const CATEGORY_ORDER = { protagonist: 0, companion: 1, mech: 2 } as const;
 const CATEGORY_LABEL: Record<string, string> = {
@@ -29,7 +31,10 @@ export default async function CharactersListPage() {
   const protagonist = await getProtagonist();
   if (!protagonist) redirect("/character/create");
 
-  const characters = await characterRepository.getCharactersByUserId(session.userId);
+  const [characters, recruitState] = await Promise.all([
+    characterRepository.getCharactersByUserId(session.userId),
+    getCompanionRecruitState(),
+  ]);
   const sorted = [...characters].sort(
     (a, b) =>
       (CATEGORY_ORDER[a.category as keyof typeof CATEGORY_ORDER] ?? 99) -
@@ -97,6 +102,9 @@ export default async function CharactersListPage() {
           ))}
         </ul>
       )}
+
+      {recruitState && <UseLetterButton recruitState={recruitState} />}
+
       <footer className="mt-8 border-t border-base-border pt-4">
         <Link href="/dashboard" className={footerLinkClass}>
           ← 開拓拠点に戻る

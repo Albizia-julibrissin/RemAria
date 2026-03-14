@@ -56,27 +56,18 @@ export function CharacterEquipmentSection({
   const availableForModal =
     modalSlot != null
       ? allEquipment.filter(
-          (e) =>
-            e.slot === modalSlot &&
-            (e.equippedCharacterId === null || e.equippedCharacterId === characterId) &&
-            (modalSlotRow?.equipmentInstanceId == null || e.id !== modalSlotRow.equipmentInstanceId)
+          (e) => e.slot === modalSlot && e.equippedCharacterId === null
         )
       : [];
 
   return (
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
       <h2 className="text-lg font-medium text-text-primary">装備</h2>
-      <p className="mt-1 text-sm text-text-muted">
-        各スロットに装備を装着できます。クラフトで作った装備は倉庫に追加されます。
-      </p>
       <ul className="mt-4 space-y-3">
         {slots.map((row) => {
           const slotLabel = EQUIPMENT_SLOT_LABELS[row.slot as keyof typeof EQUIPMENT_SLOT_LABELS] ?? row.slot;
           const available = allEquipment.filter(
-            (e) =>
-              e.slot === row.slot &&
-              (e.equippedCharacterId === null || e.equippedCharacterId === characterId) &&
-              e.id !== row.equipmentInstanceId
+            (e) => e.slot === row.slot && e.equippedCharacterId === null
           );
           return (
             <li

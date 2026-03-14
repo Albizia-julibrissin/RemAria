@@ -40,7 +40,7 @@ docs/054 の研究解放を管理する。ResearchGroup（グループ）・Rese
 
 - **targetType**: `facility_type`（設備型）または `craft_recipe`（クラフトレシピ）。
 - **targetId**: FacilityType.id または CraftRecipe.id。
-- **isVariant**: 派生型なら true。グループクリア判定は「派生型以外」をすべて解放済みかで行う（docs/054）。
+- **isVariant**: 派生型なら true。**設備（facility_type）では使わない**（docs/078 で設備派生型廃止。クラフトレシピのみ有効）。グループクリア判定は「派生型以外」をすべて解放済みかで行う（docs/054）。
 
 ---
 

@@ -16,7 +16,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_MAX_LEN = 255;
 const ACCOUNT_ID_REGEX = /^[a-zA-Z0-9_]+$/;
 const ACCOUNT_ID_MIN_LEN = 3;
-const ACCOUNT_ID_MAX_LEN = 32;
+const ACCOUNT_ID_MAX_LEN = 24;
 const PASSWORD_MIN_LEN = 8;
 const PASSWORD_MAX_LEN = 72;
 

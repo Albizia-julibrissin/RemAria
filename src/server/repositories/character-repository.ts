@@ -2,7 +2,8 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { INITIAL_PROTAGONIST_STATS } from "@/lib/constants/protagonist";
-import { COMPANION_MAX_COUNT } from "@/lib/constants/companion";
+import { COMPANION_MAX_COUNT, LETTER_OF_RECOMMENDATION_ITEM_CODE } from "@/lib/constants/companion"; // COMPANION_MAX_COUNT はフォールバック用
+import { ITEM_USAGE_REASON_COMPANION_HIRE } from "@/lib/constants/item-usage-reasons";
 
 /** ユーザーの主人公（Character category=protagonist）を取得。いなければ null。表示名は User.name（docs/08） */
 export async function getProtagonistByUserId(userId: string) {
@@ -144,20 +145,36 @@ async function getRandomIndustrialSkillId(tx: { skill: { findMany: (args: { wher
   return skills[Math.floor(Math.random() * skills.length)]!.id;
 }
 
-/** 仲間を1体作成（雇用可能回数 -1、工業スキルをランダム1つ付与）。spec/030 */
-export async function createCompanion(data: {
+/** 推薦紹介状を1消費して仲間を1体作成（工業スキルをランダム1つ付与）。spec/030, docs/081 */
+export async function createCompanionWithLetter(data: {
   userId: string;
   displayName: string;
   iconFilename: string;
 }) {
   return prisma.$transaction(async (tx) => {
+    const item = await tx.item.findUnique({
+      where: { code: LETTER_OF_RECOMMENDATION_ITEM_CODE },
+      select: { id: true },
+    });
+    if (!item) return { success: false as const, error: "NO_ITEM" as const };
+    const inv = await tx.userInventory.findUnique({
+      where: { userId_itemId: { userId: data.userId, itemId: item.id } },
+      select: { quantity: true },
+    });
+    const qty = inv?.quantity ?? 0;
+    if (qty < 1) return { success: false as const, error: "NO_LETTER" as const };
     const user = await tx.user.findUnique({
       where: { id: data.userId },
-      select: { companionHireCount: true },
+      select: { companionLimit: true },
     });
-    if (!user || user.companionHireCount < 1) return { success: false as const, error: "NO_HIRE_COUNT" as const };
+    const limit = user?.companionLimit ?? COMPANION_MAX_COUNT;
     const companionCount = await tx.character.count({ where: { userId: data.userId, category: "companion" } });
-    if (companionCount >= COMPANION_MAX_COUNT) return { success: false as const, error: "COMPANION_LIMIT" as const };
+    if (companionCount >= limit) return { success: false as const, error: "COMPANION_LIMIT" as const };
+
+    await tx.userInventory.update({
+      where: { userId_itemId: { userId: data.userId, itemId: item.id } },
+      data: { quantity: { decrement: 1 } },
+    });
 
     const skillId = await getRandomIndustrialSkillId(tx);
     const character = await tx.character.create({
@@ -175,10 +192,18 @@ export async function createCompanion(data: {
         data: { characterId: character.id, skillId },
       });
     }
-    await tx.user.update({
-      where: { id: data.userId },
-      data: { companionHireCount: { decrement: 1 } },
+
+    await tx.itemUsageLog.create({
+      data: {
+        userId: data.userId,
+        itemId: item.id,
+        quantity: 1,
+        reason: ITEM_USAGE_REASON_COMPANION_HIRE,
+        referenceType: "character",
+        referenceId: character.id,
+      },
     });
+
     return { success: true as const, characterId: character.id };
   });
 }
@@ -245,6 +270,6 @@ export const characterRepository = {
   getCharacterWithSkillsForUser,
   createProtagonist,
   countCompanionsByUserId,
-  createCompanion,
+  createCompanionWithLetter,
   dismissCompanion,
 };

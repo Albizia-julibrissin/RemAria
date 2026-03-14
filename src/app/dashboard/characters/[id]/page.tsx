@@ -14,21 +14,17 @@ import {
   getMechaPartInstancesWithEquipped,
 } from "@/server/actions/mecha-equipment";
 import { getCharacterRelics, getRelicInstances } from "@/server/actions/relic";
+import { getCharacterBattleStats } from "@/server/lib/character-battle-stats";
 import { getRequiredExpForLevel } from "@/lib/level";
 import { DismissCompanionButton } from "./dismiss-companion-button";
 import { CharacterEquipmentSection } from "./character-equipment-section";
 import { MechaEquipmentSection } from "./mecha-equipment-section";
 import { CharacterRelicSection } from "./character-relic-section";
 import { CharacterSkillTabs } from "./character-skill-tabs";
-import { CharacterStatAllocationForm } from "./character-stat-allocation-form";
+import { CharacterStatSection } from "./character-stat-section";
 import { CharacterIconChange } from "./character-icon-change";
 import { getProtagonistIconFilenames } from "@/server/lib/protagonist-icons";
-
-const CATEGORY_LABEL: Record<string, string> = {
-  protagonist: "主人公",
-  companion: "仲間",
-  mech: "メカ",
-};
+import { MenuPageHeaderClient } from "../../menu-page-header-client";
 
 const BASE_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK", "CAP"] as const;
 const BASE_STAT_KEYS_7 = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"] as const;
@@ -93,14 +89,16 @@ export default async function CharacterDetailPage({
 
   const canEquip = character.category === "protagonist" || character.category === "companion";
   const isMech = character.category === "mech";
-  const [characterEquipment, allEquipment, mechaEquipment, allMechaParts, characterRelics, allRelics] = await Promise.all([
-    canEquip ? getCharacterEquipment(character.id) : null,
-    canEquip ? getEquipmentInstancesWithEquipped() : null,
-    isMech ? getMechaEquipment(character.id) : null,
-    isMech ? getMechaPartInstancesWithEquipped() : null,
-    getCharacterRelics(character.id),
-    getRelicInstances(),
-  ]);
+  const [characterEquipment, allEquipment, mechaEquipment, allMechaParts, characterRelics, allRelics, battleStats] =
+    await Promise.all([
+      canEquip ? getCharacterEquipment(character.id) : null,
+      canEquip ? getEquipmentInstancesWithEquipped() : null,
+      isMech ? getMechaEquipment(character.id) : null,
+      isMech ? getMechaPartInstancesWithEquipped() : null,
+      getCharacterRelics(character.id),
+      getRelicInstances(),
+      getCharacterBattleStats(character.id, session.userId),
+    ]);
   const relicSlots = characterRelics.success ? characterRelics.slots : [];
   const allRelicList = allRelics.success ? allRelics.relics : [];
 
@@ -121,111 +119,93 @@ export default async function CharacterDetailPage({
 
   const iconFilenames = getProtagonistIconFilenames();
 
+  const displayName =
+    character.category === "protagonist" && protagonist ? protagonist.displayName : character.displayName;
+  const footerLinkClass =
+    "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
+
   return (
     <main className="min-h-screen bg-base p-8">
+      <MenuPageHeaderClient
+        title="個室"
+        description=""
+        currentPath={`/dashboard/characters/${character.id}`}
+        backHref="/dashboard/characters"
+        backLabel="居住区に戻る"
+        showDestinations={false}
+      />
       <div className="max-w-lg">
-        <h1 className="text-2xl font-bold text-text-primary">
-          {character.category === "protagonist" && protagonist ? protagonist.displayName : character.displayName}
-        </h1>
-        <p className="mt-1 text-sm text-text-muted">{CATEGORY_LABEL[character.category] ?? character.category}</p>
-
-        {!isMech && (
-          <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
-            <h2 className="text-lg font-medium text-text-primary">経験値・レベル</h2>
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <div className="flex justify-between gap-2">
-                <dt className="text-text-muted">レベル</dt>
-                <dd className="font-medium text-text-primary tabular-nums">{character.level}</dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-text-muted">経験値（累計）</dt>
-                <dd className="font-medium text-text-primary tabular-nums">{character.experiencePoints}</dd>
-              </div>
-              <div className="flex justify-between gap-2 col-span-2">
-                <dt className="text-text-muted">次のレベルまで</dt>
-                <dd className="font-medium text-text-primary tabular-nums">
-                  {(() => {
-                    const need = getRequiredExpForLevel(character.level + 1) - character.experiencePoints;
-                    return need <= 0 ? "—" : need;
-                  })()}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        )}
-
-        <div className="mt-6 flex items-start gap-6 rounded-lg border border-base-border bg-base-elevated p-6">
+        <div className="mt-6 flex flex-wrap items-start gap-6 rounded-lg border border-base-border bg-base-elevated p-6">
           <CharacterIconChange
             characterId={character.id}
             currentIconFilename={character.iconFilename}
             iconFilenames={iconFilenames}
           />
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <h2 className="text-lg font-medium text-text-primary">基礎ステータス</h2>
-            <p className="mt-1 text-xs text-text-muted">
-              {isMech ? "列は 基礎・パーツ・遺物 の加算です。" : "列は 基礎・遺物 の加算です。"}
-            </p>
-            <table className="mt-3 w-full min-w-[200px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-base-border text-left text-text-muted">
-                  <th className="py-1 pr-4 font-medium"></th>
-                  <th className="w-14 py-1 text-right font-medium tabular-nums">基礎</th>
-                  {isMech && (
-                    <th className="w-14 py-1 text-right font-medium tabular-nums">パーツ</th>
-                  )}
-                  <th className="w-14 py-1 text-right font-medium tabular-nums">遺物</th>
-                </tr>
-              </thead>
-              <tbody>
-                {BASE_STAT_KEYS.map((key) => {
-                  const baseVal = character[key];
-                  const relAdd = key === "CAP" ? 0 : (relicBonus[key as keyof typeof relicBonus] ?? 0);
-                  const partsAdd = isMech && key !== "CAP" ? (mechaEquipmentBonus?.[key as keyof typeof mechaEquipmentBonus] ?? 0) : 0;
-                  if (key === "CAP") {
-                    return (
-                      <tr key={key} className="border-b border-base-border/70">
-                        <td className="py-1 pr-4 text-text-muted">{key}</td>
-                        <td className="py-1 text-right font-medium tabular-nums text-text-primary">{baseVal}</td>
-                        {isMech && <td className="py-1 text-right tabular-nums text-text-muted">—</td>}
-                        <td className="py-1 text-right tabular-nums text-text-muted">—</td>
-                      </tr>
-                    );
-                  }
-                  return (
-                    <tr key={key} className="border-b border-base-border/70">
-                      <td className="py-1 pr-4 text-text-muted">{key}</td>
-                      <td className="py-1 text-right font-medium tabular-nums text-text-primary">{baseVal}</td>
-                      {isMech && (
-                        <td className="py-1 text-right tabular-nums text-text-primary">
-                          {partsAdd > 0 ? <span className="text-green-600 dark:text-green-400">+{partsAdd}</span> : "+0"}
-                        </td>
-                      )}
-                      <td className="py-1 text-right tabular-nums text-text-primary">
-                        {relAdd > 0 ? <span className="text-amber-600 dark:text-amber-400">+{relAdd}</span> : "+0"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-text-primary">{displayName}</p>
+            {battleStats && (
+              <>
+                <p className="mt-1 text-sm font-medium text-text-primary tabular-nums">戦闘力 {battleStats.combatPower.toLocaleString()}</p>
+                <p className="mt-1 text-sm tabular-nums">
+                  <span className="text-text-muted">HP </span>
+                  <span className="font-medium text-green-600 dark:text-green-400">{battleStats.derived.HP.toLocaleString()}</span>
+                  <span className="text-text-muted"> MP </span>
+                  <span className="font-medium text-blue-600 dark:text-blue-400">{battleStats.derived.MP.toLocaleString()}</span>
+                </p>
+              </>
+            )}
+            {isMech ? (
+              <>
+                <p className="mt-2 text-sm font-medium text-text-primary tabular-nums">レベル {character.level ?? 1}</p>
+                <p className="mt-1 text-sm text-text-muted tabular-nums">経験値 — / —</p>
+                <div className="mt-1 h-2 rounded-full overflow-hidden bg-base-border">
+                  <div className="h-full w-full bg-error" aria-hidden />
+                </div>
+              </>
+            ) : (
+              (() => {
+                const lv = character.level ?? 1;
+                const totalExp = character.experiencePoints ?? 0;
+                const currentLevelExp = getRequiredExpForLevel(lv);
+                const nextLevelExp = getRequiredExpForLevel(lv + 1);
+                const gainedInLevel = Math.max(0, totalExp - currentLevelExp);
+                const neededThisLevel = Math.max(1, nextLevelExp - currentLevelExp);
+                const ratio = Math.max(0, Math.min(1, gainedInLevel / neededThisLevel));
+                return (
+                  <>
+                    <p className="mt-2 text-sm font-medium text-text-primary tabular-nums">レベル {lv}</p>
+                    <p className="mt-1 text-sm text-text-muted tabular-nums">
+                      経験値 {gainedInLevel.toLocaleString()} / {neededThisLevel.toLocaleString()}
+                    </p>
+                    <div className="mt-1 h-2 rounded-full overflow-hidden bg-base-border">
+                      <div
+                        className="h-full bg-brass transition-[width]"
+                        style={{ width: `${ratio * 100}%` }}
+                      />
+                    </div>
+                  </>
+                );
+              })()
+            )}
           </div>
         </div>
 
-        {!isMech && (
-          <CharacterStatAllocationForm
-            characterId={character.id}
-            cap={character.CAP}
-            initialValues={{
-              STR: character.STR,
-              INT: character.INT,
-              VIT: character.VIT,
-              WIS: character.WIS,
-              DEX: character.DEX,
-              AGI: character.AGI,
-              LUK: character.LUK,
-            }}
-          />
-        )}
+        <CharacterStatSection
+          characterId={character.id}
+          character={{
+            STR: character.STR,
+            INT: character.INT,
+            VIT: character.VIT,
+            WIS: character.WIS,
+            DEX: character.DEX,
+            AGI: character.AGI,
+            LUK: character.LUK,
+            CAP: character.CAP,
+          }}
+          isMech={isMech}
+          relicBonus={relicBonus}
+          mechaEquipmentBonus={mechaEquipmentBonus}
+        />
 
         {(battleSkills.length > 0 || industrialSkills.length > 0) && (
           <CharacterSkillTabs battleSkills={battleSkills} industrialSkills={industrialSkills} />
@@ -261,12 +241,12 @@ export default async function CharacterDetailPage({
           </div>
         )}
 
-        <p className="mt-8">
-          <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover text-sm">
-            ← キャラ一覧へ
-          </Link>
-        </p>
       </div>
+      <footer className="mt-8 border-t border-base-border pt-4">
+        <Link href="/dashboard/characters" className={footerLinkClass}>
+          ← 居住区に戻る
+        </Link>
+      </footer>
     </main>
   );
 }

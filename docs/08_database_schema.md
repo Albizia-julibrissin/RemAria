@@ -29,8 +29,8 @@
 | lastActiveAt | DateTime | NULL可 | 最終アクティブ日時（※下記）。直近5分のプレイ中人数・管理画面で参照。 |
 | locale | String | NULL可 | 表示言語 |
 | protagonistCharacterId | String | NULL可, UNIQUE, FK→Character.id | 主人公1体（category=protagonist）。登録時または初回キャラ作成時に設定。 |
-| companionHireCount | Int | NOT NULL, default 0 | 仲間雇用可能回数（購入で+1、仲間作成で-1）。spec/030。 |
 | partyPresetLimit | Int | NOT NULL, default 5 | パーティプリセットの最大所持数（作戦室）。将来は課金等でユーザごとに増やせる想定。spec/039。 |
+| companionLimit | Int | NOT NULL, default 5 | 仲間の上限（ユーザーごと）。docs/082。管理・課金で増枠可。 |
 | researchPoint | Int | NOT NULL, default 0 | 研究記録書の所持数。クエスト報酬等で加算、研究解放で消費。表示名は「研究記録書」。docs/054。 |
 
 **アカウント登録時の入力項目**
@@ -194,6 +194,23 @@
 
 **リレーション**: User N対1
 
+### 1.8.1 ItemUsageLog（特別アイテム使用履歴・docs/081）
+
+特別アイテム（Item.category = special）を消費したときに 1 件ずつ記録する。理由コードは `src/lib/constants/item-usage-reasons.ts` で管理。取り扱い方針は **docs/081_special_items_policy.md** を参照。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| id | String (cuid) | PK | 主キー |
+| userId | String | NOT NULL, FK→User.id | 対象ユーザー |
+| itemId | String | NOT NULL, FK→Item.id | 消費したアイテム |
+| quantity | Int | NOT NULL | 消費数（正の値） |
+| reason | String | NOT NULL | 理由コード（ITEM_USAGE_REASON_*） |
+| referenceType | String | NULL可 | 参照種別（例: character, facility_instance） |
+| referenceId | String | NULL可 | 参照ID |
+| createdAt | DateTime | NOT NULL, default now() | 発生日時 |
+
+**リレーション**: User N対1、Item N対1。インデックス: userId, (userId, createdAt), itemId。
+
 ### 1.9 Order（購入・決済）
 
 | カラム | 型 | 制約 | 説明 |
@@ -236,7 +253,7 @@ Skill (N) -- targetTagId --> (1) Tag
 FacilityType (N) ----< FacilityTypeTag >---- (N) Tag
 ```
 
-- **User.companionHireCount**：仲間雇用可能回数。購入で+1、仲間作成で-1（spec/030）。
+- **仲間追加**：推薦紹介状（Item.code=letter_of_recommendation）を1消費して仲間を1体作成。spec/030、docs/081。使用履歴は ItemUsageLog。
 - **ChatMessage**：全体チャット（spec/037, docs/022）。直近ログのみ保持。
 - **Tag・FacilityType・FacilityTypeTag**：設備タグと工業スキル効果の対象。docs/15。設備の型（基本型／派生型）は docs/017。初期データは seed で投入。
 

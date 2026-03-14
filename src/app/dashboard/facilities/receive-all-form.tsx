@@ -45,7 +45,7 @@ export function ReceiveAllForm({ hasReceivable }: Props) {
         disabled={isPending || !hasReceivable}
         className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
       >
-        {isPending ? "受け取り中…" : "全設備の生産を受け取る"}
+        {isPending ? "受取中…" : "生産受取"}
       </button>
       <Toast
         open={toastOpen}

@@ -72,10 +72,8 @@ export default async function DashboardPage() {
   const consumableStacks = consumableStacksResult ?? [];
 
   const subMenuLinks = [
-    // 居住区: spec/025_character_list.md
-    { href: "/dashboard/characters", label: "居住区", sub: "キャラクター一覧・詳細", icon: "three-friends" },
-    // 人材局: spec/030_companion_employment.md
-    { href: "/dashboard/recruit", label: "人材局", sub: "仲間を雇用・解雇する", icon: "scroll-quill" },
+    // 居住区: spec/025_character_list.md, spec/030（推薦紹介状で仲間追加）
+    { href: "/dashboard/characters", label: "居住区", sub: "キャラクター一覧・推薦紹介状で仲間追加", icon: "three-friends" },
     // 機工区: spec/035_initial_area_facilities.md, 036_production
     { href: "/dashboard/facilities", label: "機工区", sub: "設備配置と生産の管理", icon: "factory" },
     // 研究局: spec/047_research_unlock_construction.md
@@ -86,6 +84,8 @@ export default async function DashboardPage() {
     { href: "/dashboard/bag", label: "物資庫", sub: "所持アイテムの確認", icon: "wooden-crate" },
     // 開拓任務: spec/054_quests.md
     { href: "/dashboard/quests", label: "開拓任務", sub: "使命・研究・特殊・一般の開拓任務の進捗", icon: "feather" },
+    // 闇市: docs/079（GRA で特別アイテム購入）
+    { href: "/dashboard/underground-market", label: "闇市", sub: "GRA で特別アイテムを購入", icon: "wooden-crate" },
     // 市場: spec/075_market.md（解放時のみ有効）
     { href: "/dashboard/market", label: "市場", sub: "出品・購入", icon: "weight-scale" },
   ] as const;

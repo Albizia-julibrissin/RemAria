@@ -12,7 +12,7 @@ import {
   INITIAL_GRANT_ITEM_CODE,
 } from "@/lib/constants/initial-area";
 import { CURRENCY_REASON_GAME_START } from "@/lib/constants/currency-transaction-reasons";
-import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
+import { EMERGENCY_PRODUCTION_ORDER_ITEM_CODE, PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 import { grantStackableItem } from "@/server/lib/inventory";
 
 export type IndustrialFacility = {
@@ -40,6 +40,8 @@ export type GetIndustrialResult = {
   usedSlots: number;
   usedCost: number;
   facilities: IndustrialFacility[];
+  /** spec/083: 緊急製造指示書の所持数（モーダル表示用） */
+  emergencyProductionOrderCount: number;
 };
 
 /** 強制配置 5 設備が無ければ作成する。冪等。spec/035 */
@@ -74,7 +76,6 @@ export async function ensureInitialFacilities(userId: string): Promise<void> {
       data: {
         userId,
         facilityTypeId,
-        variantCode: "base",
         displayOrder,
         isForced: true,
       },
@@ -171,6 +172,12 @@ export async function getIndustrial(): Promise<GetIndustrialResult | null> {
   });
   const qtyByItemId = new Map(inventories.map((i) => [i.itemId, i.quantity]));
 
+  const emergencyItem = await prisma.item.findUnique({
+    where: { code: EMERGENCY_PRODUCTION_ORDER_ITEM_CODE },
+    select: { id: true },
+  });
+  const emergencyProductionOrderCount = emergencyItem ? qtyByItemId.get(emergencyItem.id) ?? 0 : 0;
+
   const now = new Date();
   let usedCost = 0;
   const facilities: IndustrialFacility[] = instances.map((inst) => {
@@ -223,5 +230,6 @@ export async function getIndustrial(): Promise<GetIndustrialResult | null> {
     usedSlots: facilities.length,
     usedCost,
     facilities,
+    emergencyProductionOrderCount,
   };
 }

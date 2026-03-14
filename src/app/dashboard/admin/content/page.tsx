@@ -50,6 +50,7 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
     links: [
       { href: "/dashboard/admin/research-groups", label: "研究グループ編集" },
       { href: "/dashboard/admin/quests", label: "開拓任務編集" },
+      { href: "/dashboard/admin/underground-market", label: "闇市・黒市編集" },
       { href: "/battle/practice", label: "仮戦闘" },
     ],
   },
@@ -58,6 +59,7 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
     links: [
       { href: "/dashboard/admin/users", label: "登録済みユーザ一覧" },
       { href: "/dashboard/admin/currency-history", label: "通貨履歴（ユーザー別）" },
+      { href: "/dashboard/admin/item-usage-history", label: "特別アイテム使用履歴（ユーザー別）" },
     ],
   },
 ];

@@ -6,9 +6,20 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { executeCraft } from "@/server/actions/craft";
 
-type Props = { recipeId: string; recipeName: string };
+export type CraftedEquipmentData = {
+  name: string;
+  stats: Record<string, number>;
+  statCap: number;
+  capCeiling: number;
+};
 
-export function CraftExecuteButton({ recipeId, recipeName }: Props) {
+type Props = {
+  recipeId: string;
+  recipeName: string;
+  onEquipmentCreated?: (data: CraftedEquipmentData) => void;
+};
+
+export function CraftExecuteButton({ recipeId, recipeName, onEquipmentCreated }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -17,7 +28,22 @@ export function CraftExecuteButton({ recipeId, recipeName }: Props) {
       const result = await executeCraft(recipeId);
       if (result.success) {
         router.refresh();
-        alert(result.message);
+        if (
+          result.equipmentInstanceId &&
+          result.equipmentStats != null &&
+          result.statCap != null &&
+          result.capCeiling != null &&
+          result.equipmentTypeName
+        ) {
+          onEquipmentCreated?.({
+            name: result.equipmentTypeName,
+            stats: result.equipmentStats,
+            statCap: result.statCap,
+            capCeiling: result.capCeiling,
+          });
+        } else {
+          alert(result.message);
+        }
       } else {
         alert(result.message);
       }

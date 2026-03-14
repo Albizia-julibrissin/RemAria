@@ -49,7 +49,7 @@
 | 主人公作成 | spec/015_protagonist_creation | `src/server/actions/protagonist.ts`, `src/app/character/create/`, `src/server/lib/protagonist-icons.ts` |
 | 練習戦闘・戦闘実行 | spec/020_test_battle | `src/server/actions/battle.ts`, `src/lib/battle/run-simple-battle.ts`, `src/lib/battle/run-battle-with-party.ts`, `src/lib/battle/default-enemy.ts` |
 | キャラ一覧 | spec/025_character_list | `src/app/dashboard/characters/`, `src/server/repositories/character-repository.ts` |
-| 仲間雇用・解雇 | spec/030_companion_employment | `src/server/actions/recruit.ts`, `src/app/dashboard/recruit/`, `src/lib/constants/companion.ts` |
+| 仲間雇用・解雇 | spec/030_companion_employment | 居住区で推薦紹介状を消費して仲間追加（人材局廃止）。`src/server/actions/recruit.ts`（getCompanionRecruitState, createCompanion, dismissCompanionAction）, `src/app/dashboard/characters/`（一覧＋「推薦紹介状を使う」）, `src/app/dashboard/characters/create/`, `src/lib/constants/companion.ts`（LETTER_OF_RECOMMENDATION_ITEM_CODE）。解雇はキャラ詳細から。 |
 | 初期設備・生産 | spec/035, 036 | `src/server/actions/initial-area.ts`, `src/server/actions/receive-production.ts`, `src/app/dashboard/facilities/` |
 | チャット | spec/037_chat | `src/server/actions/chat.ts`, `src/components/chat/` |
 | 戦闘スキル・効果 | spec/038 | 上記「2. 戦闘・スキル効果」参照。`run-battle-with-party.ts`, seed BATTLE_SKILL_EFFECTS |
@@ -60,7 +60,7 @@
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |
 | アイテム・所持・バッグ | spec/045_inventory_and_items | `src/server/actions/inventory.ts`（または bag.ts）, `src/app/dashboard/bag/`, schema: Item.category, EquipmentType, EquipmentInstance, CharacterEquipment, MechaPartInstance |
 | アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
-| 研究・解放・建設 | spec/047, **docs/054_quest_and_research_design.md** §4.3.1 | `src/server/actions/facilities-placement.ts`（place/dismantle）, `src/server/actions/research.ts`（研究グループ・解放）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityVariant, UserFacilityTypeUnlock, ResearchGroup, ResearchGroupItem, ResearchUnlockCost, UserCraftRecipeUnlock |
+| 研究・解放・建設 | spec/047, **docs/054_quest_and_research_design.md** §4.3.1 | `src/server/actions/facilities-placement.ts`（place/dismantle）, `src/server/actions/research.ts`（研究グループ・解放）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityTypeConstructionInput, UserFacilityTypeUnlock, ResearchGroup, ResearchGroupItem, ResearchUnlockCost, UserCraftRecipeUnlock |
 | 遺物（4枠・鑑定・効果・戦闘耐性） | spec/051_relics | `src/server/actions/relic.ts`, `src/lib/constants/relic.ts`, `src/app/dashboard/bag/`（遺物タブ）, `src/app/dashboard/characters/[id]/character-relic-section.tsx`, schema: RelicType, RelicPassiveEffect, RelicInstance, CharacterRelic。戦闘は `src/server/actions/battle.ts` で遺物耐性を partyInput に渡す。 |
 | 戦闘時有効基礎ステ（遺物補正・メカパーツ加算・フレーム倍率） | spec/069_battle_effective_base_stats | `src/lib/battle/effective-base-stats.ts`（純粋関数）, `src/server/actions/battle.ts`（データ取得・有効基礎の組み立て）。実装フェーズは docs/070。 |
 | 称号（マスタ・ユーザ解放） | spec/055_titles | `src/server/actions/titles.ts`（getTitleList, getMyUnlockedTitleIds, unlockTitleForUser）, schema: Title, UserTitleUnlock。シードで「開拓者」1件投入。 |
@@ -72,6 +72,8 @@
 | 任務による機能解放（テーマ・研究グループ） | spec/068_quest_unlock_themes_and_research, **docs/068_quest_unlock_themes_and_research.md** | 報告時に UserExplorationThemeUnlock / UserResearchGroupUnlock に挿入。`getExplorationMenu` でテーマ限定、`getResearchMenu` で isAvailable を任務解放のみに。管理画面で開拓任務に解放テーマ・研究グループを紐づけ。 |
 | 装備の派生戦闘ステ加算（HP/MP 含む） | spec/071_equipment_derived_stats_in_battle | `src/lib/battle/run-battle-with-party.ts`（derivedBonus 加算）、`src/server/actions/battle.ts`（装備取得・合算）。実装プランは **docs/072_equipment_hp_mp_implementation_plan.md**。 |
 | 市場（出品・購入・最安消化・手数料） | spec/075_market, **docs/065_market_design.md** | **Phase 1・2・3 実装済み**。User.marketUnlocked、Item.marketListable / marketMin、MarketListing / MarketTransaction / MarketListingEvent。購入・出品・取下げ・履歴の 4 画面、有効期限・期限切れ自動取下げ、価格履歴、同時出品数上限。**通貨履歴強化**（Phase 3）：CurrencyTransaction に beforeBalance/afterBalance、reason コード化、運営ビューは管理画面「通貨履歴（ユーザー別）」で確認。`src/server/actions/market.ts`、`src/lib/constants/market.ts`、`src/lib/constants/currency-transaction-reasons.ts`、`src/app/dashboard/market/`、`src/app/dashboard/admin/currency-history/`。 |
+| **特別アイテム（闇市・黒市・使用履歴）** | **docs/079**, **docs/081_special_items_policy.md** | 闇市・黒市は `src/server/actions/underground-market.ts`、`src/app/dashboard/underground-market/`。**特別アイテムを消費する機能**を実装するときは **docs/081** を参照し、所持減算に加えて **ItemUsageLog** に 1 件記録する。理由コードは `src/lib/constants/item-usage-reasons.ts` で管理（新規理由はここに追加してからログを書く）。 |
+| **緊急製造指示書（全設備2時間加速）** | **spec/083_emergency_production_order**, docs/065 §7 | 1 枚消費で全設備の lastProducedAt を 2 時間前に更新。`useEmergencyProductionOrder`（新規 Action）、getIndustrial 拡張（所持数）、設備画面にボタン・モーダル。`src/lib/constants/production.ts`（EMERGENCY_PRODUCTION_ACCELERATION_MINUTES）、ItemUsageLog reason=facility_speed。 |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
 
@@ -89,6 +91,7 @@
 | 遺物・装備の戦闘反映 | `spec/051`, `spec/069`, `spec/071`, `src/server/actions/battle.ts`, `src/lib/battle/effective-base-stats.ts` |
 | データモデル・スキーマ変更 | `prisma/schema.prisma`, `docs/08_database_schema.md`, 該当 spec |
 | **スキル追加（新規スキル・効果の登録）** | `docs/content-guides/skill_addition_guide.md`, `spec/038`, `docs/042_battle_effect_types_reference.md`, 必要なら `prisma/seed.ts` の BATTLE_SKILL_EFFECTS |
+| **緊急製造指示書（設備2時間加速）** | `spec/083_emergency_production_order.md`, `docs/065_special_items_and_facility_speed.md` §7, `src/server/actions/initial-area.ts`（getIndustrial）, `src/app/dashboard/characters/use-letter-button.tsx`（UI 参照） |
 
 ※ `docs/ideas/` は実装判断に使わない。`docs/14_*_draft` は設計メモであり実装の正本ではない（正本は spec/038 と 042）。
 

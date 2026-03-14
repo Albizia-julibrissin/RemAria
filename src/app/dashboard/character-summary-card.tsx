@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getRequiredExpForLevel } from "@/lib/level";
 import { GraDisplay } from "@/components/currency/gra-display";
+
+const STORAGE_KEY_CHARACTER = "remaria-dashboard-last-character-id";
 
 type CharacterSummary = {
   id: string;
@@ -31,7 +33,19 @@ export function CharacterSummaryCard({ characters, balances }: CharacterSummaryC
   const defaultId =
     options.find((c) => c.category === "protagonist")?.id ?? options[0]?.id ?? null;
 
-  const [selectedId, setSelectedId] = useState<string | null>(defaultId);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return defaultId;
+    const saved = localStorage.getItem(STORAGE_KEY_CHARACTER);
+    return saved && options.some((c) => c.id === saved) ? saved : defaultId;
+  });
+
+  useEffect(() => {
+    if (options.length === 0) return;
+    if (selectedId && !options.some((c) => c.id === selectedId)) {
+      const next = options.find((c) => c.category === "protagonist")?.id ?? options[0]?.id ?? null;
+      setSelectedId(next);
+    }
+  }, [options, selectedId]);
 
   if (!options.length || !selectedId) return null;
 
@@ -65,7 +79,13 @@ export function CharacterSummaryCard({ characters, balances }: CharacterSummaryC
             <select
               id="dashboard-character-summary-select"
               value={selected.id}
-              onChange={(e) => setSelectedId(e.target.value || null)}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setSelectedId(v);
+                if (typeof window !== "undefined" && v) {
+                  localStorage.setItem(STORAGE_KEY_CHARACTER, v);
+                }
+              }}
               className="w-full max-w-[9rem] rounded-md border border-base-border bg-base px-2 py-1 text-xs text-text-primary"
             >
               {options.map((c) => (

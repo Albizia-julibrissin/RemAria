@@ -93,10 +93,10 @@ export function AdminResearchGroupEditForm({ data }: Props) {
     setItemsSaveMessage(null);
     const payload = editableItems
       .filter((i) => i.targetId.trim())
-      .map((i, idx) => ({
+      .map((i) => ({
         targetType: i.targetType,
         targetId: i.targetId,
-        isVariant: i.isVariant,
+        isVariant: false,
         displayOrder: i.displayOrder,
       }));
     saveAdminResearchGroupItems(group.id, payload).then((result) => {
@@ -278,7 +278,7 @@ export function AdminResearchGroupEditForm({ data }: Props) {
       <section className="rounded border border-base-border bg-base-elevated p-4">
         <h2 className="text-lg font-medium text-text-primary">解放対象（設備型 / クラフトレシピ）</h2>
         <p className="mt-1 text-sm text-text-muted">
-          このグループに含める解放対象を追加します。派生型は isVariant をオンに。
+          このグループに含める解放対象を追加します。
         </p>
         {itemsSaveMessage && (
           <p
@@ -296,9 +296,6 @@ export function AdminResearchGroupEditForm({ data }: Props) {
                 </th>
                 <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium">
                   対象
-                </th>
-                <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
-                  派生型
                 </th>
                 <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-16">
                   順
@@ -319,7 +316,11 @@ export function AdminResearchGroupEditForm({ data }: Props) {
                         const opts = t === "facility_type" ? facilityTypes : craftRecipes;
                         const id = opts[0]?.id ?? "";
                         const targetName = opts[0]?.name ?? "";
-                        updateItem(row.tempId, { targetType: t, targetId: id, targetName });
+                        updateItem(row.tempId, {
+                          targetType: t,
+                          targetId: id,
+                          targetName,
+                        });
                       }}
                       className="rounded border border-base-border bg-base px-2 py-1 text-text-primary w-full"
                     >
@@ -343,13 +344,6 @@ export function AdminResearchGroupEditForm({ data }: Props) {
                         )
                       )}
                     </select>
-                  </td>
-                  <td className="border border-base-border px-2 py-1.5">
-                    <input
-                      type="checkbox"
-                      checked={row.isVariant}
-                      onChange={(e) => updateItem(row.tempId, { isVariant: e.target.checked })}
-                    />
                   </td>
                   <td className="border border-base-border px-2 py-1.5">
                     <input

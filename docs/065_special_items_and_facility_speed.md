@@ -78,3 +78,85 @@
 - `spec/054_quests.md`（開拓任務・報酬仕様の拡張）
 - `spec/035` / `spec/036`（設備・生産受け取り）
 - `docs/026_user_inventory_and_items.md` 2.8 課金アイテム・4.3 Later
+
+---
+
+## 7. 緊急製造指示書の実装仕様（2時間加速）
+
+アイテムコード **`emergency_production_order`**（緊急製造指示書）を **1 枚**消費し、**設置済みの全設備**の生産を **2 時間分**加速する。  
+設備ドキュメントの拡張として本節で仕様を固定する。
+
+### 7.1 効果の定義
+
+- **「2時間分加速」の意味**  
+  対象設備の **最終生産消化時刻（lastProducedAt）** を **2 時間前に進める**（= 過去にずらす）。  
+  つまり `lastProducedAt_new = lastProducedAt_old - 2時間`（NULL のときは「経過の開始時刻」として使っている値＝User.createdAt または FacilityInstance.createdAt から 2 時間前へ）。
+- **結果**  
+  次回「受け取り」を行ったとき、その設備の「経過時間」が実質 2 時間分多くカウントされ、docs/019 のルールで計算されるサイクル数が増える（＝2 時間分の生産が前倒しで受け取れる）。
+
+### 7.2 対象・消費
+
+| 項目 | 内容 |
+|------|------|
+| **対象** | ユーザーが所有する **設置済み設備すべて**（全 FacilityInstance）。強制配置・追加配置の区別なし。 |
+| **消費** | 緊急製造指示書 **1 枚**で、**全設備**に 2 時間分加速がかかる。 |
+| **アイテム** | Item マスタで code = `emergency_production_order` のアイテム。category は特別（special）想定。 |
+
+### 7.3 lastProducedAt の更新ルール
+
+- **基準値（設備ごと）**  
+  `effectiveStart = inst.lastProducedAt ?? (inst.isForced ? user.createdAt : inst.createdAt)`
+- **更新後**  
+  `newLastProducedAt = effectiveStart - 2時間`
+- **下限クランプについて**  
+  `newLastProducedAt` を **FacilityInstance.createdAt**（強制配置の場合は **User.createdAt**）より前にしないクランプは、**必須ではない**。  
+  - クランプを**しない**場合：設置直後の設備にも「2時間分」がそのまま付与され、**1枚で全設備に必ず2時間分**という扱いで統一できる。  
+  - クランプを**する**場合：設置から 2 時間未満の設備は「経過分だけ」加速となり、効果が設備ごとにばらつく。  
+  **採用方針**：シンプルに「1枚＝全設備に2時間分」とするなら、**クランプは行わない**（`newLastProducedAt` が設備の存在時刻より前になっても許容する）。技術的な不具合はなく、存在しなかった期間に経過を付与するのは経済バランスの判断のみ。
+
+### 7.4 API・処理フロー（案）
+
+1. セッション検証（getSession）。
+2. 当該ユーザーの **全** FacilityInstance を取得（0 件でもよい）。
+3. 緊急製造指示書（code = `emergency_production_order`）の所持が 1 以上あることを確認。
+4. 各設備について 7.3 のルールで `newLastProducedAt` を算出し、**全設備**の `FacilityInstance.lastProducedAt` を更新（設備 0 件の場合は更新処理なし）。
+5. UserInventory から当該アイテムを 1 減算。
+6. **特別アイテム使用履歴**（docs/081）：`ItemUsageLog` に 1 件挿入。  
+   - `reason` = `ITEM_USAGE_REASON_FACILITY_SPEED`  
+   - `referenceType` = `"all_facilities"`（または null）、`referenceId` = null（全設備一括のため個別 id は持たない）  
+   - `quantity` = 1
+7. トランザクションで 4〜6 を一括実行（在庫減算と lastProducedAt 一括更新の整合性のため）。
+
+### 7.5 定数
+
+- **加速分数**  
+  `src/lib/constants/production.ts` に `EMERGENCY_PRODUCTION_ACCELERATION_MINUTES = 120` を追加し、ここを正本とする。
+- **アイテムコード**  
+  マスタは `emergency_production_order` で登録済みを前提。コード参照は定数化（例：`src/lib/constants/item-codes.ts` や既存のアイテム定数）してもよい。
+
+### 7.6 UI（居住区・推薦紹介状と同じパターン）
+
+- **場所**  
+  設備画面（`/dashboard/facilities`）。**画面に 1 つ**「緊急製造指示書を使う」ボタンを配置（設備ごとではなく一括用）。
+- **ボタン**  
+  **所持数に関係なく常に押せる**（0 枚でも無効化しない）。押すとモーダルを開く。
+- **モーダル内容**  
+  - **所持枚数**を表示（例：「所持枚数 ○○ 枚」）。  
+  - 枚数が **0 のとき**：「黒市で黒市後援契約を購入すると支給されます。」の文言と、**闇市（黒市含む）へのリンク**（`/dashboard/underground-market`、表示は「闇市へ」など）を出す。  
+  - 実行ボタン（例：「使う」「全設備を2時間分加速」）は、**1 枚以上あるときだけ有効**（0 枚のときは disabled）。  
+  - **設置済み設備数が設置上限より少ないとき**は、実行ボタン押下時に「本当に実行しますか？」と確認し、了承した場合のみ実行する。上限いっぱいのときは確認なしで実行。
+- **フィードバック**  
+  実行成功時は「全設備の生産が2時間分進みました」など。設備が 0 件でも使用は成功（効果なし）でよいか、または「設備がありません」で拒否するかは実装で決めてよい。
+- **参照**  
+  居住区の推薦紹介状 UI：`src/app/dashboard/characters/use-letter-button.tsx`（ボタン常時押可 → モーダルで枚数表示 → 0 枚時は闇市誘導）。
+
+### 7.7 エラー・制約
+
+- 緊急製造指示書を 1 枚も所持していない → 「所持していません」など明確なメッセージ。
+- 受け取り処理との同時実行：同じユーザーで「受け取り」と「緊急製造指示書使用」が同時に走らないよう、必要なら在庫またはユーザー単位のロックを検討（現状は 1 リクエストずつで十分なら省略可）。
+
+### 7.8 参照
+
+- **生産・受け取り**：`docs/019_production_receive.md`（lastProducedAt の意味）、`spec/035`・`spec/036`
+- **特別アイテム使用履歴**：`docs/081_special_items_policy.md`、`src/lib/constants/item-usage-reasons.ts`
+- **設備一覧・工業 API**：`spec/035`、`src/server/actions/initial-area.ts`（getIndustrial）、`src/server/actions/receive-production.ts`

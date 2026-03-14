@@ -41,7 +41,7 @@
 ## 2. 用語
 
 - **設置枠・コスト上限**：ユーザー（または Factory）が持つ最大配置数と最大コスト。進行で増加（018）。初期は 5 枠・200 コスト。
-- **設置済み設備（FacilityInstance）**：ユーザーが配置した 1 設備。**設置エリアには属さない**（単一プール）。facilityTypeId と variantCode（基本型='base'）を持つ。
+- **設置済み設備（FacilityInstance）**：ユーザーが配置した 1 設備。**設置エリアには属さない**（単一プール）。facilityTypeId を持つ（docs/078 で派生型廃止のため variantCode は削除済み）。
 - **強制配置**：ゲーム開始時に必ず存在する 5 設備。解体・変更不可。
 - **レシピ（Recipe）**：設備種別ごとの生産仕様（周期・入力素材・出力素材）。資源探索は入力なし・出力のみ。
 
@@ -60,7 +60,7 @@
 | id | String (cuid) | PK |
 | userId | String, FK→User | 所有者 |
 | facilityTypeId | String, FK→FacilityType | 設備種別 |
-| variantCode | String, default 'base' | 基本型='base'。017 の派生型は将来。 |
+| （variantCode は docs/078 で削除済み） | — | 設備は 1 種別 1 建設レシピ。 |
 | displayOrder | Int | 表示順 |
 | isForced | Boolean, default false | 強制配置なら true（解体・変更不可） |
 | lastProducedAt | DateTime, NULL 可 | 最終生産日時（019） |
@@ -120,7 +120,7 @@
 ### ensureInitialFacilities(userId)
 
 1. userId に紐づく FacilityInstance のうち **isForced=true** の件数を取得。
-2. 5 件未満なら、不足分を 川探索・浄水施設・小麦畑・小麦製粉器・携帯食料包装 の facilityTypeId で作成（variantCode='base', displayOrder 1〜5, isForced=true）。既存がある場合は facilityType 名でマッチして並びのみ補正してもよい。最低限「5 件無ければ 5 件作成」でよい。
+2. 5 件未満なら、不足分を 川探索・浄水施設・小麦畑・小麦製粉器・携帯食料包装 の facilityTypeId で作成（displayOrder 1〜5, isForced=true）。既存がある場合は facilityType 名でマッチして並びのみ補正してもよい。最低限「5 件無ければ 5 件作成」でよい。
 3. User または Factory の industrialMaxSlots / industrialMaxCost が未設定なら 5 / 200 をセットする。
 
 ### getIndustrial(userId)

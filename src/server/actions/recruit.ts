@@ -1,28 +1,20 @@
 "use server";
 
-// spec/030_companion_employment.md - 仲間雇用・解雇
+// spec/030_companion_employment.md - 仲間雇用・解雇（推薦紹介状で仲間追加、人材局廃止）
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { characterRepository } from "@/server/repositories/character-repository";
-import { COMPANION_HIRE_PRICE_PREMIUM, COMPANION_MAX_COUNT } from "@/lib/constants/companion";
-import { CURRENCY_REASON_COMPANION_HIRE_PURCHASE } from "@/lib/constants/currency-transaction-reasons";
+import { COMPANION_MAX_COUNT, LETTER_OF_RECOMMENDATION_ITEM_CODE } from "@/lib/constants/companion";
 import { DISPLAY_NAME_MAX_BYTES, DISPLAY_NAME_MAX_CHARS } from "@/lib/constants/protagonist";
 import { getProtagonistIconFilenames } from "@/server/lib/protagonist-icons";
 
-export type CompanionHireState = {
-  companionHireCount: number;
+export type CompanionRecruitState = {
   companionCount: number;
   companionMaxCount: number;
-  premiumFreeBalance: number;
-  premiumPaidBalance: number;
-  pricePremium: number;
+  letterOfRecommendationCount: number;
 };
-
-export type PurchaseCompanionHireResult =
-  | { success: true; companionHireCount: number }
-  | { success: false; error: "INSUFFICIENT_PREMIUM"; message: string; shortfall: number };
 
 export type CreateCompanionResult =
   | { success: true; characterId: string }
@@ -33,112 +25,43 @@ export type DismissCompanionResult =
   | { success: false; error: string; message: string };
 
 function approxUtf8ByteLength(str: string): number {
-  // おおよそ UTF-8 バイト長を求める（ASCII 1 バイト / それ以外 2 バイト扱い）
   return Array.from(str).reduce((sum, ch) => {
     const code = ch.charCodeAt(0);
     return sum + (code <= 0x7f ? 1 : 2);
   }, 0);
 }
 
-/** 雇用斡旋所表示用の状態を取得。spec/030 */
-export async function getCompanionHireState(): Promise<CompanionHireState | null> {
+/** 居住区用：仲間数・上限・推薦紹介状の所持数。spec/030, docs/081, docs/082（上限はユーザー別） */
+export async function getCompanionRecruitState(): Promise<CompanionRecruitState | null> {
   const session = await getSession();
   if (!session.userId) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      companionHireCount: true,
-      premiumCurrencyFreeBalance: true,
-      premiumCurrencyPaidBalance: true,
-    },
-  });
-  if (!user) return null;
-  const companionCount = await characterRepository.countCompanionsByUserId(session.userId);
+  const [companionCount, user, item] = await Promise.all([
+    characterRepository.countCompanionsByUserId(session.userId),
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { companionLimit: true },
+    }),
+    prisma.item.findUnique({
+      where: { code: LETTER_OF_RECOMMENDATION_ITEM_CODE },
+      select: { id: true },
+    }),
+  ]);
+  let letterOfRecommendationCount = 0;
+  if (item) {
+    const inv = await prisma.userInventory.findUnique({
+      where: { userId_itemId: { userId: session.userId, itemId: item.id } },
+      select: { quantity: true },
+    });
+    letterOfRecommendationCount = inv?.quantity ?? 0;
+  }
   return {
-    companionHireCount: user.companionHireCount,
     companionCount,
-    companionMaxCount: COMPANION_MAX_COUNT,
-    premiumFreeBalance: user.premiumCurrencyFreeBalance,
-    premiumPaidBalance: user.premiumCurrencyPaidBalance,
-    pricePremium: COMPANION_HIRE_PRICE_PREMIUM,
+    companionMaxCount: user?.companionLimit ?? COMPANION_MAX_COUNT,
+    letterOfRecommendationCount,
   };
 }
 
-/** 雇用可能回数を 1 購入（GRA のみ。無償→有償の順で消費）。spec/030, docs/076 */
-export async function purchaseCompanionHire(): Promise<PurchaseCompanionHireResult> {
-  const session = await getSession();
-  if (!session.userId) {
-    return { success: false, error: "INSUFFICIENT_PREMIUM", message: "ログインしてください", shortfall: COMPANION_HIRE_PRICE_PREMIUM };
-  }
-  // GRA: 無償→有償の順で消費
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      premiumCurrencyFreeBalance: true,
-      premiumCurrencyPaidBalance: true,
-      companionHireCount: true,
-    },
-  });
-  const totalPremium = user
-    ? user.premiumCurrencyFreeBalance + user.premiumCurrencyPaidBalance
-    : 0;
-  if (!user || totalPremium < COMPANION_HIRE_PRICE_PREMIUM) {
-    const shortfall = Math.max(0, COMPANION_HIRE_PRICE_PREMIUM - totalPremium);
-    return { success: false, error: "INSUFFICIENT_PREMIUM", message: `課金通貨が足りません（あと ${shortfall} 必要）`, shortfall };
-  }
-  const fromFree = Math.min(COMPANION_HIRE_PRICE_PREMIUM, user.premiumCurrencyFreeBalance);
-  const fromPaid = COMPANION_HIRE_PRICE_PREMIUM - fromFree;
-  const beforeFree = user.premiumCurrencyFreeBalance;
-  const beforePaid = user.premiumCurrencyPaidBalance;
-  const afterFree = beforeFree - fromFree;
-  const afterPaid = beforePaid - fromPaid;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: session.userId },
-      data: {
-        premiumCurrencyFreeBalance: { decrement: fromFree },
-        premiumCurrencyPaidBalance: { decrement: fromPaid },
-        companionHireCount: { increment: 1 },
-      },
-    });
-    if (fromFree > 0) {
-      await tx.currencyTransaction.create({
-        data: {
-          userId: session.userId!,
-          currencyType: "premium_free",
-          amount: -fromFree,
-          beforeBalance: beforeFree,
-          afterBalance: afterFree,
-          reason: CURRENCY_REASON_COMPANION_HIRE_PURCHASE,
-          referenceType: "user",
-          referenceId: session.userId,
-        },
-      });
-    }
-    if (fromPaid > 0) {
-      await tx.currencyTransaction.create({
-        data: {
-          userId: session.userId!,
-          currencyType: "premium_paid",
-          amount: -fromPaid,
-          beforeBalance: beforePaid,
-          afterBalance: afterPaid,
-          reason: CURRENCY_REASON_COMPANION_HIRE_PURCHASE,
-          referenceType: "user",
-          referenceId: session.userId,
-        },
-      });
-    }
-  });
-  const updated = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { companionHireCount: true },
-  });
-  return { success: true, companionHireCount: updated?.companionHireCount ?? 1 };
-}
-
-/** 仲間を 1 体作成（雇用可能回数 -1、工業スキルランダム1つ）。成功時はキャラ詳細へリダイレクト。spec/030 */
+/** 推薦紹介状を1消費して仲間を1体作成。成功時はキャラ詳細へリダイレクト。spec/030, docs/081 */
 export async function createCompanion(formData: FormData): Promise<CreateCompanionResult> {
   const session = await getSession();
   if (!session.userId) {
@@ -162,14 +85,22 @@ export async function createCompanion(formData: FormData): Promise<CreateCompani
   if (typeof iconFilename !== "string" || !iconFilename.trim() || !allowedIcons.includes(iconFilename.trim())) {
     return { success: false, error: "VALIDATION_ERROR", message: "アイコンを選択してください" };
   }
-  const result = await characterRepository.createCompanion({
+  const result = await characterRepository.createCompanionWithLetter({
     userId: session.userId,
     displayName: trimmedName,
     iconFilename: iconFilename.trim(),
   });
   if (!result.success) {
-    if (result.error === "NO_HIRE_COUNT") return { success: false, error: "NO_HIRE_COUNT", message: "雇用可能回数がありません" };
-    if (result.error === "COMPANION_LIMIT") return { success: false, error: "COMPANION_LIMIT", message: `仲間は最大${COMPANION_MAX_COUNT}体までです` };
+    if (result.error === "NO_LETTER" || result.error === "NO_ITEM")
+      return { success: false, error: "NO_LETTER", message: "推薦紹介状がありません" };
+    if (result.error === "COMPANION_LIMIT") {
+      const u = await prisma.user.findUnique({
+        where: { id: session.userId },
+        select: { companionLimit: true },
+      });
+      const max = u?.companionLimit ?? COMPANION_MAX_COUNT;
+      return { success: false, error: "COMPANION_LIMIT", message: `仲間は最大${max}体までです` };
+    }
     return { success: false, error: "VALIDATION_ERROR", message: "作成できませんでした" };
   }
   redirect(`/dashboard/characters/${result.characterId}`);

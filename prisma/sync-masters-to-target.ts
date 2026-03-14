@@ -56,7 +56,6 @@ const MASTER_DELEGATES_IN_ORDER = [
   "mechaPartType",
   "dropTable", // 1回目: areaId を null で同期（後で戻す）
   "explorationArea",
-  "facilityVariant",
   "facilityTypeTag",
   "craftRecipe",
   "craftRecipeInput",
@@ -69,7 +68,7 @@ const MASTER_DELEGATES_IN_ORDER = [
   "enemyTacticSlot",
   "enemySkill",
   "enemyGroupEntry",
-  "facilityConstructionRecipeInput",
+  "facilityTypeConstructionInput",
   "skillEffect",
   "mechaPartTypeSkill",
 ] as const;

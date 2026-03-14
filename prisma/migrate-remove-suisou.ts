@@ -32,11 +32,7 @@ async function main() {
     await prisma.recipeInput.deleteMany({ where: { recipeId: r.id } });
   }
   await prisma.recipe.deleteMany({ where: { facilityTypeId: id } });
-  const variants = await prisma.facilityVariant.findMany({ where: { facilityTypeId: id }, select: { id: true } });
-  for (const v of variants) {
-    await prisma.facilityConstructionRecipeInput.deleteMany({ where: { facilityVariantId: v.id } });
-  }
-  await prisma.facilityVariant.deleteMany({ where: { facilityTypeId: id } });
+  await prisma.facilityTypeConstructionInput.deleteMany({ where: { facilityTypeId: id } });
   await prisma.facilityTypeTag.deleteMany({ where: { facilityTypeId: id } });
   await prisma.facilityType.delete({ where: { id } });
 

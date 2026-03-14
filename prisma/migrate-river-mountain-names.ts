@@ -47,18 +47,21 @@ async function main() {
           await prisma.recipe.update({ where: { id: recipeOld.id }, data: { facilityTypeId: idNew } });
         }
       }
-      const variantsOld = await prisma.facilityVariant.findMany({
+      const constructionOld = await prisma.facilityTypeConstructionInput.findMany({
         where: { facilityTypeId: idOld },
-        select: { id: true, variantCode: true },
+        select: { id: true, itemId: true },
       });
-      for (const v of variantsOld) {
-        const exists = await prisma.facilityVariant.findUnique({
-          where: { facilityTypeId_variantCode: { facilityTypeId: idNew, variantCode: v.variantCode } },
+      for (const c of constructionOld) {
+        const exists = await prisma.facilityTypeConstructionInput.findUnique({
+          where: { facilityTypeId_itemId: { facilityTypeId: idNew, itemId: c.itemId } },
         });
         if (exists) {
-          await prisma.facilityVariant.delete({ where: { id: v.id } });
+          await prisma.facilityTypeConstructionInput.delete({ where: { id: c.id } });
         } else {
-          await prisma.facilityVariant.update({ where: { id: v.id }, data: { facilityTypeId: idNew } });
+          await prisma.facilityTypeConstructionInput.update({
+            where: { id: c.id },
+            data: { facilityTypeId: idNew },
+          });
         }
       }
       const tagIdsOld = await prisma.facilityTypeTag.findMany({
@@ -117,18 +120,21 @@ async function main() {
           await prisma.recipe.update({ where: { id: recipeOldM.id }, data: { facilityTypeId: idNew } });
         }
       }
-      const variantsOld = await prisma.facilityVariant.findMany({
+      const constructionOldM = await prisma.facilityTypeConstructionInput.findMany({
         where: { facilityTypeId: idOld },
-        select: { id: true, variantCode: true },
+        select: { id: true, itemId: true },
       });
-      for (const v of variantsOld) {
-        const exists = await prisma.facilityVariant.findUnique({
-          where: { facilityTypeId_variantCode: { facilityTypeId: idNew, variantCode: v.variantCode } },
+      for (const c of constructionOldM) {
+        const exists = await prisma.facilityTypeConstructionInput.findUnique({
+          where: { facilityTypeId_itemId: { facilityTypeId: idNew, itemId: c.itemId } },
         });
         if (exists) {
-          await prisma.facilityVariant.delete({ where: { id: v.id } });
+          await prisma.facilityTypeConstructionInput.delete({ where: { id: c.id } });
         } else {
-          await prisma.facilityVariant.update({ where: { id: v.id }, data: { facilityTypeId: idNew } });
+          await prisma.facilityTypeConstructionInput.update({
+            where: { id: c.id },
+            data: { facilityTypeId: idNew },
+          });
         }
       }
       const tagIdsOld = await prisma.facilityTypeTag.findMany({

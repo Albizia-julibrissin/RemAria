@@ -1,6 +1,8 @@
 # Spec: 仲間雇用・解雇
 
-`docs/13_companion_employment_design.md` に基づき、**人材局**で仲間を購入・作成し、**キャラ詳細から解雇**できるようにする。
+**現状（人材局廃止・推薦紹介状方式）**：**人材局は廃止**し、**居住区**（/dashboard/characters）画面下部で**推薦紹介状**（Item.code=letter_of_recommendation）を 1 消費して仲間を 1 体追加する。User.companionHireCount は削除済み。仲間作成時は ItemUsageLog に reason=companion_hire で記録（docs/081）。解雇は従来どおりキャラ詳細から。
+
+`docs/13_companion_employment_design.md` に基づく（購入方式は廃止し、上記のとおり推薦紹介状で統一）。
 
 ------------------------------------------------------------------------
 
@@ -8,18 +10,18 @@
 
 ### 0.1 依存する spec
 
-- **010_auth**：セッションが有効であること。人材局・解雇 API は保護画面として getSession を前提とする。
+- **010_auth**：セッションが有効であること。解雇 API は保護画面として getSession を前提とする。
 - **015_protagonist_creation**：主人公の有無判定。主人公未作成時は作成画面へ強制遷移（dashboard layout で実施）。
 - **025_character_list**：キャラ一覧・詳細画面。仲間作成後は詳細画面へリダイレクト。解雇は詳細画面から実行する。
+- **081**：特別アイテム使用履歴。推薦紹介状消費時に ItemUsageLog に記録。
 
 ### 0.2 提供する API / 利用者
 
 | API | 用途 | 呼び出し元 |
 |-----|------|-----------|
-| purchaseCompanionHire | 雇用可能回数を 1 購入（ゲーム通貨 or 課金通貨） | 人材局画面 |
-| createCompanion | 雇用可能回数を 1 消費して仲間を 1 体作成（名前・アイコン・工業スキルランダム1） | 人材局の「仲間を雇う」画面 |
-| dismissCompanion | 仲間を解雇（表示名一致で確認） | キャラ詳細画面 |
-| getCompanionHireState | 雇用可能回数・仲間数・上限・残高（表示用） | 雇用斡旋所画面 |
+| getCompanionRecruitState | 仲間数・上限・推薦紹介状所持数（表示用） | 居住区画面 |
+| createCompanion | 推薦紹介状を 1 消費して仲間を 1 体作成（名前・アイコン・工業スキルランダム1） | 居住区「推薦紹介状を使う」→ /dashboard/characters/create |
+| dismissCompanionAction | 仲間を解雇（表示名一致で確認） | キャラ詳細画面 |
 
 ------------------------------------------------------------------------
 

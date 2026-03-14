@@ -31,7 +31,7 @@ const TAB_LABELS: Record<string, string> = {
   consumable: "消耗品",
   blueprint: "設計図",
   skill_book: "スキル分析書",
-  paid: "特別",
+  special: "特別",
   equipment: "装備",
   mecha_parts: "メカパーツ",
   relic: "遺物",
