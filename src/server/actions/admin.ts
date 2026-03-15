@@ -342,6 +342,8 @@ export type AdminUserRow = {
   lastLoginAt: Date | null;
   lastActiveAt: Date | null;
   hasProtagonist: boolean;
+  /** 探索回数（ExpeditionHistory の件数）。spec/061 */
+  expeditionCount: number;
 };
 
 export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
@@ -359,6 +361,7 @@ export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
       lastLoginAt: true,
       lastActiveAt: true,
       protagonistCharacterId: true,
+      _count: { select: { expeditionHistories: true } },
     },
   });
   return rows.map((r) => ({
@@ -371,6 +374,7 @@ export async function getAdminUserList(): Promise<AdminUserRow[] | null> {
     lastLoginAt: r.lastLoginAt,
     lastActiveAt: r.lastActiveAt ?? null,
     hasProtagonist: r.protagonistCharacterId != null,
+    expeditionCount: r._count.expeditionHistories,
   }));
 }
 

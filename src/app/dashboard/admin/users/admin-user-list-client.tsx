@@ -23,7 +23,8 @@ export type SortKey =
   | "createdAt"
   | "lastLoginAt"
   | "lastActiveAt"
-  | "hasProtagonist";
+  | "hasProtagonist"
+  | "expeditionCount";
 type SortDir = "asc" | "desc";
 
 function compare(a: unknown, b: unknown, dir: SortDir): number {
@@ -34,6 +35,7 @@ function compare(a: unknown, b: unknown, dir: SortDir): number {
   if (b == null) return mul * -1;
   if (typeof a === "string" && typeof b === "string") return mul * a.localeCompare(b);
   if (typeof a === "boolean" && typeof b === "boolean") return mul * (a === b ? 0 : a ? 1 : -1);
+  if (typeof a === "number" && typeof b === "number") return mul * (a - b);
   if (a instanceof Date && b instanceof Date) return mul * (a.getTime() - b.getTime());
   return 0;
 }
@@ -56,6 +58,8 @@ function getSortValue(row: AdminUserRow, key: SortKey): unknown {
       return row.lastActiveAt;
     case "hasProtagonist":
       return row.hasProtagonist;
+    case "expeditionCount":
+      return row.expeditionCount;
     default:
       return undefined;
   }
@@ -129,6 +133,7 @@ export function AdminUserListClient({ users }: Props) {
               <SortableTh label="登録日時" keyName="createdAt" />
               <SortableTh label="最終ログイン" keyName="lastLoginAt" />
               <SortableTh label="最終アクティブ" keyName="lastActiveAt" />
+              <SortableTh label="探索回数" keyName="expeditionCount" className="w-20 text-center" />
               <th className="border border-base-border w-20">
                 <button
                   type="button"
@@ -160,6 +165,9 @@ export function AdminUserListClient({ users }: Props) {
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-text-muted text-xs">
                   {row.lastActiveAt ? formatDate(row.lastActiveAt) : "—"}
+                </td>
+                <td className="border border-base-border px-2 py-1.5 text-center tabular-nums text-text-muted">
+                  {row.expeditionCount}
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-center text-text-muted">
                   {row.hasProtagonist ? "済" : "—"}
