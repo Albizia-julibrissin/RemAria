@@ -108,6 +108,28 @@ export async function getExplorationAreaCostsForStart(
     return { success: false, error: "UNAUTHORIZED" };
   }
 
+  // spec/068: 未解放テーマのエリアにはコスト情報を返さない
+  const area = await prisma.explorationArea.findUnique({
+    where: { id: areaId },
+    select: { themeId: true },
+  });
+  if (area) {
+    const [userUnlocks, gatedRows] = await Promise.all([
+      prisma.userExplorationThemeUnlock.findMany({
+        where: { userId: session.userId },
+        select: { themeId: true },
+      }),
+      prisma.questUnlockExplorationTheme.findMany({ select: { themeId: true } }),
+    ]);
+    const userUnlockedThemeIds = new Set(userUnlocks.map((u) => u.themeId));
+    const gatedThemeIds = new Set(gatedRows.map((r) => r.themeId));
+    const themeUnlocked =
+      userUnlockedThemeIds.has(area.themeId) || !gatedThemeIds.has(area.themeId);
+    if (!themeUnlocked) {
+      return { success: false, error: "THEME_NOT_UNLOCKED" };
+    }
+  }
+
   const costs = await prisma.explorationAreaCost.findMany({
     where: { areaId },
     include: { item: { select: { id: true, name: true } } },
@@ -168,16 +190,39 @@ export async function startExploration(
 
   const { areaId, partyPresetId, consumables } = params;
 
-  // エリアの存在チェック
+  // エリアの存在チェック（themeId は後段のテーマ解放チェックに使用）
   const area = await prisma.explorationArea.findUnique({
     where: { id: areaId },
     select: {
       id: true,
+      themeId: true,
       normalBattleCount: true,
     },
   });
   if (!area) {
     return { success: false, error: "AREA_NOT_FOUND", message: "指定されたエリアが見つかりません。" };
+  }
+
+  // spec/068: 当該エリアのテーマが解放済みか検証（未解放テーマのエリアで探索開始させない）
+  const [userUnlocks, gatedThemeIdsRows] = await Promise.all([
+    prisma.userExplorationThemeUnlock.findMany({
+      where: { userId },
+      select: { themeId: true },
+    }),
+    prisma.questUnlockExplorationTheme.findMany({
+      select: { themeId: true },
+    }),
+  ]);
+  const userUnlockedThemeIds = new Set(userUnlocks.map((u) => u.themeId));
+  const gatedThemeIds = new Set(gatedThemeIdsRows.map((r) => r.themeId));
+  const themeUnlocked =
+    userUnlockedThemeIds.has(area.themeId) || !gatedThemeIds.has(area.themeId);
+  if (!themeUnlocked) {
+    return {
+      success: false,
+      error: "THEME_NOT_UNLOCKED",
+      message: "この探索テーマはまだ解放されていません。",
+    };
   }
 
   // パーティプリセットがユーザーのものであるか検証

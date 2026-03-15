@@ -80,14 +80,17 @@ export function CharacterStatAllocationForm({ characterId, cap, initialValues }:
         </p>
       )}
 
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+      <div className="mt-3 grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-2 sm:gap-x-4">
         {ALLOCATABLE_STAT_KEYS.map((key) => {
           const atMax = values[key] >= maxPerStat;
           const disabled = atMax || !canAddMore || isPending;
           return (
-            <div key={key} className="flex items-center justify-between gap-2">
-              <span className="text-text-muted">{key}</span>
-              <div className="flex items-center gap-1">
+            <div
+              key={key}
+              className="flex min-w-0 items-center justify-between gap-3 rounded border border-base-border/50 bg-base/50 px-3 py-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0"
+            >
+              <span className="shrink-0 text-text-muted">{key}</span>
+              <div className="flex min-w-0 shrink-0 items-center gap-1">
                 <span className="w-10 text-right font-medium tabular-nums text-text-primary">
                   {values[key]}
                 </span>
@@ -95,7 +98,7 @@ export function CharacterStatAllocationForm({ characterId, cap, initialValues }:
                   type="button"
                   onClick={() => handleIncrement(key)}
                   disabled={disabled}
-                  className="flex h-8 w-8 items-center justify-center rounded border border-base-border bg-base text-brass hover:border-brass hover:bg-base-elevated disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-base-border disabled:hover:bg-base"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-base-border bg-base text-brass hover:border-brass hover:bg-base-elevated disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-base-border disabled:hover:bg-base"
                   aria-label={`${key}を1増やす`}
                 >
                   <span className="text-lg font-bold leading-none">+</span>

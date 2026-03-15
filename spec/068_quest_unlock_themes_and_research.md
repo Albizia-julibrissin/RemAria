@@ -85,6 +85,7 @@
   - テーマが「解放済み」になる条件: **UserExplorationThemeUnlock に (userId, themeId) が存在する** または **その themeId が QuestUnlockExplorationTheme に 1 件も紐づいていない**（任務不要で初期開放）。
 - 実装: 全 ExplorationTheme を取得し、当該 userId の UserExplorationThemeUnlock 一覧と、QuestUnlockExplorationTheme で「紐づく themeId の集合」を取得。各テーマについて上記条件でフィルタ。`isUnlocked: true` は上記を満たすときのみ true。
 - 返却に含めないテーマは**リストから除外**する（または「？？？」表示は UI 側で行う場合は非解放テーマも返し isUnlocked: false で渡す。仕様上は「返すテーマを限定」= 除外でよい）。
+- **運用方針（本作）**: 初期解放は**錆びれた森林のみ**。錆びれた森林の themeId は QuestUnlockExplorationTheme に紐づけず、それ以外の全テーマは何らかの任務に紐づけること。
 
 ### 3.3 研究メニュー（research.ts）
 

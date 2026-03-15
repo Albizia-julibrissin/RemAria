@@ -43,7 +43,10 @@ export function NotificationDropdown({ isOpen, onClose }: Props) {
   if (!isOpen) return null;
 
   return (
-    <div className="absolute right-0 mt-2 w-80 max-h-[70vh] overflow-auto rounded-md border border-base-border bg-base-elevated shadow-lg z-40">
+    <div
+      className="fixed left-4 right-4 top-14 z-50 max-h-[70vh] overflow-auto rounded-md border border-base-border bg-base-elevated shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 sm:max-h-[70vh]"
+      aria-label="通知一覧"
+    >
       <div className="p-2 border-b border-base-border text-xs text-text-muted">
         通知
       </div>

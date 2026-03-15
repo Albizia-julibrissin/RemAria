@@ -317,7 +317,7 @@ export function CharacterStatSection({
               {message}
             </p>
           )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <div className="grid grid-cols-1 gap-y-2 text-sm sm:grid-cols-2 sm:gap-x-4">
             {ALLOCATABLE_KEYS.map((key) => {
               const current = character[key];
               const delta = deltas[key];
@@ -329,10 +329,10 @@ export function CharacterStatSection({
               return (
                 <div
                   key={key}
-                  className="flex items-center justify-between gap-2 border-b border-base-border/70 pb-1"
+                  className="flex min-w-0 items-center justify-between gap-3 rounded border border-base-border/50 bg-base/50 px-3 py-2 sm:border-0 sm:border-b sm:border-base-border/70 sm:bg-transparent sm:px-0 sm:pb-1 sm:pt-0"
                 >
-                  <span className="text-text-muted">{key}</span>
-                  <div className="flex items-center gap-2">
+                  <span className="shrink-0 text-text-muted">{key}</span>
+                  <div className="flex min-w-0 shrink-0 items-center gap-2">
                     <span className="w-10 text-right tabular-nums text-text-primary">
                       {current}
                     </span>
@@ -343,7 +343,7 @@ export function CharacterStatSection({
                       max={maxAdd}
                       value={delta || ""}
                       onChange={(e) => handleDeltaChange(key, e.target.value)}
-                      className="w-14 rounded border border-base-border bg-base px-1 py-0.5 text-right tabular-nums text-text-primary focus:border-brass focus:outline-none focus:ring-1 focus:ring-brass"
+                      className="w-14 min-w-0 rounded border border-base-border bg-base px-1 py-0.5 text-right tabular-nums text-text-primary focus:border-brass focus:outline-none focus:ring-1 focus:ring-brass"
                       aria-label={`${key}に追加する値`}
                     />
                   </div>
