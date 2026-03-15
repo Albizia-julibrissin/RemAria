@@ -87,7 +87,7 @@ export function AppraisalResultModal({ relic, onClose }: Props) {
             onClick={onClose}
             className="rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
           >
-            中止
+            閉じる
           </button>
         </div>
       </div>
