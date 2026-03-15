@@ -1,6 +1,6 @@
 # 開拓任務（クエスト）の実装状況
 
-**参照**: `spec/054_quests.md`、`docs/054_quest_and_research_design.md`、`src/server/actions/quest.ts`
+**参照**: `spec/054_quests.md`、`docs/054_quest_and_research_design.md`、`src/server/actions/quest.ts`。初回チュートリアルで使う任務フローは **`docs/091_tutorial_and_opening_quest_scope.md`**。
 
 ---
 
@@ -25,7 +25,8 @@
 | **研究ポイント報酬** | Quest.rewardResearchPoint は DB にあるが、**クエスト完了時にユーザーに加算する処理がない**。研究クエストクリアで研究ポイント付与は未実装。 |
 | **称号報酬** | Quest.rewardTitleId は DB にあるが、**クエスト完了時に称号付与（UserTitleUnlock 等）する処理がない**。 |
 | **アイテム報酬** | クエストクリアでアイテム（例：緊急製造指示書）を付与する仕様・API は未実装。報酬テーブルや「報酬付与」の共通処理の設計が必要。 |
-| **その他達成タイプ** | **skill_success_count**（技能イベント N 回）、**equipment_craft**（特定装備クラフト N 回）は設計 doc にあり、quest.ts には未実装。 |
+| **その他達成タイプ** | **skill_success_count**（技能イベント N 回）、**equipment_craft**（特定装備クラフト N 回）は設計 doc にあり、quest.ts には未実装。**skill_event_specific**（特定技能イベント・特定ステータス N 回）は **spec/054_quests.md** §4・§6・§7 で定義済み。実装フェーズ：任務 API → 探索側呼び出し → 管理画面編集 UI。 |
+| **新規達成タイプ（初回チュートリアル用）** | **実装済み**。**item_received**（addQuestProgressItemReceived、receiveProduction から呼び出し）、**skill_level**（getQuestList 内で CharacterSkill を参照して進捗評価・更新）、**screen_visit**（addQuestProgressScreenVisit、作戦室ページで呼び出し）。管理画面で 3 種の達成条件を編集可能。初回フローは docs/091。 |
 
 ## 3. まとめ
 

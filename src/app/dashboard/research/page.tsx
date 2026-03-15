@@ -30,16 +30,26 @@ export default async function ResearchPage() {
     );
   }
 
-  const { groups } = result;
+  const {
+    groups,
+    researchPoint,
+    facilityCostExpansions,
+    slotsExpansions,
+  } = result;
 
   return (
     <main className="min-h-screen bg-base p-8">
       <MenuPageHeaderClient
         title="研究局"
-        description="設備やレシピを解放する。解放されている研究を選ぶと、そのグループの解放可能なレシピ・設備が表示されます。"
+        description="設備やレシピを解放する。グループを選ぶとレシピ・設備・拡張が表示されます。"
         currentPath="/dashboard/research"
       />
-      <ResearchGroupList groups={groups} />
+      <ResearchGroupList
+        groups={groups}
+        researchPoint={researchPoint}
+        facilityCostExpansions={facilityCostExpansions}
+        slotsExpansions={slotsExpansions}
+      />
       <footer className="mt-8 border-t border-base-border pt-4">
         <Link href="/dashboard" className={footerLinkClass}>
           ← 開拓拠点に戻る

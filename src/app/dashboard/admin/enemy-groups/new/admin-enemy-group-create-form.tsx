@@ -60,7 +60,7 @@ export function AdminEnemyGroupCreateForm() {
           onClick={() => router.back()}
           className="rounded border border-base-border px-4 py-2 text-sm text-text-primary hover:bg-base-elevated"
         >
-          キャンセル
+          中止
         </button>
       </div>
     </form>

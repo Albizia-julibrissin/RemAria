@@ -173,7 +173,7 @@ export function AdminSkillEventCreateForm() {
           href="/dashboard/admin/skill-events"
           className="rounded border border-base-border bg-base-elevated px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50"
         >
-          キャンセル
+          中止
         </Link>
       </div>
     </form>

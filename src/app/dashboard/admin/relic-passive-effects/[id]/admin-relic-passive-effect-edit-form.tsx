@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminRelicPassiveEffectDetail, UpdateAdminRelicPassiveEffectInput } from "@/server/actions/admin";
-import { updateAdminRelicPassiveEffect } from "@/server/actions/admin";
+import { updateAdminRelicPassiveEffect, deleteAdminRelicPassiveEffect } from "@/server/actions/admin";
 import {
   RELIC_PASSIVE_EFFECT_TYPES,
   RELIC_ATTRIBUTE_OPTIONS,
@@ -36,6 +36,7 @@ export function AdminRelicPassiveEffectEditForm({ effect }: Props) {
   const [paramPct, setParamPct] = useState(String(parseParamNumber(effect.param?.pct)));
   const [paramAttribute, setParamAttribute] = useState(parseParamString(effect.param?.attribute));
   const [paramAmount, setParamAmount] = useState(String(parseParamNumber(effect.param?.amount)));
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +61,19 @@ export function AdminRelicPassiveEffectEditForm({ effect }: Props) {
         result.success ? { type: "ok", text: "保存しました。" } : { type: "error", text: result.error ?? "保存に失敗しました。" }
       );
       if (result.success) router.refresh();
+    });
+  };
+
+  const handleDelete = () => {
+    if (!confirm(`遺物パッシブ効果「${effect.code}」（${effect.name}）を削除しますか？\nこの効果を参照している遺物個体は効果なしになります。`)) return;
+    setIsDeleting(true);
+    deleteAdminRelicPassiveEffect(effect.id).then((result) => {
+      if (result.success) {
+        router.push("/dashboard/admin/relic-passive-effects");
+        return;
+      }
+      setMessage({ type: "error", text: result.error ?? "削除に失敗しました。" });
+      setIsDeleting(false);
     });
   };
 
@@ -185,13 +199,21 @@ export function AdminRelicPassiveEffectEditForm({ effect }: Props) {
         )}
       </div>
 
-      <div className="flex gap-4 pt-4">
+      <div className="flex flex-wrap gap-4 pt-4">
         <button
           type="submit"
           disabled={isPending}
           className="rounded bg-brass px-4 py-2 text-base font-medium text-white hover:bg-brass-hover disabled:opacity-50"
         >
           {isPending ? "保存中…" : "保存"}
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isPending || isDeleting}
+          className="rounded border border-error bg-transparent px-4 py-2 text-base font-medium text-error hover:bg-error/10 disabled:opacity-50"
+        >
+          {isDeleting ? "削除中…" : "削除"}
         </button>
       </div>
     </form>

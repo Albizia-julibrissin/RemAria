@@ -78,7 +78,7 @@ model MechaPartType {
 
 ### 5.1 装備（EquipmentType.statGenConfig）
 
-- キーは **戦闘用ステータス**（PATK, MATK, PDEF, MDEF, HIT, EVA）。`equipment-stat-gen.ts` の `EquipmentStatKey` と一致させる。
+- キーは **戦闘用ステータス**（HP, MP, PATK, MATK, PDEF, MDEF, HIT, EVA, LUCK（運））。`equipment-stat-gen.ts` の `EquipmentStatKey` と一致させる。
 
 ```ts
 type EquipmentStatGenConfigJson = {

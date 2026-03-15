@@ -14,16 +14,30 @@ const config: Config = {
     "game-icons--three-friends", // 居住区
     "game-icons--scroll-quill", // 人材局
     "game-icons--ringing-bell", // 通知
+    "game-icons--mailbox", // 郵便（ヘッダー・郵便画面）
+    "game-icons--coins", // 郵便・無償GRA
+    "game-icons--gem", // 郵便・有償GRA
+    "game-icons--book-cover", // 郵便・研究記録書
+    "game-icons--backpack", // 郵便・アイテム
+    "game-icons--medal", // 郵便・称号
+    "game-icons--gift", // 郵便・受け取るボタン
     "game-icons--factory", // 機工区
     "game-icons--microscope", // 研究局
     "game-icons--anvil-impact", // 工房
     "game-icons--wooden-crate", // 物資庫
     "game-icons--feather", // 開拓任務
+    "game-icons--flag", // チャット・任務達成システムメッセージ（spec/094）
     "game-icons--battle-gear", // 作戦室
     "game-icons--hand-bag", // 市場・購入
     "game-icons--shop", // 市場・出品
-    "game-icons--weight-scale", // 市場・ダッシュボード（天秤）
+    "game-icons--weight-scale", // 市場・ダッシュボード（天秤・旧）
+    "game-icons--life-in-the-balance", // 市場・開拓拠点
     "game-icons--hourglass", // 市場・履歴
+    "game-icons--clockwise-rotation", // 市場・購入一覧更新
+    "game-icons--person", // 開拓者証
+    "game-icons--gold-bar", // 研究・設備コスト拡張
+    "game-icons--expanded-rays", // 研究局・グループ名
+    "game-icons--black-bar", // 開拓拠点・闇市
   ],
   theme: {
     extend: {

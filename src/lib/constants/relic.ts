@@ -19,6 +19,12 @@ export const RELIC_TOKEN_TO_GROUP: Record<string, string> = {
   relic_group_a_token: "group_a",
 };
 
+/** 遺物を分解したときに付与するアイテムの code。アイテムマスタに登録が必要。 */
+export const RELIC_SHARD_ITEM_CODE = "relic_shard";
+
+/** 遺物の調律に必要な遺物の欠片の個数。docs/087_relic_temper.md */
+export const RELIC_TEMPER_SHARD_COST = 77;
+
 /**
  * 遺物グループごとの鑑定パラメータ。
  * - passiveEffectCodes: 抽選対象のパッシブ効果の code。空配列なら効果なしのみ。未指定なら全効果から抽選。

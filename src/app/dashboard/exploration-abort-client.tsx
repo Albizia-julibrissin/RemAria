@@ -33,8 +33,14 @@ export function ExplorationAbortClient() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg">
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-sm font-semibold text-text-primary">本当に撤退しますか？</h2>
             <p className="mt-2 text-xs text-text-muted">
               撤退すると報酬は一切得られません。
@@ -49,7 +55,7 @@ export function ExplorationAbortClient() {
                 disabled={isPending}
                 className="rounded-md border border-base-border px-3 py-1.5 text-xs sm:text-sm text-text-primary hover:bg-base"
               >
-                キャンセル
+                中止
               </button>
               <button
                 type="button"

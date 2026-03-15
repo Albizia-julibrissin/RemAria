@@ -56,7 +56,7 @@
 
 ### 2.2 既存モデルへの関係追加
 
-- **Quest**: `unlockExplorationThemes QuestUnlockExplorationTheme[]`, `unlockResearchGroups QuestUnlockResearchGroup[]`
+- **Quest**: `unlockExplorationThemes QuestUnlockExplorationTheme[]`, `unlockResearchGroups QuestUnlockResearchGroup[]`, **unlocksMarket**（Boolean, この任務のクリア報告で市場を解放する。管理画面で設定。spec/075）
 - **User**: `explorationThemeUnlocks UserExplorationThemeUnlock[]`, `researchGroupUnlocks UserResearchGroupUnlock[]`
 - **ExplorationTheme**: `questUnlocks QuestUnlockExplorationTheme[]`, `userUnlocks UserExplorationThemeUnlock[]`
 - **ResearchGroup**: `questUnlocks QuestUnlockResearchGroup[]`, `userUnlocks UserResearchGroupUnlock[]`
@@ -74,6 +74,7 @@
   2. 各 `themeId` について **UserExplorationThemeUnlock** に `(userId, themeId)` が無ければ挿入（upsert または findFirst + create。重複は無視）。
   3. 当該 `questId` に紐づく **QuestUnlockResearchGroup** を取得。
   4. 各 `researchGroupId` について **UserResearchGroupUnlock** に `(userId, researchGroupId)` が無ければ挿入。
+  5. 当該任務の **unlocksMarket** が true の場合、**User.marketUnlocked** を true に更新する（spec/075）。
 - 既に `reportAcknowledgedAt` が設定されている場合は何もしない（従来どおり早期 return）。
 
 ### 3.2 探索メニュー（exploration.ts）
@@ -91,17 +92,17 @@
 
 - グループの **isAvailable** を次の条件**のみ**で判定する（前提グループは見ない）。
   - **その researchGroupId が QuestUnlockResearchGroup に 1 件も無い** または **UserResearchGroupUnlock に (userId, researchGroupId) が存在する** → true。
-- 実装: ResearchGroup 取得時に QuestUnlockResearchGroup で「紐づく researchGroupId の集合」を取得し、当該 userId の UserResearchGroupUnlock 一覧を取得。各グループについて上記で isAvailable を算出。既存の `!g.prerequisiteGroupId || isGroupComplete(...)` は**削除**する。
+- 実装: ResearchGroup 取得時に QuestUnlockResearchGroup で「紐づく researchGroupId の集合」を取得し、当該 userId の UserResearchGroupUnlock 一覧を取得。各グループについて上記で isAvailable を算出。※前提グループ（prerequisiteGroupId）はスキーマから削除済み。解放は開拓任務のみ。
 
 ### 3.4 管理画面（admin.ts）
 
 - **getAdminQuest(questId)**  
-  - 返却型 **AdminQuestDetail** に `unlockThemeIds: string[]`, `unlockResearchGroupIds: string[]` を追加。  
-  - 当該任務の QuestUnlockExplorationTheme / QuestUnlockResearchGroup から themeId / researchGroupId の配列を返す。
+  - 返却型 **AdminQuestDetail** に `unlockThemeIds: string[]`, `unlockResearchGroupIds: string[]`, **unlocksMarket: boolean** を追加。  
+  - 当該任務の QuestUnlockExplorationTheme / QuestUnlockResearchGroup から themeId / researchGroupId の配列を返す。unlocksMarket は Quest の同名フィールド。
 
 - **updateAdminQuest(questId, input)**  
-  - **UpdateAdminQuestInput** に `unlockThemeIds: string[]`, `unlockResearchGroupIds: string[]` を追加。  
-  - 保存時: 当該 questId の QuestUnlockExplorationTheme / QuestUnlockResearchGroup を deleteMany したうえで、input の ID 配列で create する（前提の QuestPrerequisite と同様のパターン）。
+  - **UpdateAdminQuestInput** に `unlockThemeIds: string[]`, `unlockResearchGroupIds: string[]`, **unlocksMarket: boolean** を追加。  
+  - 保存時: 当該 questId の QuestUnlockExplorationTheme / QuestUnlockResearchGroup を deleteMany したうえで、input の ID 配列で create する（前提の QuestPrerequisite と同様のパターン）。Quest の unlocksMarket を input の値で更新する。
 
 - 管理画面用の**一覧取得**（既存で流用可能か確認）  
   - 探索テーマ一覧: 既存の `getAdminExplorationThemeList` 等で取得。  

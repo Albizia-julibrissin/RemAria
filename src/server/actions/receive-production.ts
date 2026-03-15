@@ -1,15 +1,17 @@
 "use server";
 
 // spec/036, docs/019 - 全設備一括受け取り
+// spec/054: 受け取り時に item_received 任務進捗を加算
 
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { PRODUCTION_CAP_MINUTES } from "@/lib/constants/production";
 import { grantStackableItem } from "@/server/lib/inventory";
+import { addQuestProgressItemReceived } from "@/server/actions/quest";
 
 export type ReceiveProductionResult =
-  | { success: true; received: { itemName: string; amount: number }[] }
+  | { success: true; received: { itemId: string; itemName: string; amount: number }[] }
   | { success: false; error: string; message: string };
 
 /**
@@ -25,7 +27,7 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
   const userId = session.userId;
   const now = new Date();
 
-  let received: { itemName: string; amount: number }[] = [];
+  let received: { itemId: string; itemName: string; amount: number }[] = [];
   try {
     received = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
@@ -140,7 +142,11 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
       });
     }
 
-    return Array.from(produced.values()).map((p) => ({ itemName: p.itemName, amount: p.amount }));
+    return Array.from(produced.entries()).map(([itemId, p]) => ({
+      itemId,
+      itemName: p.itemName,
+      amount: p.amount,
+    }));
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "受け取りに失敗しました。";
@@ -162,6 +168,11 @@ export async function receiveProduction(): Promise<ReceiveProductionResult> {
       message:
         "受け取り可能な生産がありません。（経過が足りないか、入力素材が不足しています。貯められるのは最大24時間分まで）",
     };
+  }
+
+  // spec/054: item_received 任務の進捗を加算
+  for (const r of received) {
+    await addQuestProgressItemReceived(userId, r.itemId, r.amount);
   }
 
   return { success: true, received };

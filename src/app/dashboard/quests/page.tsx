@@ -11,6 +11,7 @@ const FILTERS = [
   { value: "research" as const, label: "研究" },
   { value: "special" as const, label: "特殊" },
   { value: "general" as const, label: "一般" },
+  { value: "completed" as const, label: "完了" },
 ];
 
 export default async function QuestsPage({
@@ -20,8 +21,8 @@ export default async function QuestsPage({
 }) {
   const params = await searchParams;
   const raw = params.filter ?? "";
-  const filter: "all" | "story" | "research" | "special" | "general" =
-    raw === "story" || raw === "research" || raw === "special" || raw === "general"
+  const filter: "all" | "story" | "research" | "special" | "general" | "completed" =
+    raw === "story" || raw === "research" || raw === "special" || raw === "general" || raw === "completed"
       ? raw
       : "all";
 
@@ -64,7 +65,11 @@ export default async function QuestsPage({
         {FILTERS.map((f) => (
           <Link
             key={f.value}
-            href={f.value === "all" ? "/dashboard/quests" : `/dashboard/quests?filter=${f.value}`}
+            href={
+              f.value === "all"
+                ? "/dashboard/quests"
+                : `/dashboard/quests?filter=${f.value}`
+            }
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               filter === f.value
                 ? "border-brass text-brass"

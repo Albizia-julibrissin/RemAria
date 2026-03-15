@@ -48,12 +48,25 @@ export default async function ExplorationBattlePage(props: PageProps) {
   if (current.state === "ready_to_finish") {
     const isWiped = current.remainingNormalBattles > 0;
     const lastBattle = await getExplorationLastBattleDisplay();
+    const isBossBattle =
+      lastBattle?.success &&
+      (lastBattle.battleType === "strong_enemy" || lastBattle.battleType === "area_lord");
+    const bossName = isBossBattle
+      ? lastBattle!.result.enemyDisplayNames?.[0] ?? (lastBattle!.battleType === "area_lord" ? "領域主" : "強敵")
+      : null;
+    const bossNameColor =
+      isBossBattle && lastBattle!.battleType === "area_lord" ? "font-bold text-purple-600" : "font-bold text-red-600";
     return (
       <main className="min-h-screen bg-base p-8">
-        <h1 className="text-2xl font-bold text-text-primary">探索結果</h1>
-        <p className="mt-2 text-text-muted">
-          {current.themeName} / {current.areaName} の探索が終了しました。報酬を受け取ってください。
-        </p>
+        <h1 className="text-2xl font-bold text-text-primary">
+          {bossName != null ? (
+            <>
+              <span className={bossNameColor}>{bossName}</span>が現れた！
+            </>
+          ) : (
+            "探索結果"
+          )}
+        </h1>
         {lastBattle && lastBattle.success && (
           <div className="mt-4">
             <BattleFullView data={lastBattle.result} hideSummaryTop />
@@ -106,10 +119,23 @@ export default async function ExplorationBattlePage(props: PageProps) {
           battleResult.result.summary.playerMaxMp ??
           1
       );
+      const isBossBattle =
+        battleResult.battleType === "strong_enemy" || battleResult.battleType === "area_lord";
+      const bossName = isBossBattle
+        ? battleResult.result.enemyDisplayNames?.[0] ?? (battleResult.battleType === "area_lord" ? "領域主" : "強敵")
+        : null;
+      const bossNameColor =
+        battleResult.battleType === "area_lord" ? "font-bold text-purple-600" : "font-bold text-red-600";
       return (
         <main className="min-h-screen bg-base p-8">
           <h1 className="text-2xl font-bold text-text-primary">
-            開拓者たちは敵性存在と接触した…！
+            {bossName != null ? (
+              <>
+                <span className={bossNameColor}>{bossName}</span>が現れた！
+              </>
+            ) : (
+              "開拓者たちは敵性存在と接触した…！"
+            )}
           </h1>
           {verificationStats && verificationStats.length > 0 && (
             <ExplorationVerificationStatsTable stats={verificationStats} />
@@ -129,11 +155,13 @@ export default async function ExplorationBattlePage(props: PageProps) {
                   remainingAfter={remainingAfter}
                   consumables={consumables}
                   partyMembers={partyMembers}
+                  partyIconFilenames={battleResult.result.partyIconFilenames}
+                  protagonistIconFilename={battleResult.result.protagonistIconFilename}
                 />
                 {remainingAfter === 0 ? (
                   <div className="mt-4 space-y-2">
                     <p className="text-text-primary">
-                      規定の戦闘をクリアしました。強敵が待ち構えています。
+                      {battleResult.areaName}の奥地にたどり着いた。<span className="font-bold text-red-600">強敵</span>の気配がする・・・。
                     </p>
                     <p>
                       <ExplorationNextButton useAdvanceAction>強敵へ挑む</ExplorationNextButton>
@@ -148,7 +176,10 @@ export default async function ExplorationBattlePage(props: PageProps) {
             )}
             {!isNowReadyToFinish && battleResult.areaLordAppeared && (
               <div className="space-y-3">
-                <p className="text-text-primary">強敵に勝利！ 領域主が現れた。</p>
+                <p className="text-text-primary">
+                  強敵に勝利！しかし、強敵を超える驚異的な気配を感じる！
+                  <span className="font-bold text-purple-600">領域主</span>の出現を察知・・・！
+                </p>
                 <p>
                   <ExplorationNextButton useAdvanceAction>領域主へ挑む</ExplorationNextButton>
                 </p>

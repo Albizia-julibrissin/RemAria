@@ -52,6 +52,7 @@
 | 達成タイプ | 説明 | 計上元 | 初期 |
 |------------|------|--------|------|
 | 技能イベント N 回 | 探索中に技能判定を成功させた回数 | 探索終了時に skillSuccessCount を進捗に加算 | ◎ |
+| **特定技能イベント・特定ステータス N 回** | **指定した探索イベントを指定したステータス（STR/INT/…）で成功した回数** | **resolveExplorationSkillEvent 成功時に addQuestProgressSkillEventSuccess で進捗加算。** spec/054 §4 skill_event_specific、spec/073 §7。 | ◎ |
 | 特定装備クラフト N 回 | 指定 EquipmentType で N 個クラフト | executeCraft で装備作成時、該当なら進捗加算 | ◎ |
 | 特定敵 N 体 | 指定 Enemy / EnemyGroup を N 体倒す | 探索・練習戦闘終了時に倒した敵を進捗に加算 | ◎ |
 | 特定エリア N 回 | 指定 ExplorationArea を N 回クリア | 探索 finish で該当 areaId なら進捗加算 | ◎ |
@@ -59,7 +60,8 @@
 | 特定アイテムを N 個所持 | 所持数が N 以上で達成 | 所持が変わる処理のあとでチェック | — |
 | ストーリー前提 | 特定クエスト完了済みで出現 | prerequisiteQuestId 等で参照 | 使用 |
 
-その他：**特定施設を 1 個建設**なども追加可能。
+その他：**特定施設を 1 個建設**なども追加可能。  
+※「特定技能イベント・特定ステータス N 回」の正式仕様・API・管理画面は **spec/054_quests.md** §4・§6・§7 を参照。
 
 ### 2.4 称号
 
@@ -98,11 +100,12 @@
 
 ### 3.5 初期にサポートする達成タイプ
 
-ストーリー・研究で使う達成タイプは以下 4 種を**初期想定**とする。
+ストーリー・研究で使う達成タイプは以下 5 種を**初期想定**とする（実装状況は docs/067・spec/054 参照）。
 
 | 達成タイプ | 説明 | 計上元 |
 |------------|------|--------|
 | 技能イベント N 回 | 探索中に技能判定を成功させた回数 | 探索終了時に skillSuccessCount 等を進捗に加算 |
+| **特定技能イベント・特定ステータス N 回** | 指定した探索イベントを指定ステータスで成功した回数 | resolveExplorationSkillEvent 成功時に addQuestProgressSkillEventSuccess で進捗加算（spec/054 §4）。 |
 | 特定装備クラフト N 回 | 指定した装備種別（EquipmentType）を N 個クラフト | executeCraft で装備作成時に、該当レシピなら進捗加算 |
 | 特定敵 N 体 | 指定した敵（Enemy または EnemyGroup）を N 体倒す | 探索戦闘終了時（＋練習戦闘終了時）に倒した敵を進捗に加算 |
 | 特定エリア N 回 | 指定した探索エリアを N 回クリア | 探索 finish で該当 areaId なら進捗加算 |
@@ -146,10 +149,9 @@
 ### 4.3.1 研究グループ（第一弾：錆びれた森林研究）
 
 - **研究グループ**：解放対象をまとめる単位。テーマと直接連携はしないが、実装タイミングを合わせて第一弾は「錆びれた森林研究」とする。
-- **ResearchGroup**：id, code, name, displayOrder, **prerequisiteGroupId**（null＝最初のグループ。次のグループは「前提グループの派生型以外をすべてクリア」で解放）。
-- **ResearchGroupItem**：researchGroupId, **targetType**（facility_type / craft_recipe）, **targetId**（FacilityType.id または CraftRecipe.id）, **isVariant**（派生型なら true。グループクリア判定では「派生型以外すべて解放」で次グループ解放）, displayOrder。
-- **ResearchUnlockCost**：targetType, targetId, itemId, amount。解放時に消費するアイテム（第一弾はアイテム消費のみ。研究ポイントは任意で後から追加可）。
-- **グループ解放条件**：あるグループが「利用可能」になるのは、prerequisiteGroupId が null であるか、前提グループに属する**派生型以外の全項目**がユーザーによって解放済みのとき。次の研究グループを解放するには、錆びれた森林研究を**派生型以外すべてクリア**する。
+- **ResearchGroup**：id, code, name, displayOrder。**グループの解放は開拓任務で行う**（QuestUnlockResearchGroup に紐づく任務をクリア報告すると UserResearchGroupUnlock に追加。前提グループ機能は廃止済み）。
+- **ResearchGroupItem**：researchGroupId, **targetType**（facility_type / craft_recipe）, **targetId**（FacilityType.id または CraftRecipe.id）, **isVariant**（派生型なら true）, displayOrder, requiredResearchPoint（解放時に必要な研究記録書）。
+- **ResearchUnlockCost**：targetType, targetId, itemId, amount。解放時に消費するアイテム。解放にはアイテムコストと研究記録書の両方が必須。
 
 ### 4.4 称号
 

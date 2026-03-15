@@ -45,8 +45,12 @@ export function UseLetterButton({ recruitState }: Props) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="use-letter-modal-title"
+          onClick={() => setOpen(false)}
         >
-          <div className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg">
+          <div
+            className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 id="use-letter-modal-title" className="text-lg font-medium text-text-primary">
               推薦紹介状
             </h2>
@@ -86,7 +90,7 @@ export function UseLetterButton({ recruitState }: Props) {
                 onClick={() => setOpen(false)}
                 className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50"
               >
-                閉じる
+                中止
               </button>
               <button
                 type="button"

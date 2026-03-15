@@ -24,8 +24,8 @@
 | 探索テーマ・エリア (ExplorationTheme / ExplorationArea) | `/dashboard/admin/exploration-themes` | テーマ: code / name / 表示順。エリア: code / name / 敵グループ・体数確率・強敵・領域主・ドロップ・技能等。エリア編集画面で**技能イベント紐づけ**（重み付き）も編集可。 | [admin_exploration_theme_area_edit.md](./admin_exploration_theme_area_edit.md) |
 | 技能イベント (ExplorationEvent / SkillEventDetail / SkillEventStatOption) | `/dashboard/admin/skill-events` | spec/073。code / name / 発生メッセージ / 各ステータス（係数・成功/失敗メッセージ）。エリアとはエリア編集画面の「技能イベント」で紐づけ。 | — |
 | スキル (Skill) | `/dashboard/admin/skills` | name / category / 戦闘用項目（battleSkillType, powerMultiplier 等）。効果は**既存の effectType のみ**選択可。効果の説明一覧表示あり。 | [admin_skill_edit.md](./admin_skill_edit.md) |
-| 研究グループ (ResearchGroup / ResearchGroupItem / ResearchUnlockCost) | `/dashboard/admin/research-groups` | グループ code / name / 表示順 / 前提グループ。解放対象（設備型 or クラフトレシピ）・派生型フラグ・表示順。解放時の消費アイテム・個数。 | [admin_research_group_edit.md](./admin_research_group_edit.md) |
-| クエスト (Quest) | `/dashboard/admin/quests` | 既存クエストの編集のみ（新規作成は後回し）。code / 種別 / name / description / clearReportMessage / 前提クエスト / 達成条件（achievementType・achievementParam） / 報酬（GRA・研究記録書・称号ID・報酬アイテム複数）。spec/054。 | — |
+| 研究グループ (ResearchGroup / ResearchGroupItem / ResearchUnlockCost) | `/dashboard/admin/research-groups` | グループ code / name / 表示順。**設備コスト拡張（spec/089）**：拡張可能回数・1回あたりコスト増分・必要研究記録書。**設備設置上限拡張（spec/089）**：拡張可能回数・1回あたり枠増分・必要研究記録書。解放対象（設備型 or クラフトレシピ）・派生型フラグ・表示順。解放時の消費アイテム・個数。グループの解放は開拓任務で行う。 | [admin_research_group_edit.md](./admin_research_group_edit.md) |
+| クエスト (Quest) | `/dashboard/admin/quests` | 既存クエストの編集のみ（新規作成は後回し）。code / 種別 / name / description / clearReportMessage / 前提クエスト / **達成条件**（area_clear・enemy_defeat・**skill_event_specific**（特定技能イベント・特定ステータス）） / 報酬（GRA・研究記録書・称号ID・報酬アイテム複数）。spec/054 §4・§7。 | [admin_quest_edit.md](./admin_quest_edit.md) |
 
 ---
 

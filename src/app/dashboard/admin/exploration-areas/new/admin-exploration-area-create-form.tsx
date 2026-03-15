@@ -127,7 +127,7 @@ export function AdminExplorationAreaCreateForm({
         <h2 className="text-lg font-medium text-text-primary">基本</h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-text-muted">code（ユニーク）</label>
+            <label className="block text-sm font-medium text-text-muted">code（識別コード・ユニーク）</label>
             <input
               type="text"
               value={code}
@@ -137,7 +137,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">name</label>
+            <label className="block text-sm font-medium text-text-muted">name（エリア名）</label>
             <input
               type="text"
               value={name}
@@ -147,7 +147,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-text-muted">description（任意）</label>
+            <label className="block text-sm font-medium text-text-muted">description（説明文・任意）</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -162,7 +162,7 @@ export function AdminExplorationAreaCreateForm({
         <h2 className="text-lg font-medium text-text-primary">表示順・難易度・ドロップ・技能</h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="block text-sm font-medium text-text-muted">displayOrder（テーマ内の表示順）</label>
+            <label className="block text-sm font-medium text-text-muted">displayOrder（テーマ内の表示順・小さいほど上）</label>
             <input
               type="number"
               min={0}
@@ -172,7 +172,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">difficultyRank</label>
+            <label className="block text-sm font-medium text-text-muted">difficultyRank（難易度ランク）</label>
             <input
               type="number"
               min={1}
@@ -192,7 +192,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">baseDropMin</label>
+            <label className="block text-sm font-medium text-text-muted">baseDropMin（ドロップ枠・最小数）</label>
             <input
               type="number"
               min={0}
@@ -202,7 +202,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">baseDropMax</label>
+            <label className="block text-sm font-medium text-text-muted">baseDropMax（ドロップ枠・最大数）</label>
             <input
               type="number"
               min={0}
@@ -212,7 +212,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">baseSkillEventRate（%）</label>
+            <label className="block text-sm font-medium text-text-muted">baseSkillEventRate（技能イベント発生率・%）</label>
             <input
               type="number"
               min={0}
@@ -223,7 +223,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">skillCheckRequiredValue</label>
+            <label className="block text-sm font-medium text-text-muted">skillCheckRequiredValue（技能判定必要値）</label>
             <input
               type="number"
               min={1}
@@ -233,7 +233,7 @@ export function AdminExplorationAreaCreateForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">normalBattleCount</label>
+            <label className="block text-sm font-medium text-text-muted">normalBattleCount（通常戦闘回数）</label>
             <input
               type="number"
               min={1}
@@ -350,7 +350,7 @@ export function AdminExplorationAreaCreateForm({
           onClick={() => router.back()}
           className="rounded border border-base-border px-4 py-2 text-sm text-text-primary hover:bg-base-elevated"
         >
-          キャンセル
+          中止
         </button>
       </div>
     </form>

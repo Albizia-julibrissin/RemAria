@@ -1,10 +1,7 @@
 // spec/045, 051 - 物資庫（所持一覧・種別タブ・遺物。旧バッグ）
 
 import Link from "next/link";
-import {
-  getInventory,
-  getCharactersForSkillBook,
-} from "@/server/actions/inventory";
+import { getInventory } from "@/server/actions/inventory";
 import { getRelicInstances } from "@/server/actions/relic";
 import { MenuPageHeaderClient } from "../menu-page-header-client";
 import { BagTabs } from "./bag-tabs";
@@ -20,12 +17,19 @@ const ALL_TAB_IDS = [
   "relic",
 ];
 
-export default async function BagPage() {
-  const [data, relicResult, charactersForSkillBook] = await Promise.all([
+export default async function BagPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const [data, relicResult, params] = await Promise.all([
     getInventory(),
     getRelicInstances(),
-    getCharactersForSkillBook(),
+    searchParams,
   ]);
+  const tabFromUrl = params?.tab;
+  const initialTab =
+    tabFromUrl && ALL_TAB_IDS.includes(tabFromUrl) ? tabFromUrl : undefined;
 
   const footerLinkClass =
     "inline-flex items-center justify-center rounded-lg border border-base-border bg-base-elevated px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-brass hover:bg-base focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base";
@@ -65,7 +69,7 @@ export default async function BagPage() {
         relicInstances={relics}
         relicTokenQuantity={relicTokenQuantity}
         allTabIds={ALL_TAB_IDS}
-        charactersForSkillBook={charactersForSkillBook ?? []}
+        initialTab={initialTab}
       />
       <footer className="mt-8 border-t border-base-border pt-4">
         <Link href="/dashboard" className={footerLinkClass}>

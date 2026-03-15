@@ -115,7 +115,7 @@ export default function GuidePage() {
             <li><strong>レベルアップ</strong>：探索や開拓任務で経験値を得るとレベルが上がり、<strong>CAP（総合ポイント）</strong> が増えます。増えた分の一部は自動でステータスに振られ、残りは <Link href="/dashboard/characters" className="text-brass hover:text-brass-hover">居住区 → キャラ詳細</Link> で手動で割り振れます（各ステには上限・下限あり）。</li>
             <li><strong>装備</strong>：クラフトで装備を製作し、居住区のキャラ詳細で装着。武器・防具など枠ごとに装備可能。</li>
             <li><strong>遺物</strong>：探索で手に入る「遺物」は最大4枠まで装着可能。鑑定後に装着し、戦闘での耐性などに影響します。</li>
-            <li><strong>スキル分析書</strong>：倉庫の「スキル分析書」タブで使用し、対象キャラに渡すとスキル習得・スキルレベルアップに使えます。</li>
+            <li><strong>スキル分析書</strong>：物資庫の「スキル分析書」タブで「習得」を押すと、そのスキルをまだ習得していないキャラのみ選べ、スキル習得に使えます。</li>
           </ul>
         </section>
 

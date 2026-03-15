@@ -7,6 +7,14 @@ import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { characterRepository } from "@/server/repositories/character-repository";
 import { revalidatePath } from "next/cache";
+import {
+  computeDerivedStats,
+  type BaseStats,
+} from "@/lib/battle/derived-stats";
+import {
+  computeEffectiveBaseStats,
+  parseRelicStatBonus,
+} from "@/lib/battle/effective-base-stats";
 
 // --- パーティプリセット ---
 
@@ -381,7 +389,14 @@ export async function savePresetWithTactics(
 
 // --- 戦闘スキル一覧（行動プルダウン用） ---
 
-export type BattleSkillOption = { id: string; name: string; battleSkillType: string | null };
+/** 消費MP = floor(maxMp * mpCostCapCoef) + mpCostFlat（戦闘と同じ式）。作戦表でキャラ毎の消費MP表示用。 */
+export type BattleSkillOption = {
+  id: string;
+  name: string;
+  battleSkillType: string | null;
+  mpCostCapCoef: number;
+  mpCostFlat: number;
+};
 
 export type TacticsSkillCatalogItem = {
   id: string;
@@ -439,7 +454,15 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
       },
       select: {
         characterId: true,
-        skill: { select: { id: true, name: true, battleSkillType: true } },
+        skill: {
+          select: {
+            id: true,
+            name: true,
+            battleSkillType: true,
+            mpCostCapCoef: true,
+            mpCostFlat: true,
+          },
+        },
       },
     });
     for (const id of nonMechIds) {
@@ -449,6 +472,8 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
           id: l.skill.id,
           name: l.skill.name,
           battleSkillType: l.skill.battleSkillType,
+          mpCostCapCoef: Number(l.skill.mpCostCapCoef ?? 0),
+          mpCostFlat: l.skill.mpCostFlat ?? 0,
         }))
         .sort((a, b) => (a.battleSkillType ?? "").localeCompare(b.battleSkillType ?? "") || a.name.localeCompare(b.name));
     }
@@ -465,7 +490,17 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
             mechaPartType: {
               select: {
                 mechaPartTypeSkills: {
-                  select: { skill: { select: { id: true, name: true, battleSkillType: true } } },
+                  select: {
+                    skill: {
+                      select: {
+                        id: true,
+                        name: true,
+                        battleSkillType: true,
+                        mpCostCapCoef: true,
+                        mpCostFlat: true,
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -474,7 +509,17 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
         mechaPartType: {
           select: {
             mechaPartTypeSkills: {
-              select: { skill: { select: { id: true, name: true, battleSkillType: true } } },
+              select: {
+                skill: {
+                  select: {
+                    id: true,
+                    name: true,
+                    battleSkillType: true,
+                    mpCostCapCoef: true,
+                    mpCostFlat: true,
+                  },
+                },
+              },
             },
           },
         },
@@ -493,6 +538,8 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
               id: skill.id,
               name: skill.name,
               battleSkillType: skill.battleSkillType,
+              mpCostCapCoef: Number(skill.mpCostCapCoef ?? 0),
+              mpCostFlat: skill.mpCostFlat ?? 0,
             });
           }
         }
@@ -504,6 +551,168 @@ export async function getBattleSkillsForCharacters(characterIds: string[]) {
   }
 
   return byChar;
+}
+
+/** 作戦室用: 編成キャラの最大MP（戦闘と同じ式: 有効基礎→派生→装備加算）。消費MP表示でキャラ毎の値を使う。 */
+export async function getCharacterMaxMpForTactics(
+  characterIds: string[]
+): Promise<Record<string, number>> {
+  const session = await getSession();
+  if (!session.userId || characterIds.length === 0) return {};
+
+  const characters = await prisma.character.findMany({
+    where: { id: { in: characterIds }, userId: session.userId },
+    select: {
+      id: true,
+      category: true,
+      STR: true,
+      INT: true,
+      VIT: true,
+      WIS: true,
+      DEX: true,
+      AGI: true,
+      LUK: true,
+      CAP: true,
+      characterRelics: {
+        where: { relicInstanceId: { not: null } },
+        select: {
+          relicInstance: {
+            select: { statBonus1: true, statBonus2: true },
+          },
+        },
+      },
+      characterEquipments: {
+        select: {
+          equipmentInstance: { select: { stats: true } },
+        },
+      },
+    },
+  });
+
+  const mechIds = characters.filter((c) => c.category === "mech").map((c) => c.id);
+  const mechPartDataByCharId = new Map<
+    string,
+    { mechaFlat: Partial<BaseStats>; frameMultiplier: Record<string, number> | null }
+  >();
+  if (mechIds.length > 0) {
+    const mechEquips = await prisma.mechaEquipment.findMany({
+      where: { characterId: { in: mechIds } },
+      select: {
+        characterId: true,
+        mechaPartInstance: {
+          select: {
+            mechaPartType: {
+              select: {
+                slot: true,
+                statRates: true,
+                strAdd: true,
+                intAdd: true,
+                vitAdd: true,
+                wisAdd: true,
+                dexAdd: true,
+                agiAdd: true,
+                lukAdd: true,
+                capAdd: true,
+              },
+            },
+          },
+        },
+        mechaPartType: {
+          select: {
+            slot: true,
+            statRates: true,
+            strAdd: true,
+            intAdd: true,
+            vitAdd: true,
+            wisAdd: true,
+            dexAdd: true,
+            agiAdd: true,
+            lukAdd: true,
+            capAdd: true,
+          },
+        },
+      },
+    });
+    for (const eq of mechEquips) {
+      const partType = eq.mechaPartInstance?.mechaPartType ?? eq.mechaPartType;
+      if (!partType || !("slot" in partType)) continue;
+      const slot = (partType as { slot: string }).slot;
+      let data = mechPartDataByCharId.get(eq.characterId);
+      if (!data) {
+        data = { mechaFlat: {}, frameMultiplier: null };
+        mechPartDataByCharId.set(eq.characterId, data);
+      }
+      if (slot === "frame") {
+        const rates = (partType as { statRates?: unknown }).statRates;
+        data.frameMultiplier =
+          rates && typeof rates === "object" && !Array.isArray(rates)
+            ? (rates as Record<string, number>)
+            : null;
+      } else {
+        const p = partType as {
+          strAdd?: number | null;
+          intAdd?: number | null;
+          vitAdd?: number | null;
+          wisAdd?: number | null;
+          dexAdd?: number | null;
+          agiAdd?: number | null;
+          lukAdd?: number | null;
+          capAdd?: number | null;
+        };
+        if (p.strAdd != null) data.mechaFlat.STR = (data.mechaFlat.STR ?? 0) + p.strAdd;
+        if (p.intAdd != null) data.mechaFlat.INT = (data.mechaFlat.INT ?? 0) + p.intAdd;
+        if (p.vitAdd != null) data.mechaFlat.VIT = (data.mechaFlat.VIT ?? 0) + p.vitAdd;
+        if (p.wisAdd != null) data.mechaFlat.WIS = (data.mechaFlat.WIS ?? 0) + p.wisAdd;
+        if (p.dexAdd != null) data.mechaFlat.DEX = (data.mechaFlat.DEX ?? 0) + p.dexAdd;
+        if (p.agiAdd != null) data.mechaFlat.AGI = (data.mechaFlat.AGI ?? 0) + p.agiAdd;
+        if (p.lukAdd != null) data.mechaFlat.LUK = (data.mechaFlat.LUK ?? 0) + p.lukAdd;
+        if (p.capAdd != null) data.mechaFlat.CAP = (data.mechaFlat.CAP ?? 0) + p.capAdd;
+      }
+    }
+  }
+
+  const DERIVED_STAT_KEYS = ["HP", "MP", "PATK", "MATK", "PDEF", "MDEF", "HIT", "EVA", "LUCK"] as const;
+  const result: Record<string, number> = {};
+
+  for (const c of characters) {
+    const rawBase: BaseStats = {
+      STR: c.STR,
+      INT: c.INT,
+      VIT: c.VIT,
+      WIS: c.WIS,
+      DEX: c.DEX,
+      AGI: c.AGI,
+      LUK: c.LUK,
+      CAP: c.CAP,
+    };
+    const relicStatBonuses: { stat: string; percent: number }[] = [];
+    for (const cr of c.characterRelics ?? []) {
+      const ri = cr.relicInstance;
+      if (!ri) continue;
+      const b1 = parseRelicStatBonus(ri.statBonus1);
+      if (b1) relicStatBonuses.push(b1);
+      const b2 = parseRelicStatBonus(ri.statBonus2);
+      if (b2) relicStatBonuses.push(b2);
+    }
+    const mechData = c.category === "mech" ? mechPartDataByCharId.get(c.id) : undefined;
+    const base = computeEffectiveBaseStats(rawBase, {
+      relicStatBonuses,
+      mechaFlat: mechData?.mechaFlat,
+      frameMultiplier: mechData?.frameMultiplier ?? undefined,
+    });
+    const before = computeDerivedStats(base);
+    let mpBonus = 0;
+    for (const ce of c.characterEquipments ?? []) {
+      const stats = ce.equipmentInstance?.stats;
+      if (!stats || typeof stats !== "object" || Array.isArray(stats)) continue;
+      const s = stats as Record<string, unknown>;
+      const v = s.MP;
+      if (typeof v === "number") mpBonus += v;
+    }
+    result[c.id] = before.MP + mpBonus;
+  }
+
+  return result;
 }
 
 /** 作戦室用: 編成3人が習得／装備している戦闘スキルを重複排除して一覧取得。メカは装備パーツのスキルを含む（spec/044）。 */

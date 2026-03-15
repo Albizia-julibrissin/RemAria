@@ -15,9 +15,16 @@ interface HeaderProps {
   activeUserCount?: number;
   /** 未読通知件数。ヘッダーバッジ用。 */
   unreadNotificationCount?: number;
+  /** 未受取郵便件数。ヘッダーバッジ用。spec/090 */
+  unreadMailCount?: number;
 }
 
-export function Header({ isLoggedIn, activeUserCount, unreadNotificationCount = 0 }: HeaderProps) {
+export function Header({
+  isLoggedIn,
+  activeUserCount,
+  unreadNotificationCount = 0,
+  unreadMailCount = 0,
+}: HeaderProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -61,30 +68,44 @@ export function Header({ isLoggedIn, activeUserCount, unreadNotificationCount = 
         </div>
         <nav className="relative flex items-center gap-4">
           {isLoggedIn && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setNotificationOpen((v) => !v);
-                  setHelpOpen(false);
-                  setSettingsOpen(false);
-                }}
+            <>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotificationOpen((v) => !v);
+                    setHelpOpen(false);
+                    setSettingsOpen(false);
+                  }}
+                  className="relative inline-flex items-center justify-center rounded-full border border-base-border bg-base px-2 py-1 text-text-muted hover:text-brass hover:border-brass transition-colors"
+                  title="通知を表示"
+                  aria-expanded={notificationOpen}
+                >
+                  <GameIcon name="ringing-bell" className="w-4 h-4" />
+                  {unreadNotificationCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                      {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                    </span>
+                  )}
+                </button>
+                <NotificationDropdown
+                  isOpen={notificationOpen}
+                  onClose={() => setNotificationOpen(false)}
+                />
+              </div>
+              <Link
+                href="/dashboard/mail"
                 className="relative inline-flex items-center justify-center rounded-full border border-base-border bg-base px-2 py-1 text-text-muted hover:text-brass hover:border-brass transition-colors"
-                title="通知を表示"
-                aria-expanded={notificationOpen}
+                title="郵便を表示"
               >
-                <GameIcon name="ringing-bell" className="w-4 h-4" />
-                {unreadNotificationCount > 0 && (
+                <GameIcon name="mailbox" className="w-4 h-4" />
+                {unreadMailCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
-                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                    {unreadMailCount > 99 ? "99+" : unreadMailCount}
                   </span>
                 )}
-              </button>
-              <NotificationDropdown
-                isOpen={notificationOpen}
-                onClose={() => setNotificationOpen(false)}
-              />
-            </div>
+              </Link>
+            </>
           )}
 
           {/* ヘルプメニュー */}
@@ -127,9 +148,16 @@ export function Header({ isLoggedIn, activeUserCount, unreadNotificationCount = 
               </button>
               {settingsOpen && (
                 <div className="absolute right-0 mt-2 w-40 rounded-md border border-base-border bg-base-elevated shadow-lg z-40">
+                  <Link
+                    href="/dashboard/settings#chat"
+                    onClick={closeAll}
+                    className="block px-3 py-2 text-xs text-text-primary hover:bg-base border-b border-base-border"
+                  >
+                    チャット設定
+                  </Link>
                   <form
                     action={logoutAndRedirect}
-                    className="border-b border-base-border last:border-b-0"
+                    className="last:border-b-0"
                     onSubmit={closeAll}
                   >
                     <button

@@ -1,13 +1,21 @@
 "use client";
 
-// spec/037, docs/022 - 常駐チャット（右下フロート・開閉可能）
+// spec/037, 094 - 常駐チャット（右下フロート・開閉可能・システムメッセージ表示・表示設定反映）
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   getRecentChatMessages,
   sendChatMessage,
   type ChatMessageItem,
 } from "@/server/actions/chat";
+import { GameIcon } from "@/components/icons/game-icon";
+import {
+  getChatSettingsFromStorage,
+  CHAT_SIZE_PRESET_DIMENSIONS,
+  CHAT_FONT_SIZE_CLASS,
+  type ChatSettings,
+} from "@/lib/chat-settings";
 
 const STORAGE_KEY_OPEN = "remaeria-chat-open";
 const POLL_INTERVAL_MS = 15000;
@@ -22,7 +30,22 @@ interface ChatFloatingProps {
   isLoggedIn: boolean;
 }
 
+function getPanelSizeStyle(settings: ChatSettings): { width: string; height: string; minHeight: string } {
+  if (settings.sizeMode === "preset") {
+    const d = CHAT_SIZE_PRESET_DIMENSIONS[settings.sizePreset];
+    return { width: d.width, height: d.height, minHeight: "200px" };
+  }
+  const w = Math.min(90, Math.max(25, settings.widthPercent));
+  const h = Math.min(70, Math.max(25, settings.heightPercent));
+  return {
+    width: `min(90vw, max(260px, ${w}vw))`,
+    height: `min(70vh, max(200px, ${h}vh))`,
+    minHeight: "200px",
+  };
+}
+
 export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
+  const [chatSettings, setChatSettings] = useState<ChatSettings | null>(null);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,7 +58,17 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window === "undefined") return;
+    const settings = getChatSettingsFromStorage();
+    setChatSettings(settings);
+    if (settings.openByDefault) {
+      setOpen(true);
+      try {
+        localStorage.setItem(STORAGE_KEY_OPEN, "true");
+      } catch {
+        // ignore
+      }
+    } else {
       try {
         const stored = localStorage.getItem(STORAGE_KEY_OPEN);
         if (stored === "true") setOpen(true);
@@ -43,6 +76,17 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
         // ignore
       }
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => setChatSettings(getChatSettingsFromStorage());
+    window.addEventListener("storage", handler);
+    window.addEventListener("remaeria-chat-settings-saved", handler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("remaeria-chat-settings-saved", handler);
+    };
   }, []);
 
   useEffect(() => {
@@ -85,15 +129,23 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
 
   if (!isLoggedIn) return null;
 
-  // サーバーは createdAt 降順（最新が先頭）で返しているのでそのまま表示＝上が最新
-  const displayMessages = messages;
+  const settings = chatSettings ?? getChatSettingsFromStorage();
+  const sizeStyle = getPanelSizeStyle(settings);
+  const fontClass = CHAT_FONT_SIZE_CLASS[settings.fontSize];
+  const displayMessages = settings.showSystemMessages
+    ? messages
+    : messages.filter((m) => m.kind !== "system");
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-0">
       {open && (
         <div
-          className="w-[min(100vw-2rem,400px)] max-h-[50vh] flex flex-col rounded-t-lg border border-base-border bg-base-elevated shadow-lg"
-          style={{ minHeight: "200px" }}
+          className="flex flex-col rounded-t-lg border border-base-border bg-base-elevated shadow-lg"
+          style={{
+            width: sizeStyle.width,
+            height: sizeStyle.height,
+            minHeight: sizeStyle.minHeight,
+          }}
         >
           <div className="flex items-center justify-between border-b border-base-border px-3 py-2">
             <span className="text-sm font-medium text-text-primary">全体チャット</span>
@@ -142,13 +194,61 @@ export function ChatFloating({ isLoggedIn }: ChatFloatingProps) {
             ) : displayMessages.length === 0 ? (
               <p className="p-3 text-sm text-text-muted">まだメッセージはありません。</p>
             ) : (
-              <ul className="p-3 space-y-2 font-sans text-text-primary text-sm">
+              <ul className={`p-3 space-y-2 font-sans text-text-primary ${fontClass}`}>
                 {displayMessages.map((m) => (
-                  <li key={m.id} className="break-words">
-                    <span className="text-text-muted text-xs mr-2">
-                      {formatTime(m.createdAt)} {m.senderName}
+                  <li
+                    key={m.id}
+                    className={`break-words flex gap-2 ${
+                      m.kind === "system" ? "rounded px-2 py-1 bg-brass/10 text-text-muted" : ""
+                    }`}
+                  >
+                    {m.kind === "system" && m.systemKind === "quest_clear" && (
+                      <span className="flex-shrink-0 mt-0.5" aria-hidden>
+                        <GameIcon name="flag" className="w-4 h-4 text-brass" />
+                      </span>
+                    )}
+                    {m.protagonistIconFilename && (
+                      <span className="flex-shrink-0">
+                        <img
+                          src={`/icons/${m.protagonistIconFilename}`}
+                          alt=""
+                          className="w-6 h-6 object-contain rounded"
+                          width={24}
+                          height={24}
+                        />
+                      </span>
+                    )}
+                    <span className="flex-1 min-w-0">
+                      <span className="text-text-muted text-xs mr-2">
+                        {formatTime(m.createdAt)}{" "}
+                        {m.kind === "user" &&
+                          (m.accountId ? (
+                            <Link
+                              href={`/dashboard/profile/${encodeURIComponent(m.accountId)}`}
+                              className="text-brass hover:text-brass-hover hover:underline"
+                            >
+                              {m.senderName}
+                            </Link>
+                          ) : (
+                            m.senderName
+                          ))}
+                      </span>
+                      {m.kind === "user" && <span>{m.body}</span>}
+                      {m.kind === "system" && m.systemKind === "quest_clear" && m.accountId && (
+                        <>
+                          <Link
+                            href={`/dashboard/profile/${encodeURIComponent(m.accountId)}`}
+                            className="text-brass hover:text-brass-hover hover:underline"
+                          >
+                            {m.subjectName ?? "冒険者"}
+                          </Link>
+                          <span>が任務「{m.payload?.questName ?? ""}」を達成しました。</span>
+                        </>
+                      )}
+                      {m.kind === "system" && m.systemKind !== "quest_clear" && (
+                        <span>{m.body}</span>
+                      )}
                     </span>
-                    <span>{m.body}</span>
                   </li>
                 ))}
               </ul>

@@ -5,6 +5,7 @@
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
+import { createQuestClearChatMessage } from "@/server/actions/chat";
 import { createNotification } from "@/server/actions/notification";
 import { grantStackableItem } from "@/server/lib/inventory";
 import { CURRENCY_REASON_QUEST_REWARD } from "@/lib/constants/currency-transaction-reasons";
@@ -25,7 +26,7 @@ export type QuestListItem = {
 };
 
 export type GetQuestListResult =
-  | { success: true; quests: QuestListItem[]; filter: "all" | "story" | "research" | "special" | "general" }
+  | { success: true; quests: QuestListItem[]; filter: "all" | "story" | "research" | "special" | "general" | "completed" }
   | { success: false; error: string };
 
 /** 報告受け取り時にモーダル表示する報酬内容 */
@@ -33,14 +34,35 @@ export type QuestRewardResult = {
   gra: number;
   researchPoint: number;
   items: { itemId: string; name: string; amount: number }[];
+  /** 付与した称号（spec/055）。null のときは称号報酬なし */
+  title: { id: string; name: string } | null;
 };
+
+/**
+ * spec/054: 達成タイプごとの目標値を返す。一覧表示・報告可否判定で使用。
+ */
+function getTargetCountForQuest(achievementType: string, achievementParam: unknown): number {
+  const p = achievementParam as { count?: number; level?: number } | null;
+  switch (achievementType) {
+    case "skill_level":
+      return 1; // 二値（0 or 1）
+    case "screen_visit":
+      return p?.count ?? 1;
+    case "area_clear":
+    case "enemy_defeat":
+    case "skill_event_specific":
+    case "item_received":
+    default:
+      return p?.count ?? 0;
+  }
+}
 
 /**
  * クエスト一覧を返す。D1: 前提クエストを満たしているが UserQuest が無いクエストは自動作成（出現＝受注）する。
  * 最初のストーリークエストは前提なしなので、初回取得時に 1 件 UserQuest が作られる。
  */
 export async function getQuestList(
-  filter: "all" | "story" | "research" | "special" | "general" = "all"
+  filter: "all" | "story" | "research" | "special" | "general" | "completed" = "all"
 ): Promise<GetQuestListResult> {
   const session = await getSession();
   if (!session.userId) {
@@ -85,13 +107,77 @@ export async function getQuestList(
     // 受注時の通知は廃止。初回誘導はアカウント作成時に「あなたに依頼がきています。」で1回だけ出す（auth.ts）
   }
 
-  const targetCount = (q: { achievementParam: unknown }) => {
-    const p = q.achievementParam as { count?: number } | null;
-    return p?.count ?? 0;
-  };
+  // spec/054 skill_level: 進行中任務の進捗を状態から評価し、満たしていれば progress=1 に更新
+  const skillLevelQuests = quests.filter((q) => q.achievementType === "skill_level");
+  if (skillLevelQuests.length > 0) {
+    const skillLevelQuestIds = new Set(skillLevelQuests.map((q) => q.id));
+    const inProgressSkillLevelUqs = userQuests.filter(
+      (uq) => uq.state === "in_progress" && skillLevelQuestIds.has(uq.questId)
+    );
+    if (inProgressSkillLevelUqs.length > 0) {
+      const params = new Map(
+        skillLevelQuests.map((q) => {
+          const p = q.achievementParam as { skillId?: string; level?: number } | null;
+          return [q.id, { skillId: p?.skillId ?? "", level: p?.level ?? 1 }] as const;
+        })
+      );
+      const characterIds = await prisma.character.findMany({
+        where: { userId },
+        select: { id: true },
+      }).then((rows) => rows.map((r) => r.id));
+      const skillIds = [...new Set([...params.values()].map((v) => v.skillId).filter(Boolean))];
+      const skillLevels = await prisma.characterSkill.findMany({
+        where: {
+          characterId: { in: characterIds },
+          skillId: { in: skillIds },
+        },
+        select: { characterId: true, skillId: true, level: true },
+      });
+      const maxLevelBySkill = new Map<string, number>();
+      for (const s of skillLevels) {
+        const cur = maxLevelBySkill.get(s.skillId) ?? 0;
+        if (s.level > cur) maxLevelBySkill.set(s.skillId, s.level);
+      }
+      let reportableCount = 0;
+      for (const uq of inProgressSkillLevelUqs) {
+        const param = params.get(uq.questId);
+        if (!param?.skillId) continue;
+        const maxLevel = maxLevelBySkill.get(param.skillId) ?? 0;
+        const satisfied = maxLevel >= param.level;
+        if (satisfied && uq.progress < 1) {
+          reportableCount += 1;
+          await prisma.userQuest.update({
+            where: { userId_questId: { userId, questId: uq.questId } },
+            data: { progress: 1 },
+          });
+          uqMap.set(uq.questId, { ...uq, progress: 1 });
+        }
+      }
+      if (reportableCount > 0) {
+        try {
+          await createNotification({
+            userId,
+            type: "quest_report_ready",
+            title: "報告可能な任務があります。",
+            linkUrl: "/dashboard/quests",
+          });
+        } catch {
+          // 通知失敗は進捗更新の成功を優先
+        }
+      }
+    }
+  }
 
-  const list: QuestListItem[] = quests
-    .filter((q) => filter === "all" || q.questType === filter)
+  // 前提条件をすべてクリアした任務のみ表示する（未クリアの前提がある任務は一覧に出さない）
+  const visibleQuests = quests.filter((q) => {
+    const prereqIds = q.prerequisites.map((p) => p.prerequisiteQuestId);
+    return prereqIds.length === 0 || prereqIds.every((id) => completedQuestIds.has(id));
+  });
+
+  const list: QuestListItem[] = visibleQuests
+    .filter((q) =>
+      filter === "completed" ? true : filter === "all" || q.questType === filter
+    )
     .map((q) => {
       const uq = uqMap.get(q.id);
       return {
@@ -103,13 +189,19 @@ export async function getQuestList(
         clearReportMessage: q.clearReportMessage,
         state: (uq?.state ?? "in_progress") as "in_progress" | "completed",
         progress: uq?.progress ?? 0,
-        targetCount: targetCount(q),
+        targetCount: getTargetCountForQuest(q.achievementType, q.achievementParam),
         completedAt: uq?.completedAt ?? null,
         reportAcknowledgedAt: uq?.reportAcknowledgedAt ?? null,
       };
     });
 
-  return { success: true, quests: list, filter };
+  // 完了タブ: クリア済みのみ。それ以外のタブ: 進行中・報告待ちのみ（クリア済みは完了タブでだけ表示）
+  const finalList =
+    filter === "completed"
+      ? list.filter((item) => item.state === "completed")
+      : list.filter((item) => item.state !== "completed");
+
+  return { success: true, quests: finalList, filter };
 }
 
 /**
@@ -134,6 +226,69 @@ export async function addQuestProgressAreaClear(
   const param = (q: { achievementParam: unknown }) =>
     q.achievementParam as { areaId?: string; count?: number } | null;
   const matching = quests.filter((q) => param(q)?.areaId === areaId);
+
+  let reportableCount = 0;
+  for (const q of matching) {
+    const uq = await prisma.userQuest.findUnique({
+      where: { userId_questId: { userId, questId: q.id } },
+      select: { id: true, progress: true, state: true },
+    });
+    if (!uq || uq.state === "completed") continue;
+    const count = param(q)?.count ?? 1;
+    const newProgress = uq.progress + 1;
+    if (uq.progress < count && newProgress >= count) reportableCount += 1;
+    await prisma.userQuest.update({
+      where: { id: uq.id },
+      data: { progress: newProgress },
+    });
+  }
+
+  if (reportableCount > 0) {
+    try {
+      await createNotification({
+        userId,
+        type: "quest_report_ready",
+        title: "報告可能な任務があります。",
+        linkUrl: "/dashboard/quests",
+      });
+    } catch {
+      // 通知失敗は進捗更新の成功を優先
+    }
+  }
+
+  return { completedQuestIds: [] };
+}
+
+/**
+ * 内部用: 技能イベントを指定ステータスで成功したときに進捗を +1。skill_event_specific の該当クエストのみ。
+ * 目標達成時も state は変更せず、報告押下時に完了・次クエスト出現・報酬付与を行う（B 案）。
+ * resolveExplorationSkillEvent の成功時に探索側から呼ぶ（spec/054 §4・§6 Phase 1）。
+ */
+export async function addQuestProgressSkillEventSuccess(
+  userId: string,
+  explorationEventId: string,
+  statKey: string
+): Promise<{ completedQuestIds: string[] }> {
+  if (!explorationEventId?.trim() || !statKey?.trim()) {
+    return { completedQuestIds: [] };
+  }
+
+  const quests = await prisma.quest.findMany({
+    where: {
+      achievementType: "skill_event_specific",
+      userQuests: {
+        some: { userId, state: "in_progress" },
+      },
+    },
+    select: { id: true, achievementParam: true },
+  });
+
+  const param = (q: { achievementParam: unknown }) =>
+    q.achievementParam as { explorationEventId?: string; statKey?: string; count?: number } | null;
+  const matching = quests.filter(
+    (q) =>
+      param(q)?.explorationEventId === explorationEventId && param(q)?.statKey === statKey
+  );
 
   let reportableCount = 0;
   for (const q of matching) {
@@ -233,6 +388,121 @@ export async function addQuestProgressEnemyDefeat(
   return { completedQuestIds: [] };
 }
 
+/**
+ * 内部用: 製造一括受け取りで特定アイテムを受け取ったときに進捗を加算。item_received の該当任務のみ。
+ * spec/054 §4 item_received。receiveProduction の成功後に呼ぶ。
+ */
+export async function addQuestProgressItemReceived(
+  userId: string,
+  itemId: string,
+  amount: number
+): Promise<{ completedQuestIds: string[] }> {
+  if (!itemId?.trim() || amount <= 0) return { completedQuestIds: [] };
+
+  const quests = await prisma.quest.findMany({
+    where: {
+      achievementType: "item_received",
+      userQuests: {
+        some: { userId, state: "in_progress" },
+      },
+    },
+    select: { id: true, achievementParam: true },
+  });
+
+  const param = (q: { achievementParam: unknown }) =>
+    q.achievementParam as { itemId?: string; count?: number } | null;
+  const matching = quests.filter((q) => param(q)?.itemId === itemId);
+
+  let reportableCount = 0;
+  for (const q of matching) {
+    const uq = await prisma.userQuest.findUnique({
+      where: { userId_questId: { userId, questId: q.id } },
+      select: { id: true, progress: true, state: true },
+    });
+    if (!uq || uq.state === "completed") continue;
+    const count = param(q)?.count ?? 0;
+    const newProgress = uq.progress + amount;
+    if (uq.progress < count && newProgress >= count) reportableCount += 1;
+    await prisma.userQuest.update({
+      where: { id: uq.id },
+      data: { progress: newProgress },
+    });
+  }
+
+  if (reportableCount > 0) {
+    try {
+      await createNotification({
+        userId,
+        type: "quest_report_ready",
+        title: "報告可能な任務があります。",
+        linkUrl: "/dashboard/quests",
+      });
+    } catch {
+      // 通知失敗は進捗更新の成功を優先
+    }
+  }
+
+  return { completedQuestIds: [] };
+}
+
+/**
+ * 内部用: 指定パスの画面を 1 回開いたときに進捗を 1 に更新。screen_visit の該当任務のみ。
+ * spec/054 §4 screen_visit。該当ページ表示時に 1 回呼ぶ（既に 1 以上なら更新しない）。
+ */
+export async function addQuestProgressScreenVisit(
+  userId: string,
+  path: string
+): Promise<{ completedQuestIds: string[] }> {
+  if (!path?.trim()) return { completedQuestIds: [] };
+
+  const quests = await prisma.quest.findMany({
+    where: {
+      achievementType: "screen_visit",
+      userQuests: {
+        some: { userId, state: "in_progress" },
+      },
+    },
+    select: { id: true, achievementParam: true },
+  });
+
+  const param = (q: { achievementParam: unknown }) =>
+    q.achievementParam as { path?: string; count?: number } | null;
+  const matching = quests.filter((q) => param(q)?.path === path);
+  const targetCount = (q: { achievementParam: unknown }) => param(q)?.count ?? 1;
+
+  let reportableCount = 0;
+  for (const q of matching) {
+    const uq = await prisma.userQuest.findUnique({
+      where: { userId_questId: { userId, questId: q.id } },
+      select: { id: true, progress: true, state: true },
+    });
+    if (!uq || uq.state === "completed") continue;
+    const count = targetCount(q);
+    if (uq.progress >= count) continue;
+    const newProgress = Math.min(uq.progress + 1, count);
+    if (newProgress >= count) reportableCount += 1;
+    await prisma.userQuest.update({
+      where: { id: uq.id },
+      data: { progress: newProgress },
+    });
+  }
+
+  if (reportableCount > 0) {
+    try {
+      await createNotification({
+        userId,
+        type: "quest_report_ready",
+        title: "報告可能な任務があります。",
+        linkUrl: "/dashboard/quests",
+      });
+    } catch {
+      // 通知失敗は進捗更新の成功を優先
+    }
+  }
+
+  return { completedQuestIds: [] };
+}
+
 /** 指定クエストを前提に含む任務のうち、前提をすべて満たしたものの UserQuest を自動作成（出現）。報告押下時にのみ呼ぶ。 */
 async function unlockNextQuests(userId: string, completedQuestId: string): Promise<void> {
   const completedIds = await prisma.userQuest
@@ -282,11 +552,13 @@ async function grantQuestRewards(
       rewardGra: true,
       rewardResearchPoint: true,
       rewardItems: true,
+      rewardTitleId: true,
     },
   });
   const gra = quest?.rewardGra ?? 0;
   const researchPoint = quest?.rewardResearchPoint ?? 0;
   const rawItems = quest?.rewardItems;
+  const rewardTitleId = quest?.rewardTitleId?.trim() || null;
   const rewardItemSpecs: { itemId: string; amount: number }[] = Array.isArray(rawItems)
     ? (rawItems as unknown[]).filter(
         (e): e is { itemId: string; amount: number } =>
@@ -314,6 +586,15 @@ async function grantQuestRewards(
         }))?.premiumCurrencyFreeBalance ?? 0
       : 0;
   const afterBalanceFree = beforeBalanceFree + gra;
+
+  let titleInfo: { id: string; name: string } | null = null;
+  if (rewardTitleId) {
+    const titleRow = await prisma.title.findUnique({
+      where: { id: rewardTitleId },
+      select: { id: true, name: true },
+    });
+    if (titleRow) titleInfo = { id: titleRow.id, name: titleRow.name };
+  }
 
   await prisma.$transaction(async (tx) => {
     if (gra > 0 || researchPoint > 0) {
@@ -343,6 +624,13 @@ async function grantQuestRewards(
       if (amount <= 0) continue;
       await grantStackableItem(tx, { userId, itemId, delta: amount });
     }
+    if (rewardTitleId) {
+      await tx.userTitleUnlock.upsert({
+        where: { userId_titleId: { userId, titleId: rewardTitleId } },
+        create: { userId, titleId: rewardTitleId },
+        update: {},
+      });
+    }
   });
 
   return {
@@ -353,6 +641,7 @@ async function grantQuestRewards(
       name: itemNames.get(r.itemId) ?? "不明なアイテム",
       amount: r.amount,
     })),
+    title: titleInfo,
   };
 }
 
@@ -362,7 +651,11 @@ async function grantQuestRewards(
  * UserExplorationThemeUnlock / UserResearchGroupUnlock に upsert する。
  */
 async function grantQuestUnlocks(userId: string, questId: string): Promise<void> {
-  const [themeUnlocks, groupUnlocks] = await Promise.all([
+  const [quest, themeUnlocks, groupUnlocks] = await Promise.all([
+    prisma.quest.findUnique({
+      where: { id: questId },
+      select: { unlocksMarket: true },
+    }),
     prisma.questUnlockExplorationTheme.findMany({
       where: { questId },
       select: { themeId: true },
@@ -386,6 +679,12 @@ async function grantQuestUnlocks(userId: string, questId: string): Promise<void>
         where: { userId_researchGroupId: { userId, researchGroupId } },
         create: { userId, researchGroupId },
         update: {},
+      });
+    }
+    if (quest?.unlocksMarket) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { marketUnlocked: true },
       });
     }
   });
@@ -428,17 +727,22 @@ export async function acknowledgeQuestReport(
       where: { id: uq.id },
       data: { reportAcknowledgedAt: new Date() },
     });
+    await grantQuestUnlocks(session.userId, questId);
+    try {
+      await createQuestClearChatMessage(session.userId, questId);
+    } catch (e) {
+      console.error("[quest] createQuestClearChatMessage failed", e);
+    }
     return { success: true };
   }
 
   if (uq.state === "in_progress") {
     const quest = await prisma.quest.findUnique({
       where: { id: questId },
-      select: { achievementParam: true },
+      select: { achievementType: true, achievementParam: true },
     });
     if (!quest) return { success: false, error: "NOT_FOUND" };
-    const param = quest.achievementParam as { count?: number } | null;
-    const targetCount = param?.count ?? 0;
+    const targetCount = getTargetCountForQuest(quest.achievementType, quest.achievementParam);
     if (uq.progress < targetCount) return { success: false, error: "NOT_READY" };
 
     const now = new Date();
@@ -453,6 +757,11 @@ export async function acknowledgeQuestReport(
     await unlockNextQuests(session.userId, questId);
     const rewards = await grantQuestRewards(session.userId, questId);
     await grantQuestUnlocks(session.userId, questId);
+    try {
+      await createQuestClearChatMessage(session.userId, questId);
+    } catch (e) {
+      console.error("[quest] createQuestClearChatMessage failed", e);
+    }
     return { success: true, rewards };
   }
 

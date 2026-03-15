@@ -24,6 +24,16 @@ export type DismissCompanionResult =
   | { success: true }
   | { success: false; error: string; message: string };
 
+/** spec/030 旧「雇用可能回数の購入」。人材局廃止のため未実装。RecruitPurchaseButtons 用スタブ。 */
+export type PurchaseCompanionHireResult =
+  | { success: true; companionHireCount?: number }
+  | { success: false; error: string; message: string };
+
+/** 雇用可能回数の購入（GRA）。人材局廃止のため未実装。推薦紹介状で仲間追加。docs/027 参照。 */
+export async function purchaseCompanionHire(): Promise<PurchaseCompanionHireResult> {
+  return { success: false, error: "NOT_IMPLEMENTED", message: "現在は推薦紹介状で仲間を追加してください。" };
+}
+
 function approxUtf8ByteLength(str: string): number {
   return Array.from(str).reduce((sum, ch) => {
     const code = ch.charCodeAt(0);

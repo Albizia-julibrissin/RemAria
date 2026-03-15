@@ -13,6 +13,7 @@ export const EQUIPMENT_STAT_KEYS = [
   "MDEF",
   "HIT",
   "EVA",
+  "LUCK",
 ] as const;
 
 export type EquipmentStatKey = (typeof EQUIPMENT_STAT_KEYS)[number];
@@ -27,6 +28,7 @@ export const EQUIPMENT_STAT_LABELS: Record<EquipmentStatKey, string> = {
   MDEF: "魔法防御",
   HIT: "命中",
   EVA: "回避",
+  LUCK: "運",
 };
 
 export type EquipmentStatWeightConfig = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   finishExploration,
@@ -58,6 +58,13 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
   const [isPending, startTransition] = useTransition();
   const [summary, setSummary] = useState<FinishExplorationSummary | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const resultAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (summary && resultAreaRef.current) {
+      resultAreaRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [summary]);
 
   const handleFinish = () => {
     if (isPending) return;
@@ -81,13 +88,10 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
   return (
     <div className="mt-4 rounded-lg border border-base-border bg-base-elevated p-4 space-y-3">
       <div>
-        <p className="text-sm font-medium text-text-primary">
-          {themeName} / {areaName}
-        </p>
-        <p className="mt-1 text-xs text-text-muted">
+        <p className="text-xs text-text-muted">
           {isWiped
-            ? "敗北しましたが、ここまでの結果に応じた報酬を受け取ることができます。"
-            : "探索をクリアしました。ここまでの結果に応じた報酬を受け取ることができます。"}
+            ? `${areaName}の探索で敗北しましたが、ここまでの結果に応じた報酬を受け取ることができます。`
+            : `${areaName}の探索をクリアしました。ここまでの結果に応じた報酬を受け取ることができます。`}
         </p>
       </div>
 
@@ -107,19 +111,15 @@ export function ExplorationFinishClient({ themeName, areaName, isWiped }: Props)
       )}
 
       {summary && (
-        <div className="mt-3 space-y-3">
+        <div ref={resultAreaRef} className="mt-3 space-y-3">
           <h3 className="text-sm font-medium text-text-muted">今回の探索結果</h3>
           <p className="text-xs text-text-muted">
-            結果: {summary.result === "cleared" ? "クリア" : "敗北"} / 勝利数: {summary.battleWins} / 技能成功:
-            {summary.skillSuccessCount} / 獲得 Exp: {summary.totalExpGained}
+            結果: {summary.result === "cleared" ? "クリア" : "敗北"} / 通常戦闘勝利数{summary.battleWins}、{summary.strongEnemyWon ? "強敵勝利" : "強敵未勝利"}、技能成功数{summary.skillSuccessCount}、{summary.areaLordWon ? "領域主勝利" : "領域主未勝利"}、獲得 Exp: {summary.totalExpGained}
           </p>
-          <div>
-            <p className="mb-2 text-xs font-medium text-text-muted">報酬（枠ごとに色分け表示）</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {summary.dropSlots.map((slot, idx) => (
-                <SlotCard key={idx} slot={slot} />
-              ))}
-            </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {summary.dropSlots.map((slot, idx) => (
+              <SlotCard key={idx} slot={slot} />
+            ))}
           </div>
           <div className="mt-4 pt-3 border-t border-base-border">
             <button

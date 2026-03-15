@@ -36,11 +36,19 @@ export default async function AdminQuestsPage() {
         </Link>
       </div>
 
-      <div className="mt-4">
-        <h1 className="text-2xl font-bold text-text-primary">開拓任務編集</h1>
-        <p className="mt-2 text-sm text-text-muted">
-          spec/054。既存の開拓任務の名前・説明・達成条件・報酬（GRA・研究記録書・アイテム）を編集します。新規作成は後回し。
-        </p>
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">開拓任務編集</h1>
+          <p className="mt-2 text-sm text-text-muted">
+            spec/054。開拓任務の名前・説明・達成条件・報酬（GRA・研究記録書・アイテム・称号）を編集します。
+          </p>
+        </div>
+        <Link
+          href="/dashboard/admin/quests/new"
+          className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+        >
+          新規作成
+        </Link>
       </div>
 
       <div className="mt-6 overflow-x-auto">

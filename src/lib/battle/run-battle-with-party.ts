@@ -23,6 +23,10 @@ import {
   BATTLE_DIRECT_MULT,
   BATTLE_FATAL_MULT,
   BATTLE_MITIGATION_K,
+  SKILL_LEVEL_CAP,
+  SKILL_LEVEL_DAMAGE_MULT_AT_CAP,
+  SKILL_LEVEL_MP_FACTOR_AT_CAP_PHYSICAL_MAGIC,
+  SKILL_LEVEL_MP_FACTOR_AT_CAP_SUPPORT,
 } from "./battle-constants";
 import {
   evaluateTactics as evaluateTacticsFromSpec,
@@ -87,6 +91,8 @@ export interface PartyMemberInput {
   base: BaseStats;
   tacticSlots: TacticSlotInput[];
   skills: Record<string, SkillDataForBattle>;
+  /** spec/052 §4.3: スキルID → キャラのそのスキルのレベル。未指定・未習得は 0 扱い。味方のみ使用（敵は補正なし）。 */
+  skillLevelBySkillId?: Record<string, number>;
   /** Phase 10: 属性耐性。現状は未使用。装備・遺物実装後にここへ渡す。 */
   attributeResistances?: AttributeResistances;
   /** docs/073: 遺物パッシブ効果（effectType + param）。戦闘で最終ダメージ倍率・検証ログ用。 */
@@ -106,6 +112,8 @@ interface PartyFighter extends FighterState {
   displayName: string;
   tacticSlots: TacticSlotInput[];
   skills: Record<string, SkillDataForBattle>;
+  /** spec/052 §4.3。味方のみ。 */
+  skillLevelBySkillId?: Record<string, number>;
   relicPassiveEffects: { effectType: string; param: Record<string, unknown> }[];
 }
 
@@ -189,6 +197,10 @@ export interface BattleLogEntryWithParty {
   relicDamageBefore?: number;
   /** 遺物倍率の説明（単一ヒット時。同上） */
   relicDamageNote?: string;
+  /** spec/052 検証ログ: 使用したスキルのキャラ側レベル（味方スキルのみ） */
+  skillLevel?: number;
+  /** spec/052 検証ログ: スキルレベル補正の説明（例: "Lv2 倍率1.02 MP0.98"） */
+  skillLevelNote?: string;
   /** このターン終了時点の味方の陣地位置（ターンごとの表示用） */
   partyPositions?: BattlePosition[];
   /** このターン終了時点の敵の陣地位置（ターンごとの表示用） */
@@ -576,6 +588,55 @@ export function getMpCost(skill: SkillDataForBattle, cap: number): number {
   return Math.floor(cap * skill.mpCostCapCoef) + skill.mpCostFlat;
 }
 
+/**
+ * spec/052 §4.3.1: 物理・魔法のダメージ倍率補正。L=0→1.00, L=CAP→SKILL_LEVEL_DAMAGE_MULT_AT_CAP。補助は補正なし(1)。
+ */
+function getSkillLevelDamageMultiplier(battleSkillType: string | null, level: number): number {
+  const L = Math.min(Math.max(0, level), SKILL_LEVEL_CAP);
+  if (battleSkillType === "physical" || battleSkillType === "magic") {
+    const bonus = SKILL_LEVEL_DAMAGE_MULT_AT_CAP - 1;
+    return 1 + bonus * Math.sqrt(L / SKILL_LEVEL_CAP);
+  }
+  return 1;
+}
+
+/**
+ * spec/052 §4.3: 消費MP倍率。物理・魔法 L=CAP→SKILL_LEVEL_MP_FACTOR_AT_CAP_PHYSICAL_MAGIC。補助 L=CAP→SKILL_LEVEL_MP_FACTOR_AT_CAP_SUPPORT。
+ */
+function getSkillLevelMpCostFactor(battleSkillType: string | null, level: number): number {
+  const L = Math.min(Math.max(0, level), SKILL_LEVEL_CAP);
+  const t = Math.sqrt(L / SKILL_LEVEL_CAP);
+  if (battleSkillType === "physical" || battleSkillType === "magic") {
+    return 1 - (1 - SKILL_LEVEL_MP_FACTOR_AT_CAP_PHYSICAL_MAGIC) * t;
+  }
+  if (battleSkillType === "support") {
+    return 1 - (1 - SKILL_LEVEL_MP_FACTOR_AT_CAP_SUPPORT) * t;
+  }
+  return 1;
+}
+
+/**
+ * spec/052 §4.3: レベル補正を掛けた消費MP（味方用）。敵は getMpCost をそのまま使用。
+ */
+function getEffectiveMpCost(
+  skill: SkillDataForBattle,
+  cap: number,
+  level: number
+): number {
+  const base = Math.floor(cap * skill.mpCostCapCoef) + skill.mpCostFlat;
+  const factor = getSkillLevelMpCostFactor(skill.battleSkillType, level);
+  return Math.max(1, Math.floor(base * factor));
+}
+
+/**
+ * spec/052 §4.3: レベル補正を掛けたスキル倍率（味方の物理・魔法用）。補助は元の powerMultiplier のまま。
+ */
+function getEffectivePowerMult(skill: SkillDataForBattle, level: number): number {
+  const base = skill.powerMultiplier ?? 1;
+  const mult = getSkillLevelDamageMultiplier(skill.battleSkillType, level);
+  return base * mult;
+}
+
 /** Phase 6: 回復スケール文字列をパース（例: "MATK*0.5" → actor.derived.MATK * 0.5） */
 function resolveHealScale(scale: string, actor: FighterState): number {
   const s = (scale || "").trim();
@@ -803,6 +864,7 @@ export function runBattleWithParty(
       currentMp: startMp,
       tacticSlots: p.tacticSlots,
       skills: p.skills,
+      skillLevelBySkillId: p.skillLevelBySkillId,
       relicPassiveEffects: p.relicPassiveEffects ?? [],
     };
   });
@@ -1141,8 +1203,10 @@ export function runBattleWithParty(
           enemyPositions: currentEnemyPositions,
         };
           const hasSkill = (skillId: string) => {
-            const skill = actor.skills[skillId];
-            return !!skill && actor.currentMp >= getMpCost(skill, actor.base.CAP);
+            const s = actor.skills[skillId];
+            if (!s) return false;
+            const level = actor.skillLevelBySkillId?.[skillId] ?? 0;
+            return actor.currentMp >= getEffectiveMpCost(s, actor.base.CAP, level);
           };
           const isSkillOnCooldown = (skillId: string) =>
             (partyCooldowns[actorIndex][skillId] ?? 0) > 0;
@@ -1225,7 +1289,8 @@ export function runBattleWithParty(
             applyCooldownEndOfTurn(actorIndex);
             continue;
           }
-          const cost = getMpCost(skill, actor.base.CAP);
+          const skillLevel = actor.skillLevelBySkillId?.[action.skillId] ?? 0;
+          const cost = getEffectiveMpCost(skill, actor.base.CAP, skillLevel);
           if (actor.currentMp < cost) {
             const targetIdx = pickEnemyTarget(enemies, currentEnemyPositions, enemyAlive);
             const entry: BattleLogEntryWithParty = {
@@ -1410,6 +1475,8 @@ export function runBattleWithParty(
             actor.currentMp = Math.max(0, actor.currentMp - cost);
             const snapAfter = snapshotPartyHpMp(party);
             const posSnap = snapshotPositions(partyPositions, currentEnemyPositions);
+            const supportMpFactor = getSkillLevelMpCostFactor(skill.battleSkillType, skillLevel);
+            const supportSkillLevelNote = `Lv${skillLevel} MP${supportMpFactor.toFixed(2)}`;
             log.push({
               cycle,
               turn: turnIndex,
@@ -1444,6 +1511,8 @@ export function runBattleWithParty(
               dispelledDebuffs:
                 dispelledDebuffs.length > 0 ? dispelledDebuffs : undefined,
               hadBuffEffect: hadBuffEffect || undefined,
+              skillLevel,
+              skillLevelNote: supportSkillLevelNote,
             });
             const ct = skill.cooldownCycles ?? 0;
             if (ct > 0 && action.skillId) skillUsedThisTurnByPartyIndex[actorIndex] = { skillId: action.skillId, cooldownCycles: ct };
@@ -1481,8 +1550,8 @@ export function runBattleWithParty(
             debuffApplied?: string;
           }[] = [];
           const attackType = skill.battleSkillType === "magic" ? "magic" : "physical";
-          // Phase 8: 毒霧・萎縮など apply_debuff のみのスキルはダメージ 0
-          const powerMult = skill.powerMultiplier ?? 1.0;
+          // Phase 8: 毒霧・萎縮など apply_debuff のみのスキルはダメージ 0。spec/052 §4.3: スキルレベルで倍率補正
+          const powerMult = getEffectivePowerMult(skill, skillLevel);
           const effects = skill.effects ?? [];
           // Phase 7: 列ウェイト無視（均等抽選）。effect で指定されていれば敵単体抽選を均等に
           const useEqualTargetWeight = effects.some((e) => e.effectType === "target_select_equal_weight");
@@ -1504,8 +1573,8 @@ export function runBattleWithParty(
                 if (enemyAlive[i] && cols.includes(currentEnemyPositions[i].col)) columnTargetIndices.push(i);
               }
               if (columnTargetIndices.length === 0) {
-                const cost = getMpCost(skill, actor.base.CAP);
-                actor.currentMp = Math.max(0, actor.currentMp - cost);
+                const costNoColumn = getEffectiveMpCost(skill, actor.base.CAP, skillLevel);
+                actor.currentMp = Math.max(0, actor.currentMp - costNoColumn);
                 const ct = skill.cooldownCycles ?? 0;
                 if (ct > 0) skillUsedThisTurnByPartyIndex[actorIndex] = { skillId: action.skillId!, cooldownCycles: ct };
                 const posSnap = snapshotPositions(partyPositions, currentEnemyPositions);
@@ -1851,6 +1920,10 @@ export function runBattleWithParty(
           const snapAfter = snapshotPartyHpMp(party);
           const enemyHpAfter = enemies.map((e) => e.currentHp);
           const enemyMpAfter = enemies.map((e) => e.currentMp);
+          const damageMult = getSkillLevelDamageMultiplier(skill.battleSkillType, skillLevel);
+          const mpFactor = getSkillLevelMpCostFactor(skill.battleSkillType, skillLevel);
+          const skillLevelNote =
+            `Lv${skillLevel} 倍率${damageMult.toFixed(2)} MP${mpFactor.toFixed(2)}`;
           log.push({
             cycle,
             turn: turnIndex,
@@ -1877,6 +1950,8 @@ export function runBattleWithParty(
             tacticSlotSkippedDueToCt: action.skippedDueToCt,
             logMessage: skill.logMessage ?? undefined,
             logMessageOnCondition: skill.logMessageOnCondition ?? undefined,
+            skillLevel,
+            skillLevelNote,
             conditionMet,
             triggeredAttr,
             hitDetails: hitDetails.length > 0 ? hitDetails : undefined,

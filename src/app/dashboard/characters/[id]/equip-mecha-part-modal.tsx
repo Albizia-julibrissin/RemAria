@@ -67,18 +67,10 @@ export function EquipMechaPartModal({
       onClick={handleOverlayClick}
     >
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-base-border bg-base-elevated shadow-lg">
-        <div className="flex items-center justify-between border-b border-base-border px-4 py-3">
+        <div className="border-b border-base-border px-4 py-3">
           <h2 id="equip-mecha-part-modal-title" className="text-lg font-medium text-text-primary">
             {slotLabel}に装着
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-text-muted hover:bg-base-border hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-            aria-label="閉じる"
-          >
-            ×
-          </button>
         </div>
         <div className="flex-1 overflow-auto p-4">
           {availableParts.length === 0 ? (

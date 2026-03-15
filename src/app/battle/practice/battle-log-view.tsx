@@ -307,6 +307,11 @@ export function EntryLines({
                 </div>
               );
             })}
+          {SHOW_VERIFICATION_LOG && hasHitDetails && entry.skillLevelNote && (
+            <div className="mt-0.5 pl-4 text-text-muted text-sm">
+              検証: スキル {entry.skillLevelNote}
+            </div>
+          )}
 
           {/* 単一ヒット（hitDetails なし）：従来の1行表示（条件達成時は左に「〇〇決壊！」）／回復表示 */}
           {!hasHitDetails && (
@@ -338,6 +343,11 @@ export function EntryLines({
               {SHOW_VERIFICATION_LOG && !hasHitDetails && entry.relicDamageBefore != null && entry.relicDamageNote && (
                 <div className="mt-0.5 pl-4 text-text-muted text-sm">
                   検証: 適用前 {entry.relicDamageBefore} → [{entry.relicDamageNote}]
+                </div>
+              )}
+              {SHOW_VERIFICATION_LOG && !hasHitDetails && entry.skillLevelNote && (
+                <div className="mt-0.5 pl-4 text-text-muted text-sm">
+                  検証: スキル {entry.skillLevelNote}
                 </div>
               )}
               {entry.hit && entry.healAmount != null && entry.healAmount > 0 && (

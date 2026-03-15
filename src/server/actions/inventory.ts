@@ -18,6 +18,18 @@ export type StackableItem = {
   quantity: number;
   /** 探索1回あたりの持ち込み上限。null は対象外。spec/049 */
   maxCarryPerExpedition: number | null;
+  /** spec/052: category=skill_book のとき紐づくスキルID。習得対象キャラの絞り込みに使用。 */
+  skillId?: string | null;
+  /** spec/052: category=skill_book のとき紐づくスキルの説明。物資庫で！ボタン表示用。 */
+  skillDescription?: string | null;
+  /** spec/052: スキル表示タグ（JSON 配列）。物資庫でタグ・物理/CT/CD 表示用。 */
+  skillDisplayTags?: unknown;
+  /** 戦闘スキル種別（physical / magic / support）。 */
+  skillBattleSkillType?: string | null;
+  /** チャージタイム（サイクル）。 */
+  skillChargeCycles?: number | null;
+  /** クールダウン（サイクル）。 */
+  skillCooldownCycles?: number | null;
 };
 
 export type EquipmentInstanceSummary = {
@@ -92,7 +104,26 @@ export async function getInventory(
           ...(categoryFilter ? { item: { category: categoryFilter } } : {}),
           quantity: { gt: 0 },
         },
-        include: { item: { select: { code: true, name: true, category: true, maxCarryPerExpedition: true } } },
+        include: {
+          item: {
+            select: {
+              code: true,
+              name: true,
+              category: true,
+              maxCarryPerExpedition: true,
+              skillId: true,
+              skill: {
+                select: {
+                  description: true,
+                  displayTags: true,
+                  battleSkillType: true,
+                  chargeCycles: true,
+                  cooldownCycles: true,
+                },
+              },
+            },
+          },
+        },
         orderBy: { item: { code: "asc" } },
       }),
       prisma.equipmentInstance.findMany({
@@ -118,6 +149,12 @@ export async function getInventory(
     category: row.item.category,
     quantity: row.quantity,
     maxCarryPerExpedition: row.item.maxCarryPerExpedition ?? null,
+    skillId: row.item.skillId ?? null,
+    skillDescription: row.item.skill?.description ?? null,
+    skillDisplayTags: row.item.skill?.displayTags ?? undefined,
+    skillBattleSkillType: row.item.skill?.battleSkillType ?? null,
+    skillChargeCycles: row.item.skill?.chargeCycles ?? null,
+    skillCooldownCycles: row.item.skill?.cooldownCycles ?? null,
   }));
 
   const equipmentSummaries: EquipmentInstanceSummary[] =
@@ -196,6 +233,11 @@ export async function consumeSkillBook(
     select: { level: true },
   });
 
+  const { SKILL_LEVEL_CAP } = await import("@/lib/battle/battle-constants");
+  if (existing && existing.level >= SKILL_LEVEL_CAP) {
+    return { success: false, error: "スキルは最大レベルです。" };
+  }
+
   const booksNeeded = existing ? existing.level + 1 : 1;
   if (quantity < booksNeeded) {
     return {
@@ -229,16 +271,83 @@ export async function consumeSkillBook(
   return { success: true, newLevel };
 }
 
-/** spec/052: スキル分析書の使用対象となるキャラ一覧（主人公＋仲間）。 */
-export async function getCharactersForSkillBook(): Promise<
+/** spec/052: キャラの指定スキルのレベルアップに必要な分析書情報。モーダル表示用。 */
+export async function getSkillBookLevelUpInfo(
+  characterId: string,
+  skillId: string
+): Promise<{
+  success: true;
+  itemId: string;
+  itemName: string;
+  currentLevel: number;
+  booksRequiredForNextLevel: number;
+  userQuantity: number;
+  /** 最大レベル(99)に達しているとき true。分析ボタン無効用。 */
+  isMaxLevel: boolean;
+} | { success: false; error: string }> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "ログインしてください。" };
+  }
+  const [character, characterSkill, item] = await Promise.all([
+    prisma.character.findUnique({
+      where: { id: characterId },
+      select: { id: true, userId: true, category: true },
+    }),
+    prisma.characterSkill.findUnique({
+      where: { characterId_skillId: { characterId, skillId } },
+      select: { level: true },
+    }),
+    prisma.item.findFirst({
+      where: { category: "skill_book", skillId },
+      select: { id: true, name: true },
+    }),
+  ]);
+  if (!character || character.userId !== session.userId) {
+    return { success: false, error: "対象キャラが存在しないか、操作権限がありません。" };
+  }
+  if (character.category !== "protagonist" && character.category !== "companion") {
+    return { success: false, error: "主人公または仲間にのみ使用できます。" };
+  }
+  if (!item) {
+    return { success: false, error: "このスキルに対応する分析書が登録されていません。" };
+  }
+  const inv = await prisma.userInventory.findUnique({
+    where: { userId_itemId: { userId: session.userId, itemId: item.id } },
+    select: { quantity: true },
+  });
+  const { SKILL_LEVEL_CAP } = await import("@/lib/battle/battle-constants");
+  const currentLevel = characterSkill?.level ?? 0;
+  const isMaxLevel = currentLevel >= SKILL_LEVEL_CAP;
+  const booksRequiredForNextLevel = isMaxLevel ? 0 : currentLevel + 1;
+  const userQuantity = inv?.quantity ?? 0;
+  return {
+    success: true,
+    itemId: item.id,
+    itemName: item.name,
+    currentLevel,
+    booksRequiredForNextLevel,
+    userQuantity,
+    isMaxLevel,
+  };
+}
+
+/** spec/052: スキル分析書の習得対象となるキャラ一覧。指定スキルをまだ習得していない主人公＋仲間のみ返す。 */
+export async function getCharactersForSkillBook(skillId: string): Promise<
   { id: string; displayName: string; category: string }[] | null
 > {
   const session = await getSession();
   if (!session?.userId) return null;
+  const alreadyHave = await prisma.characterSkill.findMany({
+    where: { skillId },
+    select: { characterId: true },
+  });
+  const excludeIds = alreadyHave.map((r) => r.characterId);
   const list = await prisma.character.findMany({
     where: {
       userId: session.userId,
       category: { in: ["protagonist", "companion"] },
+      ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
     },
     select: { id: true, displayName: true, category: true },
     orderBy: [{ category: "asc" }, { createdAt: "asc" }],

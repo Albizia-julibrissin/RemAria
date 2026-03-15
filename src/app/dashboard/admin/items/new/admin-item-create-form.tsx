@@ -29,10 +29,10 @@ export function AdminItemCreateForm({ skills }: Props) {
   const [skillId, setSkillId] = useState("");
   const [consumableEffectJson, setConsumableEffectJson] = useState("");
   const [maxCarry, setMaxCarry] = useState("");
-  const [maxOwned, setMaxOwned] = useState("");
-  const [marketListable, setMarketListable] = useState(false);
-  const [marketMinPrice, setMarketMinPrice] = useState("");
-  const [marketMinQty, setMarketMinQty] = useState("");
+  const [maxOwned, setMaxOwned] = useState("99999");
+  const [marketListable, setMarketListable] = useState(true);
+  const [marketMinPrice, setMarketMinPrice] = useState("1");
+  const [marketMinQty, setMarketMinQty] = useState("1");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,7 +178,7 @@ export function AdminItemCreateForm({ skills }: Props) {
 
       <div>
         <label htmlFor="maxOwned" className="block text-sm font-medium text-text-muted">
-          maxOwnedPerUser（ユーザー別所持数上限。スタック可能アイテム用。空で上限なし）
+          maxOwnedPerUser（ユーザー別所持数上限。スタック可能アイテム用。デフォルト99999）
         </label>
         <input
           id="maxOwned"
@@ -186,6 +186,7 @@ export function AdminItemCreateForm({ skills }: Props) {
           min={0}
           value={maxOwned}
           onChange={(e) => setMaxOwned(e.target.value)}
+          placeholder="99999"
           className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
         />
       </div>
@@ -205,7 +206,7 @@ export function AdminItemCreateForm({ skills }: Props) {
 
       <div>
         <label htmlFor="marketMinPrice" className="block text-sm font-medium text-text-muted">
-          marketMinPricePerUnit（出品単価下限。空でグローバル定数使用）
+          marketMinPricePerUnit（出品単価下限。デフォルト1）
         </label>
         <input
           id="marketMinPrice"
@@ -213,13 +214,14 @@ export function AdminItemCreateForm({ skills }: Props) {
           min={0}
           value={marketMinPrice}
           onChange={(e) => setMarketMinPrice(e.target.value)}
+          placeholder="1"
           className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
         />
       </div>
 
       <div>
         <label htmlFor="marketMinQty" className="block text-sm font-medium text-text-muted">
-          marketMinQuantity（出品数量下限。空でグローバル定数使用）
+          marketMinQuantity（出品数量下限・出品単位。デフォルト1。出品時の数量刻み・単位としても使用）
         </label>
         <input
           id="marketMinQty"
@@ -227,6 +229,7 @@ export function AdminItemCreateForm({ skills }: Props) {
           min={0}
           value={marketMinQty}
           onChange={(e) => setMarketMinQty(e.target.value)}
+          placeholder="1"
           className="mt-1 w-full rounded border border-base-border bg-base-elevated px-3 py-2 text-text-primary"
         />
       </div>

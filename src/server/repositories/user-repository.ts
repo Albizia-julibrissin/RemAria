@@ -18,6 +18,22 @@ export const userRepository = {
     });
   },
 
+  /** 他プレイヤー表示用。accountId で検索し、公開してよい項目のみ返す。docs/088。装備中称号・主人公（戦闘力・アイコン表示用）も返す。 */
+  async findPublicProfileByAccountId(accountId: string) {
+    return prisma.user.findUnique({
+      where: { accountId },
+      select: {
+        id: true,
+        name: true,
+        accountId: true,
+        selectedTitleId: true,
+        selectedTitle: { select: { id: true, name: true } },
+        protagonistCharacterId: true,
+        protagonistCharacter: { select: { iconFilename: true } },
+      },
+    });
+  },
+
   async findById(id: string) {
     return prisma.user.findUnique({
       where: { id },
@@ -30,6 +46,7 @@ export const userRepository = {
     accountId: string;
     passwordHash: string;
     name: string;
+    termsAgreedAt: Date;
   }) {
     return prisma.user.create({
       data: {
@@ -37,6 +54,7 @@ export const userRepository = {
         accountId: data.accountId,
         passwordHash: data.passwordHash,
         name: data.name,
+        termsAgreedAt: data.termsAgreedAt,
       },
       select: { id: true },
     });

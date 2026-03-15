@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { register, type AuthResult } from "@/server/actions/auth";
 
@@ -76,6 +77,24 @@ export function RegisterForm() {
           placeholder="冒険者"
         />
         <p className="text-xs text-text-muted">主人公の表示名としても使用されます。</p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            name="agreeTerms"
+            value="on"
+            required
+            className="mt-1 rounded border-base-border bg-base-elevated text-brass focus:ring-brass focus:ring-offset-base"
+            aria-describedby="terms-desc"
+          />
+          <span id="terms-desc" className="text-sm text-text-primary">
+            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-brass hover:text-brass-hover underline">
+              利用規約
+            </Link>
+            に同意する
+          </span>
+        </label>
       </div>
       <button
         type="submit"

@@ -58,7 +58,7 @@
 ### 3.2 市場解放（ユーザーフラグ）
 
 - **User に「市場解放済み」フラグ**（例: marketUnlocked, Boolean, default false）を持たせる。各市場 API の冒頭で、当該ユーザーのフラグを確認し、**false の場合はエラーを返す**。
-- **フラグを true にする処理**は任務（クエスト）側で行う。特定の開拓任務完了時に、該当ユーザーのフラグをオンにする処理を後から追加する。本 spec の範囲外。
+- **フラグを true にする処理**は開拓任務のクリア報告時に行う。Quest に **unlocksMarket**（Boolean）を持たせ、管理画面で「この任務で市場を解放する」を ON にした任務をユーザーが報告すると、そのユーザーの marketUnlocked を true にする。実装は spec/068 の解放付与（grantQuestUnlocks）に市場解放を追加し、管理画面の任務編集で unlocksMarket を設定可能。
 
 ### 3.3 MarketListing（出品）
 

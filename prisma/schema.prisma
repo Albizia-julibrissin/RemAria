@@ -37,9 +37,14 @@ model User {
   lastLoginAt   DateTime?
   firstLoginAt  DateTime?
   lastActiveAt  DateTime? // spec/010_auth §11.6: 直近操作日時。プレイ中人数・管理画面で参照。1分スロットリングで更新。
+  /// 利用規約同意日時（登録時）。docs/090_terms_of_service.md。
+  termsAgreedAt DateTime?
 
   // 表示
   locale String?
+  /// spec/055: 装備中の称号（開拓者証で表示・脱着）。null は未装備。
+  selectedTitleId String?
+  selectedTitle   Title?   @relation("EquippedTitle", fields: [selectedTitleId], references: [id], onDelete: SetNull)
 
   // docs/02, 08: 主人公・仲間・メカは Character に統一。主人公は 1 体のみ
   protagonistCharacterId String?   @unique
@@ -65,6 +70,7 @@ model User {
   equipmentInstances   EquipmentInstance[]
   mechaPartInstances   MechaPartInstance[]
   relicInstances       RelicInstance[]
+  relicTemperPendings   RelicTemperPending[]
   expeditions          Expedition[]
   expeditionHistories  ExpeditionHistory[]
   userFacilityTypeUnlocks UserFacilityTypeUnlock[]
@@ -75,6 +81,10 @@ model User {
   explorationThemeUnlocks UserExplorationThemeUnlock[]
   /// spec/068: 任務クリアで解禁した研究グループ
   researchGroupUnlocks    UserResearchGroupUnlock[]
+  /// spec/089: 研究グループごとの設備コスト拡張回数
+  researchGroupCostExpansions UserResearchGroupCostExpansion[]
+  /// spec/089: 研究グループごとの設備設置上限拡張回数
+  researchGroupSlotsExpansions UserResearchGroupSlotsExpansion[]
   notifications Notification[]
   /// spec/075: 市場解放済みなら true。任務側でオンにする。
   marketUnlocked          Boolean   @default(false)
@@ -84,6 +94,8 @@ model User {
   marketTransactionsAsSeller MarketTransaction[] @relation("MarketSeller")
   /// docs/081: 特別アイテム使用履歴（消費時に記録）
   itemUsageLogs               ItemUsageLog[]
+  /// spec/090: 運営郵便（受信箱）
+  userMails                   UserMail[]
 }
 
 /// docs/066: 通知。種別（quest_accepted 等）・タイトル・本文・リンク・既読日時。
@@ -91,7 +103,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String    // quest_accepted | system 等
+  type      String    // quest_accepted | system | mail_arrived 等
   title     String
   body      String?
   linkUrl   String?   // クリックで遷移先。任意。
@@ -102,6 +114,38 @@ model Notification {
   @@index([userId, readAt])
 }
 
+/// spec/090: 運営→プレイヤー郵便（1通の定義）。送信時に UserMail が作成される。
+model Mail {
+  id                    String    @id @default(cuid())
+  title                 String
+  body                  String?
+  rewardGraFree         Int       @default(0)
+  rewardGraPaid         Int       @default(0)
+  rewardResearchPoint   Int       @default(0)
+  rewardItems           Json?     // [{ itemId, amount }]
+  rewardTitleIds        Json?    // [titleId]
+  expiresAt             DateTime?
+  createdAt             DateTime  @default(now())
+
+  userMails UserMail[]
+}
+
+/// spec/090: ユーザーごとの受信レコード。有効期限切れは一覧で非表示。
+model UserMail {
+  id         String    @id @default(cuid())
+  userId     String
+  mailId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mail        Mail      @relation(fields: [mailId], references: [id], onDelete: Cascade)
+  readAt     DateTime?
+  receivedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([userId, mailId])
+  @@index([userId])
+  @@index([mailId])
+}
+
 /// docs/054, spec/054_quests: クエストマスタ。ストーリー・研究・一般。
 model Quest {
   id                  String   @id @default(cuid())
@@ -110,6 +154,10 @@ model Quest {
   name                String
   description         String?  // 経緯・状況がわかる説明文
   clearReportMessage  String?  // クリア報告時に表示するメッセージ（ストーリー演出用）
+  /// spec/094: クリア報告時に全体チャットに「〇〇が任務「△△」を達成しました。」を投稿するか
+  notifyChatOnClear   Boolean  @default(false)
+  /// この任務のクリア報告で市場機能を解放する（User.marketUnlocked = true）。管理画面で設定。spec/075。
+  unlocksMarket       Boolean  @default(false)
   /// 達成条件タイプ: area_clear | enemy_defeat | skill_success_count | equipment_craft 等
   achievementType     String
   /// 達成条件パラメータ。例: { "areaId": "cuid", "count": 1 } | { "enemyId": "cuid", "count": 10 }
@@ -602,29 +650,68 @@ model CraftRecipe {
   @@index([outputKind])
 }
 
-/// docs/054: 研究グループ。第一弾は「錆びれた森林研究」。次のグループは前提グループの派生型以外を全クリアで解放。
+/// docs/054: 研究グループ。解放は開拓任務（QuestUnlockResearchGroup / UserResearchGroupUnlock）で行う。
 model ResearchGroup {
-  id                   String   @id @default(cuid())
-  code                 String   @unique
-  name                 String
-  displayOrder         Int      @default(0)
-  prerequisiteGroupId  String?
-  prerequisiteGroup    ResearchGroup?  @relation("ResearchGroupPrerequisite", fields: [prerequisiteGroupId], references: [id], onDelete: SetNull)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  nextGroups ResearchGroup[] @relation("ResearchGroupPrerequisite")
-  items      ResearchGroupItem[]
+  /// spec/089: このグループで可能な設備コスト拡張回数。0=無効。
+  facilityCostExpansionLimit         Int @default(0)
+  /// spec/089: 1回の拡張で増えるコスト上限。
+  facilityCostExpansionAmount        Int @default(0)
+  /// spec/089: 1回の拡張に必要な研究記録書の数。
+  facilityCostExpansionResearchPoint Int @default(0)
+
+  /// spec/089: このグループで可能な設備設置上限拡張回数。0=無効。
+  facilitySlotsExpansionLimit         Int @default(0)
+  /// spec/089: 1回の拡張で増える設置枠数。
+  facilitySlotsExpansionAmount        Int @default(0)
+  /// spec/089: 1回の拡張に必要な研究記録書の数。
+  facilitySlotsExpansionResearchPoint Int @default(0)
+
+  items ResearchGroupItem[]
   /// spec/068: このグループを解禁する任務の紐づけ
   questUnlocks QuestUnlockResearchGroup[]
   /// spec/068: ユーザごとの解禁済み
   userUnlocks  UserResearchGroupUnlock[]
+  /// spec/089: ユーザごとの設備コスト拡張回数
+  costExpansions UserResearchGroupCostExpansion[]
+  /// spec/089: ユーザごとの設備設置上限拡張回数
+  slotsExpansions UserResearchGroupSlotsExpansion[]
 }
 
 /// spec/068: ユーザが任務クリアで解禁した研究グループ。
 model UserResearchGroupUnlock {
   userId          String
   researchGroupId String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchGroup   ResearchGroup @relation(fields: [researchGroupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, researchGroupId])
+  @@index([userId])
+}
+
+/// spec/089: ユーザが研究グループで行った設備コスト拡張の回数。
+model UserResearchGroupCostExpansion {
+  userId          String
+  researchGroupId String
+  count           Int      @default(0)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchGroup   ResearchGroup @relation(fields: [researchGroupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, researchGroupId])
+  @@index([userId])
+}
+
+/// spec/089: ユーザが研究グループで行った設備設置上限拡張の回数。
+model UserResearchGroupSlotsExpansion {
+  userId          String
+  researchGroupId String
+  count           Int      @default(0)
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   researchGroup   ResearchGroup @relation(fields: [researchGroupId], references: [id], onDelete: Cascade)
 
@@ -641,6 +728,8 @@ model ResearchGroupItem {
   targetId        String   // FacilityType.id or CraftRecipe.id
   isVariant       Boolean  @default(false)  // 派生型なら true。グループクリアは「派生型以外」で判定
   displayOrder    Int      @default(0)
+  /// spec/089: 解放時に必要な研究記録書の数。0=不要。
+  requiredResearchPoint Int @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -688,7 +777,8 @@ model Title {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  userUnlocks UserTitleUnlock[]
+  userUnlocks         UserTitleUnlock[]
+  usersEquipped       User[]   @relation("EquippedTitle")
 
   @@index([displayOrder])
 }
@@ -841,11 +931,28 @@ model RelicInstance {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  characterRelics CharacterRelic[]
+  characterRelics   CharacterRelic[]
+  relicTemperPending RelicTemperPending?
 
   @@index([userId])
   @@index([relicTypeId])
   @@index([relicPassiveEffectId])
+}
+
+/// docs/087, spec/051: 遺物調律の未確定結果。1ユーザー・1遺物あたり1件。確定または取消で削除。
+model RelicTemperPending {
+  id                     String        @id @default(cuid())
+  userId                 String
+  user                   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relicInstanceId        String        @unique
+  relicInstance          RelicInstance @relation(fields: [relicInstanceId], references: [id], onDelete: Cascade)
+  newStatBonus1          Json?
+  newStatBonus2          Json?
+  newAttributeResistances Json?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  @@index([userId])
 }
 
 /// spec/051: キャラの遺物装着。1キャラあたりスロット1～4を1つずつ。
@@ -1167,13 +1274,16 @@ model Order {
   @@index([userId])
 }
 
-/// spec/037, docs/00, 022: 全体チャット。直近ログのみ保持（永続は最小限）。
+/// spec/037, 094: 全体チャット。直近ログのみ保持。kind=system は任務達成等のシステム投稿（userId は null）。
 model ChatMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  body      String   // 本文（spec で最大 500 文字）
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body       String   // 本文（spec で最大 500 文字）
+  kind       String   @default("user") // "user" | "system"
+  systemKind String?  // kind=system のときのみ。例: quest_clear
+  payload    Json?    // リンク用。例: { userId, questId, questName }
+  createdAt  DateTime @default(now())
 
   @@index([createdAt])
   @@index([userId])

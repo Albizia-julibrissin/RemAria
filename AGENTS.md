@@ -8,6 +8,7 @@
 
 - **仕様変更は spec または正本 doc を先に更新してからコードを変更する。** チャットの会話だけに残さず、必ずファイルに反映する。
 - **データモデルの正本**: `prisma/schema.prisma`。説明・メモは `docs/08_database_schema.md`。
+- **マスタテーブルの正本**: このゲームで「マスタ」とみなすテーブル一覧の正本は **`src/server/lib/sync-masters.ts`** の **MASTER_DELEGATES_IN_ORDER**。トランザクション／アカウント系テーブルと差別化する際の基準。**スキーマにマスタ系テーブルを追加・削除した場合は、ここも必ず編集する**（新規は依存順で一覧に追加、削除したテーブルは一覧から除去）。CLI（`prisma/sync-masters-to-target.ts`）と管理画面の本番マスタ更新（spec/095）の両方がこの一覧を参照する。
 - **マスタデータ**: シードでは投入しない。管理画面で編集し、**バックアップ・復元**で環境を揃える（`npm run db:backup` / `db:restore`）。**DB 運営・バックアップ手順**は **`manage/DB_OPERATIONS.md`** と **`manage/BACKUP_RESTORE.md`** を参照。
 - **本番リリース**: 本番 DB に触れる手順（バックアップ・マイグレーション・マスタ同期など）は **基本、依頼されたら Cursor が実行する**。本番の接続先は **`manage/production.env`** の `DATABASE_URL` を参照する（.gitignore 済み）。手順は **`manage/PRODUCTION_RELEASE_GUIDE.md`** の「**9. Cursor に本番リリースの各手順を依頼する**」に従い、production.env を読み込んだうえでコマンドを実行する。
 - **本番環境の前提**: 現在の本番環境は「MVP 公開テスト」中のもの。**本番 DB はプレイヤーの実データを含む**ため、リセットや破壊的操作（`migrate reset` など）は絶対に行わないこと。必要な変更は必ずバックアップ取得 → メンテナンスモード → マイグレーション／データ移行 → 検証 → メンテナンス解除、の手順で行う。
@@ -60,8 +61,9 @@
 | メカパーツ・部位・ステ計算 | spec/044_mecha_parts_and_stats | 未実装。MechaPartType・装備テーブル・computeMechaBaseStats 等。 |
 | アイテム・所持・バッグ | spec/045_inventory_and_items | `src/server/actions/inventory.ts`（または bag.ts）, `src/app/dashboard/bag/`, schema: Item.category, EquipmentType, EquipmentInstance, CharacterEquipment, MechaPartInstance |
 | アイテムクラフト | spec/046_item_craft | `src/server/actions/craft.ts`, `src/app/dashboard/craft/`, `src/app/dashboard/equipment/`, schema: CraftRecipe, CraftRecipeInput |
+| 装備解体（工房） | spec/093_equipment_dismantle | `src/server/actions/craft.ts`（getDismantlableEquipment, dismantleEquipment, dismantleEquipmentBulk）, `src/app/dashboard/craft/`（解体タブ） |
 | 研究・解放・建設 | spec/047, **docs/054_quest_and_research_design.md** §4.3.1 | `src/server/actions/facilities-placement.ts`（place/dismantle）, `src/server/actions/research.ts`（研究グループ・解放）, `src/app/dashboard/facilities/`, `src/app/dashboard/research/`, schema: FacilityTypeConstructionInput, UserFacilityTypeUnlock, ResearchGroup, ResearchGroupItem, ResearchUnlockCost, UserCraftRecipeUnlock |
-| 遺物（4枠・鑑定・効果・戦闘耐性） | spec/051_relics | `src/server/actions/relic.ts`, `src/lib/constants/relic.ts`, `src/app/dashboard/bag/`（遺物タブ）, `src/app/dashboard/characters/[id]/character-relic-section.tsx`, schema: RelicType, RelicPassiveEffect, RelicInstance, CharacterRelic。戦闘は `src/server/actions/battle.ts` で遺物耐性を partyInput に渡す。 |
+| 遺物（4枠・鑑定・分解・効果・戦闘耐性） | spec/051_relics, docs/086 | `src/server/actions/relic.ts`, `src/lib/constants/relic.ts`, `src/app/dashboard/craft/`（鑑定タブ）, `src/app/dashboard/bag/`（遺物タブは一覧のみ）, `src/app/dashboard/characters/[id]/character-relic-section.tsx`, schema: RelicType, RelicPassiveEffect, RelicInstance, CharacterRelic。戦闘は `src/server/actions/battle.ts` で遺物耐性を partyInput に渡す。分解で relic_shard 付与。 |
 | 戦闘時有効基礎ステ（遺物補正・メカパーツ加算・フレーム倍率） | spec/069_battle_effective_base_stats | `src/lib/battle/effective-base-stats.ts`（純粋関数）, `src/server/actions/battle.ts`（データ取得・有効基礎の組み立て）。実装フェーズは docs/070。 |
 | 称号（マスタ・ユーザ解放） | spec/055_titles | `src/server/actions/titles.ts`（getTitleList, getMyUnlockedTitleIds, unlockTitleForUser）, schema: Title, UserTitleUnlock。シードで「開拓者」1件投入。 |
 | スキル分析書・スキルレベル | spec/052_skill_books_and_level | `src/server/actions/inventory.ts`（consumeSkillBook, getCharactersForSkillBook）, `src/app/dashboard/bag/`（スキル分析書タブで使用・キャラ選択）, schema: Item.skillId, CharacterSkill.level。習得/レベルアップ必要冊数は Lv N→N+1 に (N+1) 冊。 |
@@ -74,6 +76,7 @@
 | 市場（出品・購入・最安消化・手数料） | spec/075_market, **docs/065_market_design.md** | **Phase 1・2・3 実装済み**。User.marketUnlocked、Item.marketListable / marketMin、MarketListing / MarketTransaction / MarketListingEvent。購入・出品・取下げ・履歴の 4 画面、有効期限・期限切れ自動取下げ、価格履歴、同時出品数上限。**通貨履歴強化**（Phase 3）：CurrencyTransaction に beforeBalance/afterBalance、reason コード化、運営ビューは管理画面「通貨履歴（ユーザー別）」で確認。`src/server/actions/market.ts`、`src/lib/constants/market.ts`、`src/lib/constants/currency-transaction-reasons.ts`、`src/app/dashboard/market/`、`src/app/dashboard/admin/currency-history/`。 |
 | **特別アイテム（闇市・黒市・使用履歴）** | **docs/079**, **docs/081_special_items_policy.md** | 闇市・黒市は `src/server/actions/underground-market.ts`、`src/app/dashboard/underground-market/`。**特別アイテムを消費する機能**を実装するときは **docs/081** を参照し、所持減算に加えて **ItemUsageLog** に 1 件記録する。理由コードは `src/lib/constants/item-usage-reasons.ts` で管理（新規理由はここに追加してからログを書く）。 |
 | **緊急製造指示書（全設備2時間加速）** | **spec/083_emergency_production_order**, docs/065 §7 | 1 枚消費で全設備の lastProducedAt を 2 時間前に更新。`useEmergencyProductionOrder`（新規 Action）、getIndustrial 拡張（所持数）、設備画面にボタン・モーダル。`src/lib/constants/production.ts`（EMERGENCY_PRODUCTION_ACCELERATION_MINUTES）、ItemUsageLog reason=facility_speed。 |
+| **郵便（運営→プレイヤー）** | **spec/090_mail**, docs/085_mail_system_design | 運営が管理画面からお知らせ＋付与（無償/有償GRA・研究記録書・アイテム・称号）を送信。届いたユーザーに「郵便が届きました。」通知（郵便画面リンク付き）。`src/server/actions/mail.ts`、`src/app/dashboard/mail/`（2カラム：左一覧・右詳細・受取）、ヘッダー mailbox アイコン→/dashboard/mail。有効期限切れは非表示。管理: `src/app/dashboard/admin/mail/`（送信フォーム・履歴）。schema: Mail, UserMail。通貨理由: CURRENCY_REASON_MAIL_REWARD。 |
 
 - 上記以外の機能を追加するときは、まず `docs/01_features.md` と `manage/MVP_PROGRESS.md` で該当 spec を確認し、対応する spec がなければ spec を書いてから実装する。
 
@@ -85,11 +88,11 @@
 |--------|------------------------------|
 | **effectType 追加** | `docs/042_battle_effect_types_reference.md`（正本）, `spec/038`, `src/lib/battle/run-battle-with-party.ts`, 必要なら `prisma/seed.ts` の BATTLE_SKILL_EFFECTS |
 | 戦闘計算・式の確認 | `docs/10_battle_calc_formulas.md`, `docs/10_battle_status.csv`, `src/lib/battle/derived-stats.ts` |
-| 作戦・ターゲット評価 | `spec/039`, `spec/040`, `docs/14_tactics_slot_shared.md`, `src/lib/battle/tactic-evaluation.ts` |
+| 作戦・ターゲット評価 | `spec/039`, `spec/040`, `docs/14_tactics_slot_shared.md`, **`docs/14_tactics_logic_reference.md`**（ロジックまとめ・条件拡張時の編集箇所）, `src/lib/battle/tactic-evaluation.ts` |
 | 探索・技能イベント | `spec/073_skill_events_exploration.md`, `docs/060_exploration_events_design.md` |
 | クエスト・報告・報酬 | `spec/054_quests.md`, `docs/067_quest_report_completion_flow.md`, `src/server/actions/quest.ts` |
 | 遺物・装備の戦闘反映 | `spec/051`, `spec/069`, `spec/071`, `src/server/actions/battle.ts`, `src/lib/battle/effective-base-stats.ts` |
-| データモデル・スキーマ変更 | `prisma/schema.prisma`, `docs/08_database_schema.md`, 該当 spec |
+| データモデル・スキーマ変更 | `prisma/schema.prisma`, `docs/08_database_schema.md`, 該当 spec。**マスタ系テーブルの追加・削除時は** `src/server/lib/sync-masters.ts` の **MASTER_DELEGATES_IN_ORDER** も更新する。 |
 | **スキル追加（新規スキル・効果の登録）** | `docs/content-guides/skill_addition_guide.md`, `spec/038`, `docs/042_battle_effect_types_reference.md`, 必要なら `prisma/seed.ts` の BATTLE_SKILL_EFFECTS |
 | **緊急製造指示書（設備2時間加速）** | `spec/083_emergency_production_order.md`, `docs/065_special_items_and_facility_speed.md` §7, `src/server/actions/initial-area.ts`（getIndustrial）, `src/app/dashboard/characters/use-letter-button.tsx`（UI 参照） |
 
@@ -110,6 +113,7 @@
 - **アイコンセット**: Iconify の **Game Icons**（CC BY 3.0、4,000+ アイコン）。Tailwind プラグイン `@iconify/tailwind` で利用。
 - **呼び出し**: `src/components/icons/game-icon.tsx` の `<GameIcon name="ancient-sword" className="w-5 h-5 text-brass" />` のように各所で使用する。
 - **名前**: ケバブケース（例: `ancient-sword`, `health-potion`, `dragon-head`）。一覧は [icon-sets.iconify.design/game-icons](https://icon-sets.iconify.design/game-icons/) で検索可能。
+- **GameIcon を使うとき**: 使用するアイコン名（ケバブケース）に対応するクラス **`game-icons--<name>`** が **`tailwind.config.ts` の safelist** に含まれているか毎回確認する。未登録だとビルドで purge され表示されない。新規使用時は safelist に 1 行追加すること。
 - **キャラ用アイコン画像**: 従来どおり `public/icons` の .gif と `getProtagonistIconFilenames()`。上記 GameIcon はボタン・ラベル・装備種別など UI 用。
 
 ---

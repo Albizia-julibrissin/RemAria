@@ -17,6 +17,23 @@ export const CONDITION_OPTIONS = [
   { value: "mp_below_percent", label: "MPが〇％以下" },
   { value: "mp_above_percent", label: "MPが〇％以上" },
   { value: "subject_has_attr_state", label: "指定の属性状態になっている" },
+  { value: "subject_in_column", label: "指定列にいる（前列／中列／後列）" },
+  { value: "subject_count_equals", label: "生存数が〇体のとき" },
+  { value: "subject_count_at_least", label: "生存数が2体以上のとき" },
+] as const;
+
+/** 列条件（subject_in_column）の param.column 選択肢。1=前列, 2=中列, 3=後列（BattleCol） */
+export const COLUMN_CONDITION_OPTIONS = [
+  { value: 1, label: "前列" },
+  { value: 2, label: "中列" },
+  { value: 3, label: "後列" },
+] as const;
+
+/** 生存数条件（subject_count_equals）の param.count 選択肢。any_ally / any_enemy のときのみ有効 */
+export const COUNT_CONDITION_OPTIONS = [
+  { value: 1, label: "1体のとき" },
+  { value: 2, label: "2体のとき" },
+  { value: 3, label: "3体のとき" },
 ] as const;
 
 /** 主語「サイクル」用の条件（偶数／奇数／Nの倍数／N以上／Nのとき） */

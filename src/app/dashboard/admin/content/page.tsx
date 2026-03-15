@@ -57,6 +57,8 @@ const LINK_GROUPS: { title: string; links: { href: string; label: string }[] }[]
   {
     title: "運用",
     links: [
+      { href: "/dashboard/admin/master-production-sync", label: "本番マスタ更新・本番バックアップ" },
+      { href: "/dashboard/admin/mail", label: "郵便（運営→プレイヤー送信）" },
       { href: "/dashboard/admin/users", label: "登録済みユーザ一覧" },
       { href: "/dashboard/admin/currency-history", label: "通貨履歴（ユーザー別）" },
       { href: "/dashboard/admin/item-usage-history", label: "特別アイテム使用履歴（ユーザー別）" },

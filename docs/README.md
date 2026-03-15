@@ -30,6 +30,8 @@ AGENTS に「Spec↔実装の対応」「タスク別・読むファイル最小
 | 07_ui_guidelines.md | UI ガイドライン |
 | 08_database_schema.md | DB スキーマ概要 |
 | **027_hardcoded_and_deferred.md** | **ハードコード・暫定実装のルールと一覧**（追加・解消時に更新） |
+| **088_profile_screen_draft.md** | **開拓者証（プロフィール画面・超草案）**。表記は「開拓者証」で統一。表示内容の検討・Phase 0 でページのみ追加。 |
+| **090_terms_of_service.md** | **利用規約**。内容精査・登録時同意フロー。表示正本は `/terms` ページ。 |
 | 999_レムアリア_世界観確定稿.md | 世界観 |
 | **archive/** | 解消済み・履歴用（028 型エラー一覧など）。**実装時は参照しない。** |
 
@@ -46,6 +48,7 @@ AGENTS に「Spec↔実装の対応」「タスク別・読むファイル最小
 | 14_battle_skill_design_draft.md | スキル設計の草案・必要項目（設計メモ） |
 | 14_battle_tactics_impl_draft.md | 作戦実装のたたき台 |
 | **14_tactics_slot_shared.md** | **作戦スロットは味方(039)・敵(050)で共有**。主語・条件・行動の定数・評価は共通。アップデート時は作戦室と敵マスタ編集の両方に影響しうる。 |
+| **14_tactics_logic_reference.md** | **作戦ロジックのまとめ**。評価フロー・主語一覧・条件種別一覧・主語×条件の対応。**条件拡張時の判断・編集箇所チェックリスト**はここを参照。 |
 | **042_battle_effect_types_reference.md** | **effectType 定義一覧（param・適用タイミング）** ← 効果追加時はここ |
 | 041_skill_effects_implementation_prep.md | 効果実装の Phase とデータフロー |
 | **043_tactics_room_skill_info_ux_proposal.md** | **作戦室でのスキル情報表示 UX 提案**（一覧項目・非開示方針） |
@@ -81,8 +84,9 @@ AGENTS に「Spec↔実装の対応」「タスク別・読むファイル最小
 | **084_equipment_temper_and_inherit.md** | **装備の鍛錬と継承**（製造後のステ再抽選・CAP上限引き上げ）。→ spec/084。 |
 | **073_equipment_hp_no_multiplier_impact.md** | 装備 HP が倍率に与えない設計メモ。 |
 | **074_level_cap_and_cap_break_item.md** | **レベルキャップとキャップ到達後の報酬**。ゲーム全体の最大レベル（例:100）。キャップ到達後はレベルは上がらず、レベル1分の経験値が貯まるごとに振り直しアイテムを1個付与。→ **spec/074_level_cap_and_cap_reward_item.md**（実装正本）。 |
+| **092_stat_reconstitution_design.md** | **ステータス振り直し**（再構築アンプルα・β）。個室の配分画面から部分再構築・完全再構築・完全再構築β（レベルダウンなし・アンプルβ消費）。→ **spec/092_stat_reconstitution.md**。 |
 
-→ spec/015, 025, 030, 045, 046, 051（遺物）, 084（鍛錬・継承）。**遺物パッシブ効果の effectType** は spec/051 および `src/lib/constants/relic-passive-effect-admin.ts` を参照。
+→ spec/015, 025, 030, 045, 046, 051（遺物）, 084（鍛錬・継承）, **092（ステータス振り直し）**。**遺物パッシブ効果の effectType** は spec/051 および `src/lib/constants/relic-passive-effect-admin.ts` を参照。**工房の鑑定タブ・遺物分解**は **docs/086_craft_relic_appraisal_and_decompose.md**。**遺物の調律**（遺物の欠片77個でパッシブ以外をリロール）は **docs/087_relic_temper.md**（spec/051 §5.7）。
 
 ---
 
@@ -117,6 +121,7 @@ AGENTS に「Spec↔実装の対応」「タスク別・読むファイル最小
 | 022_chat_ui_design.md | チャット UI 設計 |
 | **054_quest_and_research_design.md** | **クエストと研究の設計**（定義・前提・作業分解。ストーリー/研究/一般クエスト・研究ポイント・解放コスト・称号。設計メモ。正式仕様は spec/054_quests で定義済み。） |
 | **068_quest_unlock_themes_and_research.md** | **開拓任務による機能解放**（任務クリアで探索テーマ・研究グループを解放する仕様。データ・処理・管理画面。） |
+| **089_research_facility_expansion.md** | **研究メニュー：設備コスト拡張・設備設置上限拡張**（研究記録書で工業のコスト上限・設置枠を拡張。→ spec/089） |
 | **055_titles_design.md** | **称号の設計メモ**（称号マスタ・ユーザ解放・説明・解放条件メモ）。→ spec/055_titles。 |
 | **056_how_to_play_guide.md** | **遊び方ガイド（プレイヤー向け）**。文面・構成の正本。実装は `src/app/guide/page.tsx`。 |
 

@@ -16,6 +16,7 @@ import {
 import { getCharacterRelics, getRelicInstances } from "@/server/actions/relic";
 import { getCharacterBattleStats } from "@/server/lib/character-battle-stats";
 import { getRequiredExpForLevel } from "@/lib/level";
+import { getReconstitutionState } from "@/server/actions/reconstitution";
 import { DismissCompanionButton } from "./dismiss-companion-button";
 import { CharacterEquipmentSection } from "./character-equipment-section";
 import { MechaEquipmentSection } from "./mecha-equipment-section";
@@ -101,6 +102,7 @@ export default async function CharacterDetailPage({
     ]);
   const relicSlots = characterRelics.success ? characterRelics.slots : [];
   const allRelicList = allRelics.success ? allRelics.relics : [];
+  const reconstitutionState = !isMech ? await getReconstitutionState(character.id) : null;
 
   const baseStatsForBonus = {
     STR: character.STR,
@@ -205,10 +207,15 @@ export default async function CharacterDetailPage({
           isMech={isMech}
           relicBonus={relicBonus}
           mechaEquipmentBonus={mechaEquipmentBonus}
+          reconstitutionState={reconstitutionState}
         />
 
         {(battleSkills.length > 0 || industrialSkills.length > 0) && (
-          <CharacterSkillTabs battleSkills={battleSkills} industrialSkills={industrialSkills} />
+          <CharacterSkillTabs
+            characterId={character.id}
+            battleSkills={battleSkills}
+            industrialSkills={industrialSkills}
+          />
         )}
 
         {canEquip && characterEquipment && allEquipment && (

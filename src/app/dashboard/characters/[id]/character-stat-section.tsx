@@ -3,6 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { allocateCharacterStats } from "@/server/actions/character-stats";
+import {
+  type ReconstitutionState,
+  executePartialReconstitution,
+  executeFullReconstitution,
+  executeFullReconstitutionBeta,
+} from "@/server/actions/reconstitution";
+import { POINTS_PER_RECONSTITUTION_ITEM } from "@/lib/constants/level";
 
 const BASE_STAT_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK", "CAP"] as const;
 const ALLOCATABLE_KEYS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"] as const;
@@ -15,6 +22,7 @@ type Props = {
   isMech: boolean;
   relicBonus: Record<string, number>;
   mechaEquipmentBonus: Record<string, number> | null;
+  reconstitutionState: ReconstitutionState | null;
 };
 
 const buttonClass =
@@ -26,6 +34,7 @@ export function CharacterStatSection({
   isMech,
   relicBonus,
   mechaEquipmentBonus,
+  reconstitutionState,
 }: Props) {
   const router = useRouter();
   const [view, setView] = useState<"display" | "allocation">("display");
@@ -45,6 +54,26 @@ export function CharacterStatSection({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const confirmModalRef = useRef<HTMLDivElement>(null);
 
+  // 再構築モーダル
+  const [reconModal, setReconModal] = useState<"partial" | "full" | "fullBeta" | null>(null);
+  const [partialQuantity, setPartialQuantity] = useState(1);
+  const [partialRevertDeltas, setPartialRevertDeltas] = useState<Record<(typeof ALLOCATABLE_KEYS)[number], number>>({
+    STR: 0,
+    INT: 0,
+    VIT: 0,
+    WIS: 0,
+    DEX: 0,
+    AGI: 0,
+    LUK: 0,
+  });
+
+  const openPartialModal = () => {
+    setPartialRevertDeltas({ STR: 0, INT: 0, VIT: 0, WIS: 0, DEX: 0, AGI: 0, LUK: 0 });
+    setPartialQuantity(1);
+    setMessage(null);
+    setReconModal("partial");
+  };
+
   const cap = character.CAP;
   const currentSum = ALLOCATABLE_KEYS.reduce((acc, k) => acc + character[k], 0);
   const deltaSum = ALLOCATABLE_KEYS.reduce((acc, k) => acc + deltas[k], 0);
@@ -52,7 +81,7 @@ export function CharacterStatSection({
   const minPerStat = Math.floor(cap * 0.1);
   const maxPerStat = Math.floor(cap * 0.3);
 
-  const handleDeltaChange = (key: (typeof ALLOCATABLE_KEYS)[number], value: number) => {
+  const handleDeltaChange = (key: (typeof ALLOCATABLE_KEYS)[number], value: number | string) => {
     const n = Math.max(0, Math.floor(Number(value) || 0));
     const prevDelta = deltas[key];
     const otherSum = deltaSum - prevDelta;
@@ -90,6 +119,58 @@ export function CharacterStatSection({
     }
   };
 
+  const doFullReconstitution = async () => {
+    if (!reconstitutionState?.canFull || isPending) return;
+    setMessage(null);
+    setIsPending(true);
+    setReconModal(null);
+    const result = await executeFullReconstitution(characterId);
+    setIsPending(false);
+    if (result.success) {
+      setMessage("完全再構築を実行しました。");
+      setIsError(false);
+      router.refresh();
+    } else {
+      setMessage(result.message);
+      setIsError(true);
+    }
+  };
+
+  const doFullReconstitutionBeta = async () => {
+    if (!reconstitutionState?.canFullBeta || isPending) return;
+    setMessage(null);
+    setIsPending(true);
+    setReconModal(null);
+    const result = await executeFullReconstitutionBeta(characterId);
+    setIsPending(false);
+    if (result.success) {
+      setMessage("完全再構築βを実行しました。");
+      setIsError(false);
+      router.refresh();
+    } else {
+      setMessage(result.message);
+      setIsError(true);
+    }
+  };
+
+  const doPartialReconstitution = async () => {
+    if (!reconstitutionState?.canPartial || isPending) return;
+    setMessage(null);
+    setIsPending(true);
+    setReconModal(null);
+    const result = await executePartialReconstitution(characterId, partialQuantity, partialRevertDeltas);
+    setIsPending(false);
+    if (result.success) {
+      setMessage("部分再構築を実行しました。振り戻したポイントは未割り振りです。配分で振り直してください。");
+      setIsError(false);
+      setDeltas({ STR: 0, INT: 0, VIT: 0, WIS: 0, DEX: 0, AGI: 0, LUK: 0 });
+      router.refresh();
+    } else {
+      setMessage(result.message);
+      setIsError(true);
+    }
+  };
+
   useEffect(() => {
     if (!showConfirmModal) return;
     const handleEscape = (e: KeyboardEvent) => {
@@ -102,6 +183,19 @@ export function CharacterStatSection({
       document.body.style.overflow = "";
     };
   }, [showConfirmModal]);
+
+  useEffect(() => {
+    if (!reconModal) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setReconModal(null);
+    };
+    document.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
+    };
+  }, [reconModal]);
 
   return (
     <div className="mt-6 rounded-lg border border-base-border bg-base-elevated p-6">
@@ -284,6 +378,41 @@ export function CharacterStatSection({
             >
               確定
             </button>
+            {reconstitutionState && (
+              <>
+                <button
+                  type="button"
+                  onClick={openPartialModal}
+                  disabled={isPending || !reconstitutionState.canPartial}
+                  className={buttonClass}
+                  title={reconstitutionState.canPartial ? "再構築アンプルαで一部ポイントを振り直す" : "アンプルαが不足しているか、振り戻し可能ポイントがありません"}
+                >
+                  部分再構築
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReconModal("full")}
+                  disabled={isPending || (reconstitutionState.alphaCount < 1)}
+                  className={buttonClass}
+                  title={
+                    reconstitutionState.fullUnavailableReason === "LEVEL_TOO_LOW"
+                      ? "身体への負担が大きく施術不可能です"
+                      : "5レベルダウンで全ポイント振り直し"
+                  }
+                >
+                  完全再構築
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReconModal("fullBeta")}
+                  disabled={isPending || !reconstitutionState.canFullBeta}
+                  className={buttonClass}
+                  title={reconstitutionState.canFullBeta ? "アンプルβでレベルダウンなしで全ポイント振り直し" : "アンプルβを所持していません"}
+                >
+                  完全再構築β
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -313,7 +442,7 @@ export function CharacterStatSection({
                 onClick={() => setShowConfirmModal(false)}
                 className={buttonClass}
               >
-                キャンセル
+                中止
               </button>
               <button
                 type="button"
@@ -322,6 +451,184 @@ export function CharacterStatSection({
                 className="inline-flex rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
               >
                 {isPending ? "送信中…" : "確定"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reconModal === "full" && reconstitutionState && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setReconModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recon-full-title"
+            className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="recon-full-title" className="text-lg font-medium text-text-primary">
+              完全再構築
+            </h3>
+            {reconstitutionState.fullUnavailableReason === "LEVEL_TOO_LOW" ? (
+              <p className="mt-4 text-sm font-medium text-amber-600 dark:text-amber-400">
+                身体への負担が大きく施術不可能です。（レベル6以上で利用できます）
+              </p>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-text-muted">
+                  再構築アンプルαを1個消費し、レベルが5下がります。経験値はそのレベルに合わせてリセットされ、戻した分は消失します。ステータスは下限のみになり、残りは未割り振りです。
+                </p>
+                <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-400">
+                  実行しますか？
+                </p>
+              </>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setReconModal(null)} className={buttonClass}>
+                {reconstitutionState.fullUnavailableReason === "LEVEL_TOO_LOW" ? "閉じる" : "中止"}
+              </button>
+              {reconstitutionState.canFull && (
+                <button
+                  type="button"
+                  onClick={() => doFullReconstitution()}
+                  disabled={isPending}
+                  className="inline-flex rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+                >
+                  {isPending ? "実行中…" : "実行"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reconModal === "fullBeta" && reconstitutionState && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setReconModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recon-fullbeta-title"
+            className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="recon-fullbeta-title" className="text-lg font-medium text-text-primary">
+              完全再構築β
+            </h3>
+            <p className="mt-2 text-sm text-text-muted">
+              再構築アンプルβを1個消費します。レベル・経験値は変わりません。ステータスは下限のみになり、残りは未割り振りです。
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setReconModal(null)} className={buttonClass}>
+                中止
+              </button>
+              <button
+                type="button"
+                onClick={() => doFullReconstitutionBeta()}
+                disabled={isPending}
+                className="inline-flex rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+              >
+                {isPending ? "実行中…" : "実行"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reconModal === "partial" && reconstitutionState && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => e.target === e.currentTarget && setReconModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recon-partial-title"
+            className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="recon-partial-title" className="text-lg font-medium text-text-primary">
+              部分再構築
+            </h3>
+            <p className="mt-2 text-sm text-text-muted">
+              再構築アンプルαを消費し、各ステから減らす量を選びます。減らした分は未割り振りになり、あとで配分画面で振り直せます。
+            </p>
+            <div className="mt-4 flex items-baseline justify-between gap-4">
+              <label className="text-sm font-medium text-text-muted">使用個数</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={reconstitutionState.alphaCount}
+                  value={partialQuantity}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    const q = Number.isNaN(v) ? 1 : Math.max(1, Math.min(reconstitutionState.alphaCount, v));
+                    setPartialQuantity(q);
+                  }}
+                  className="w-14 shrink-0 rounded border border-base-border bg-base px-1.5 py-1 text-right text-sm tabular-nums text-text-primary"
+                  aria-label="使用個数"
+                />
+                <span className="shrink-0 text-sm text-text-muted">
+                  所持{reconstitutionState.alphaCount}（振り戻し必要: {partialQuantity * POINTS_PER_RECONSTITUTION_ITEM}pt）
+                </span>
+              </div>
+            </div>
+            <p className="mt-2 text-sm tabular-nums text-text-primary">
+              <span className={ALLOCATABLE_KEYS.reduce((a, k) => a + (partialRevertDeltas[k] ?? 0), 0) === partialQuantity * POINTS_PER_RECONSTITUTION_ITEM ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}>
+                {ALLOCATABLE_KEYS.reduce((a, k) => a + (partialRevertDeltas[k] ?? 0), 0)} / {partialQuantity * POINTS_PER_RECONSTITUTION_ITEM}
+              </span>
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {ALLOCATABLE_KEYS.map((key) => {
+                const minPerStat = Math.floor(reconstitutionState.cap * 0.1);
+                const maxRevertForStat = Math.max(0, character[key] - minPerStat);
+                const otherSum = ALLOCATABLE_KEYS.reduce((a, k) => (k === key ? a : a + (partialRevertDeltas[k] ?? 0)), 0);
+                const requiredRevert = partialQuantity * POINTS_PER_RECONSTITUTION_ITEM;
+                const maxAllowed = Math.min(maxRevertForStat, Math.max(0, requiredRevert - otherSum));
+                return (
+                  <div key={key} className="flex items-center justify-between gap-2">
+                    <span className="text-text-muted">{key}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 text-right tabular-nums text-text-muted">{character[key]}</span>
+                      <span className="text-text-muted">−</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxAllowed}
+                        value={partialRevertDeltas[key] ?? ""}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          const n = Number.isNaN(v) ? 0 : Math.max(0, Math.min(maxAllowed, v));
+                          setPartialRevertDeltas((prev) => ({ ...prev, [key]: n }));
+                        }}
+                        className="w-14 rounded border border-base-border bg-base px-1 py-0.5 text-right tabular-nums text-text-primary"
+                        aria-label={`${key}から減らす量`}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setReconModal(null)} className={buttonClass}>
+                中止
+              </button>
+              <button
+                type="button"
+                onClick={() => doPartialReconstitution()}
+                disabled={
+                  isPending ||
+                  ALLOCATABLE_KEYS.reduce((a, k) => a + (partialRevertDeltas[k] ?? 0), 0) !== partialQuantity * POINTS_PER_RECONSTITUTION_ITEM
+                }
+                className="inline-flex rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
+              >
+                {isPending ? "実行中…" : "実行"}
               </button>
             </div>
           </div>

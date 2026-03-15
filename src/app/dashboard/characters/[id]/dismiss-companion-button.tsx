@@ -69,7 +69,7 @@ export function DismissCompanionButton({ characterId, displayName }: Props) {
           disabled={isPending}
           className="rounded border border-base-border bg-base-elevated text-text-primary font-medium py-2 px-4 text-sm disabled:opacity-50 transition-colors"
         >
-          キャンセル
+          中止
         </button>
       </div>
     </div>

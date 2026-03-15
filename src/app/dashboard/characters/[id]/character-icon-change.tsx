@@ -86,18 +86,10 @@ export function CharacterIconChange({
           onClick={handleOverlayClick}
         >
           <div className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-lg border border-base-border bg-base-elevated shadow-lg flex flex-col">
-            <div className="flex items-center justify-between border-b border-base-border px-4 py-3">
+            <div className="border-b border-base-border px-4 py-3">
               <h2 id="icon-modal-title" className="text-lg font-medium text-text-primary">
                 アイコンを選択
               </h2>
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="rounded p-1 text-text-muted hover:bg-base-border hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-brass"
-                aria-label="閉じる"
-              >
-                ×
-              </button>
             </div>
             <div className="flex-1 overflow-auto p-4">
               {iconFilenames.length === 0 ? (

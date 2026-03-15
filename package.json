@@ -22,7 +22,13 @@
     "db:sync-masters": "tsx prisma/sync-masters-to-target.ts",
     "db:migrate:bump-industrial": "tsx prisma/migrate-bump-user-industrial.ts",
     "db:delete-non-seed-users": "tsx prisma/delete-non-seed-users.ts",
-    "db:delete-non-seed-users:dry-run": "cross-env DRY_RUN=1 tsx prisma/delete-non-seed-users.ts"
+    "db:delete-non-seed-users:dry-run": "cross-env DRY_RUN=1 tsx prisma/delete-non-seed-users.ts",
+    "db:seed-relic-passive-effects": "tsx prisma/seed-relic-passive-effects.ts",
+    "db:seed-equipment-and-recipes": "tsx prisma/seed-equipment-and-recipes.ts",
+    "db:seed-frontier-basics-stone-wood": "tsx prisma/seed-frontier-basics-stone-wood.ts",
+    "db:seed-rust-forest-iron-cotton": "tsx prisma/seed-rust-forest-iron-cotton.ts",
+    "db:seed-area-drop-tables-missing": "tsx prisma/seed-area-drop-tables-missing.ts",
+    "db:seed-rust-forest-skill-events": "tsx prisma/seed-rust-forest-skill-events.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -36,13 +42,14 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
     "@eslint/eslintrc": "^3.0.0",
     "@iconify-json/game-icons": "^1.2.3",
     "@iconify/tailwind": "^1.2.0",
     "@prisma/client": "^6.0.0",
     "@types/node": "25.3.0",
     "@types/react": "19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "cross-env": "^7.0.3",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.0.0",
     "postcss": "^8.4.0",

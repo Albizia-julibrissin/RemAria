@@ -15,11 +15,11 @@ export type TitleRow = {
 };
 
 export type GetTitleListResult =
-  | { success: true; titles: TitleRow[] }
+  | { success: true; titles: TitleRow[]; equippedTitleId: string | null }
   | { success: false; error: string };
 
 /**
- * 称号一覧を取得。ログイン中なら自分の解放済みをマージして返す。
+ * 称号一覧を取得。ログイン中なら自分の解放済み・装備中をマージして返す。
  */
 export async function getTitleList(): Promise<GetTitleListResult> {
   const session = await getSession();
@@ -35,13 +35,20 @@ export async function getTitleList(): Promise<GetTitleListResult> {
         ...t,
         isUnlocked: false,
       })),
+      equippedTitleId: null,
     };
   }
 
-  const unlocks = await prisma.userTitleUnlock.findMany({
-    where: { userId: session.userId },
-    select: { titleId: true },
-  });
+  const [unlocks, user] = await Promise.all([
+    prisma.userTitleUnlock.findMany({
+      where: { userId: session.userId },
+      select: { titleId: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { selectedTitleId: true },
+    }),
+  ]);
   const unlockedSet = new Set(unlocks.map((u) => u.titleId));
 
   return {
@@ -54,7 +61,32 @@ export async function getTitleList(): Promise<GetTitleListResult> {
       displayOrder: t.displayOrder,
       isUnlocked: unlockedSet.has(t.id),
     })),
+    equippedTitleId: user?.selectedTitleId ?? null,
   };
+}
+
+/**
+ * 装備中の称号を変更する（開拓者証で本人のみ実行可能）。解放済みの称号のみ装備可能。null で装備解除。
+ */
+export async function setEquippedTitle(
+  titleId: string | null
+): Promise<{ success: boolean; error?: string }> {
+  const session = await getSession();
+  if (!session?.userId) return { success: false, error: "ログインしてください。" };
+
+  if (titleId !== null) {
+    const unlocked = await prisma.userTitleUnlock.findUnique({
+      where: { userId_titleId: { userId: session.userId, titleId } },
+      select: { titleId: true },
+    });
+    if (!unlocked) return { success: false, error: "その称号はまだ解放されていません。" };
+  }
+
+  await prisma.user.update({
+    where: { id: session.userId },
+    data: { selectedTitleId: titleId },
+  });
+  return { success: true };
 }
 
 /**

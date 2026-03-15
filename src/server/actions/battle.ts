@@ -117,6 +117,7 @@ export async function runBattle(
         where: { skill: { category: "battle_active" } },
         select: {
           skillId: true,
+          level: true,
           skill: {
             select: {
               id: true,
@@ -445,8 +446,9 @@ export async function runBattle(
       }
     }
 
-    // メカは装備パーツのスキル、それ以外は CharacterSkill（battle_active）
+    // メカは装備パーツのスキル、それ以外は CharacterSkill（battle_active）。spec/052 §4.3: スキルレベルを戦闘に渡す。
     let skills: Record<string, SkillDataForBattle> = {};
+    const skillLevelBySkillId: Record<string, number> = {};
     if (c.category === "mech") {
       skills = mechSkillsByCharId.get(c.id) ?? {};
     } else {
@@ -476,6 +478,7 @@ export async function runBattle(
           logMessage: sk.logMessage ?? undefined,
           logMessageOnCondition: sk.logMessageOnCondition ?? undefined,
         };
+        skillLevelBySkillId[sk.id] = cs.level ?? 0;
       }
     }
 
@@ -514,6 +517,7 @@ export async function runBattle(
       base,
       tacticSlots,
       skills,
+      skillLevelBySkillId: Object.keys(skillLevelBySkillId).length > 0 ? skillLevelBySkillId : undefined,
       attributeResistances,
       relicPassiveEffects,
       derivedBonus: Object.keys(derivedBonus).length > 0 ? derivedBonus : undefined,

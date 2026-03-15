@@ -94,7 +94,7 @@ export async function getConstructionRecipeWithStock(
   if (!session?.userId) return null;
 
   const recipe = await getConstructionRecipe(facilityTypeId);
-  if (!recipe || recipe.length === 0) return recipe;
+  if (!recipe || recipe.length === 0) return null;
 
   const itemIds = recipe.map((r) => r.itemId);
   const inventories = await prisma.userInventory.findMany({

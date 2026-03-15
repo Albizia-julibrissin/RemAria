@@ -82,6 +82,44 @@ function resolveSubject(ctx: TacticEvaluationContext, subject: string): UnitSnap
   }
 }
 
+/** spec/040 4.7: 主語に対応する位置のリストを返す（subject_in_column 用） */
+function resolveSubjectPositions(ctx: TacticEvaluationContext, subject: string): BattlePosition[] {
+  const { actorPartyIndex, partyAlive, enemyAlive, partyPositions, enemyPositions } = ctx;
+
+  switch (subject) {
+    case "self": {
+      const pos = partyPositions[actorPartyIndex];
+      if (actorPartyIndex < 0 || actorPartyIndex >= partyPositions.length || !partyAlive[actorPartyIndex] || !pos)
+        return [];
+      return [pos];
+    }
+    case "any_ally": {
+      return partyPositions.filter((_, i) => partyAlive[i]);
+    }
+    case "any_enemy": {
+      return enemyPositions.filter((_, i) => enemyAlive[i]);
+    }
+    case "front_enemy": {
+      const actorRow = partyPositions[actorPartyIndex]?.row;
+      if (actorRow == null) return [];
+      let bestPos: BattlePosition | null = null;
+      let bestCol = 4;
+      for (let i = 0; i < enemyPositions.length; i++) {
+        if (!enemyAlive[i]) continue;
+        const pos = enemyPositions[i];
+        if (!pos || pos.row !== actorRow) continue;
+        if (pos.col < bestCol) {
+          bestCol = pos.col;
+          bestPos = pos;
+        }
+      }
+      return bestPos ? [bestPos] : [];
+    }
+    default:
+      return [];
+  }
+}
+
 /** サイクル条件を評価（主語 cycle または従来の主語なし） */
 function evaluateCycleCondition(
   conditionKind: string,
@@ -153,6 +191,20 @@ function evaluateCondition(slot: TacticSlotForEval, ctx: TacticEvaluationContext
     return true;
   }
 
+  // 4.8 主語の生存数（any_ally / any_enemy のときのみ有効）
+  if (conditionKind === "subject_count_equals") {
+    if (slot.subject !== "any_ally" && slot.subject !== "any_enemy") return false;
+    const targets = resolveSubject(ctx, slot.subject);
+    const count = Number(param["count"] ?? 1);
+    return count >= 1 && count <= 3 && targets.length === count;
+  }
+  if (conditionKind === "subject_count_at_least") {
+    if (slot.subject !== "any_ally" && slot.subject !== "any_enemy") return false;
+    const targets = resolveSubject(ctx, slot.subject);
+    const count = Number(param["count"] ?? 2);
+    return count >= 2 && count <= 3 && targets.length >= count;
+  }
+
   // 主語を解決して対象リストを得る
   const targets = resolveSubject(ctx, slot.subject);
   if (targets.length === 0 && conditionKind !== "always") {
@@ -180,6 +232,14 @@ function evaluateCondition(slot: TacticSlotForEval, ctx: TacticEvaluationContext
   if (conditionKind === "subject_has_attr_state") {
     const attr = String(param["attr"] ?? "none");
     return targets.some((u) => u.attrStates.includes(attr));
+  }
+
+  // 4.7 主語の列（前列・中列・後列）
+  if (conditionKind === "subject_in_column") {
+    const column = Number(param["column"] ?? 1);
+    if (column !== 1 && column !== 2 && column !== 3) return false;
+    const positions = resolveSubjectPositions(ctx, slot.subject);
+    return positions.some((pos) => pos.col === column);
   }
 
   return false;

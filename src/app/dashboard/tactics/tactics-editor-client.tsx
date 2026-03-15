@@ -2,12 +2,14 @@
 
 // spec/039: 作戦室 - プリセット編成と3人分の作戦スロット編集
 
+import Link from "next/link";
 import { useState, useTransition, useCallback, memo, useMemo, useEffect } from "react";
 import {
   savePresetWithTactics,
   getTacticsForPreset,
   getBattleSkillsForCharacters,
   getTacticsSkillCatalogForCharacters,
+  getCharacterMaxMpForTactics,
   type TacticSlotRow,
   type BattleSkillOption,
   type TacticsSkillCatalogItem,
@@ -17,6 +19,8 @@ import {
   CONDITION_OPTIONS,
   CYCLE_CONDITION_OPTIONS,
   TURN_CONDITION_OPTIONS,
+  COLUMN_CONDITION_OPTIONS,
+  COUNT_CONDITION_OPTIONS,
   PERCENT_OPTIONS,
   ATTR_OPTIONS,
   CYCLE_N_OPTIONS,
@@ -79,11 +83,17 @@ export type TacticsPreset = {
 
 const MAX_SLOTS = 10;
 
+/** プリセット編成の列選択用（表示位置）。列条件の COLUMN_CONDITION_OPTIONS と同値 */
 const BATTLE_COL_OPTIONS = [
   { value: 1, label: "前列" },
   { value: 2, label: "中列" },
   { value: 3, label: "後列" },
 ] as const;
+
+/** 戦闘と同じ式: floor(maxMp * mpCostCapCoef) + mpCostFlat（run-battle-with-party getMpCost） */
+function getMpCost(maxMp: number, mpCostCapCoef: number, mpCostFlat: number): number {
+  return Math.floor(maxMp * mpCostCapCoef) + mpCostFlat;
+}
 
 type CharacterTacticsTableProps = {
   char: SlotCharacter;
@@ -95,6 +105,8 @@ type CharacterTacticsTableProps = {
   moveSlotRow: (characterId: string, fromIndex: number, toIndex: number) => void;
   setDraggedSlot: (v: { characterId: string; rowIndex: number } | null) => void;
   battleSkillsByCharacter: Record<string, BattleSkillOption[]>;
+  /** このキャラの最大MP（消費MP表示用。キャラ毎に異なる） */
+  maxMp: number | undefined;
 };
 
 const CharacterTacticsTable = memo(function CharacterTacticsTable({
@@ -107,6 +119,7 @@ const CharacterTacticsTable = memo(function CharacterTacticsTable({
   moveSlotRow,
   setDraggedSlot,
   battleSkillsByCharacter,
+  maxMp,
 }: CharacterTacticsTableProps) {
   const skillsByType = useMemo(() => {
     const list = battleSkillsByCharacter[char.characterId] ?? [];
@@ -131,6 +144,7 @@ const CharacterTacticsTable = memo(function CharacterTacticsTable({
               <th className="py-2 pr-2">条件</th>
               <th className="py-2 pr-2">条件パラメータ</th>
               <th className="py-2 pr-2">行動</th>
+              <th className="py-2 pr-2 w-16">消費MP</th>
               <th className="py-2 pr-2 w-28">操作</th>
             </tr>
           </thead>
@@ -206,7 +220,12 @@ const CharacterTacticsTable = memo(function CharacterTacticsTable({
                         ))}
                       {row.subject !== "cycle" &&
                         row.subject !== "turn" &&
-                        CONDITION_OPTIONS.map((o) => (
+                        CONDITION_OPTIONS.filter(
+                          (o) =>
+                            (o.value !== "subject_count_equals" && o.value !== "subject_count_at_least") ||
+                            row.subject === "any_ally" ||
+                            row.subject === "any_enemy"
+                        ).map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}
                           </option>
@@ -290,6 +309,40 @@ const CharacterTacticsTable = memo(function CharacterTacticsTable({
                           </option>
                         ))}
                       </select>
+                    ) : row.conditionKind === "subject_in_column" ? (
+                      <select
+                        value={(row.conditionParam as { column?: number } | null)?.column ?? 1}
+                        onChange={(e) =>
+                          updateSlotRow(char.characterId, i, "conditionParam", {
+                            column: Number(e.target.value),
+                          })
+                        }
+                        className="min-w-[80px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                      >
+                        {COLUMN_CONDITION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : row.conditionKind === "subject_count_equals" ? (
+                      <select
+                        value={(row.conditionParam as { count?: number } | null)?.count ?? 1}
+                        onChange={(e) =>
+                          updateSlotRow(char.characterId, i, "conditionParam", {
+                            count: Number(e.target.value),
+                          })
+                        }
+                        className="min-w-[90px] bg-base border border-base-border rounded px-2 py-1 text-text-primary"
+                      >
+                        {COUNT_CONDITION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : row.conditionKind === "subject_count_at_least" ? (
+                      <span className="text-text-muted">2体以上</span>
                     ) : (
                       <select
                         value={(row.conditionParam as { percent?: number } | null)?.percent ?? 50}
@@ -341,6 +394,18 @@ const CharacterTacticsTable = memo(function CharacterTacticsTable({
                       )}
                     </div>
                   </td>
+                  <td className="py-1.5 pr-2 text-text-muted align-middle">
+                    {row.actionType === "normal_attack" ? (
+                      "—"
+                    ) : row.actionType === "skill" && row.skillId && maxMp != null ? (() => {
+                      const skill = (battleSkillsByCharacter[char.characterId] ?? []).find((s) => s.id === row.skillId);
+                      if (!skill) return "—";
+                      const cost = getMpCost(maxMp, skill.mpCostCapCoef, skill.mpCostFlat);
+                      return cost;
+                    })() : (
+                      "—"
+                    )}
+                  </td>
                   <td className="py-1.5 pr-2 align-middle">
                     <div className="flex items-center gap-0.5 flex-wrap">
                       <button
@@ -379,7 +444,7 @@ const CharacterTacticsTable = memo(function CharacterTacticsTable({
             })}
             {rows.length < MAX_SLOTS && (
               <tr>
-                <td colSpan={6} className="py-2">
+                <td colSpan={7} className="py-2">
                   <button
                     type="button"
                     onClick={() => addSlotRow(char.characterId)}
@@ -406,6 +471,8 @@ interface TacticsEditorClientProps {
   battleSkillsByCharacter: Record<string, BattleSkillOption[]>;
   /** 編成3人が習得している戦闘スキルの一覧（重複まとめ済み、説明・タグ付き） */
   skillCatalog: TacticsSkillCatalogItem[];
+  /** キャラID → 最大MP（戦闘と同じ算出。消費MP表示でキャラ毎に使用） */
+  maxMpByCharacter: Record<string, number>;
 }
 
 export function TacticsEditorClient({
@@ -415,6 +482,7 @@ export function TacticsEditorClient({
   initialTactics,
   battleSkillsByCharacter,
   skillCatalog,
+  maxMpByCharacter: initialMaxMpByCharacter,
 }: TacticsEditorClientProps) {
   const [name, setName] = useState(preset.name ?? "");
   const [slot2Id, setSlot2Id] = useState<string>(preset.slot2?.characterId ?? "");
@@ -430,6 +498,7 @@ export function TacticsEditorClient({
   /** spec/039 0.4: 編成変更時に追加取得したデータをマージするため state で保持 */
   const [internalBattleSkillsByCharacter, setInternalBattleSkillsByCharacter] = useState<Record<string, BattleSkillOption[]>>(battleSkillsByCharacter);
   const [internalSkillCatalog, setInternalSkillCatalog] = useState<TacticsSkillCatalogItem[]>(skillCatalog);
+  const [maxMpByCharacter, setMaxMpByCharacter] = useState<Record<string, number>>(initialMaxMpByCharacter);
 
   const slot1 = preset.slot1!;
   const characters: SlotCharacter[] = [slot1, preset.slot2, preset.slot3].filter(Boolean) as SlotCharacter[];
@@ -462,17 +531,23 @@ export function TacticsEditorClient({
         getTacticsForPreset(preset.id, missingIds),
         getBattleSkillsForCharacters(missingIds),
         getTacticsSkillCatalogForCharacters(currentCharacterIds),
-      ]).then(([tacticsResult, skillsResult, catalogResult]) => {
+        getCharacterMaxMpForTactics(currentCharacterIds),
+      ]).then(([tacticsResult, skillsResult, catalogResult, maxMpResult]) => {
         if ("error" in tacticsResult) return;
         mergeFetched(tacticsResult, skillsResult, catalogResult);
+        setMaxMpByCharacter((prev) => ({ ...prev, ...maxMpResult }));
       });
     } else {
       const lineupChanged = slot2Id !== (preset.slot2?.characterId ?? "") || slot3Id !== (preset.slot3?.characterId ?? "");
       if (lineupChanged) {
-        getTacticsSkillCatalogForCharacters(currentCharacterIds).then((catalogResult) => {
+        Promise.all([
+          getTacticsSkillCatalogForCharacters(currentCharacterIds),
+          getCharacterMaxMpForTactics(currentCharacterIds),
+        ]).then(([catalogResult, maxMpResult]) => {
           if ("skills" in catalogResult) {
             setInternalSkillCatalog(catalogResult.skills);
           }
+          setMaxMpByCharacter((prev) => ({ ...prev, ...maxMpResult }));
         });
       }
     }
@@ -582,7 +657,15 @@ export function TacticsEditorClient({
           rowCopy.conditionParam = { turnIndexMin: 1, turnIndexMax: 2 };
         } else {
           rowCopy.subject = sub;
-          if (!CONDITION_OPTIONS.some((o) => o.value === rowCopy.conditionKind)) {
+          // 生存数条件は any_ally / any_enemy のみ有効。主語を自分/正面の相手にしたら常ににリセット
+          if (
+            (rowCopy.conditionKind === "subject_count_equals" ||
+              rowCopy.conditionKind === "subject_count_at_least") &&
+            (sub === "self" || sub === "front_enemy")
+          ) {
+            rowCopy.conditionKind = "always";
+            rowCopy.conditionParam = null;
+          } else if (!CONDITION_OPTIONS.some((o) => o.value === rowCopy.conditionKind)) {
             rowCopy.conditionKind = "always";
             rowCopy.conditionParam = null;
           }
@@ -592,6 +675,9 @@ export function TacticsEditorClient({
         rowCopy.conditionKind = kind;
         if (kind === "always") rowCopy.conditionParam = null;
         else if (kind === "subject_has_attr_state") rowCopy.conditionParam = { attr: "none" };
+        else if (kind === "subject_in_column") rowCopy.conditionParam = { column: 1 };
+        else if (kind === "subject_count_equals") rowCopy.conditionParam = { count: 1 };
+        else if (kind === "subject_count_at_least") rowCopy.conditionParam = { count: 2 };
         else if (kind === "cycle_is_even" || kind === "cycle_is_odd") rowCopy.conditionParam = null;
         else if (kind === "cycle_is_multiple_of") rowCopy.conditionParam = { n: 2 };
         else if (kind === "cycle_at_least" || kind === "cycle_equals") rowCopy.conditionParam = { n: 1 };
@@ -619,8 +705,30 @@ export function TacticsEditorClient({
   /** 未設定キャラ用の安定した rows 参照（メモ化のため） */
   const defaultRowsStable = useMemo(() => getDefaultRows(), []);
 
+  const saveButton = (
+    <button
+      type="button"
+      onClick={handleSave}
+      disabled={isPending}
+      className="rounded bg-brass px-4 py-2 text-white font-medium hover:bg-brass-hover disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+    >
+      {isPending ? "保存中…" : "プリセットを保存"}
+    </button>
+  );
+
   return (
     <div className="space-y-6">
+      {/* ヘッダー（開拓拠点に戻る・移動先）の直下: 保存 → プリセット一覧 */}
+      <div className="flex flex-wrap items-center gap-3">
+        {saveButton}
+      </div>
+      <p className="mb-2">
+        <Link href="/dashboard/tactics" className="text-sm text-brass hover:text-brass-hover">
+          ← プリセット一覧
+        </Link>
+        <span className="mx-2 text-text-muted">|</span>
+        <span className="text-lg font-semibold text-text-primary">{preset.name ?? "編成編集"}</span>
+      </p>
       <div className="rounded-lg border border-base-border bg-base-elevated p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-text-primary">編成</h2>
@@ -811,6 +919,7 @@ export function TacticsEditorClient({
             moveSlotRow={moveSlotRow}
             setDraggedSlot={setDraggedSlot}
             battleSkillsByCharacter={internalBattleSkillsByCharacter}
+            maxMp={maxMpByCharacter[char.characterId]}
           />
         ))}
 
@@ -825,14 +934,7 @@ export function TacticsEditorClient({
         </p>
       )}
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isPending}
-          className="rounded bg-brass px-4 py-2 text-white font-medium hover:bg-brass-hover disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
-        >
-          {isPending ? "保存中…" : "プリセットを保存"}
-        </button>
+        {saveButton}
       </div>
     </div>
   );

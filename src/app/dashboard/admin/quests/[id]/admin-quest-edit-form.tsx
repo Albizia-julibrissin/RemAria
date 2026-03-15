@@ -7,9 +7,12 @@ import type {
   AdminQuestRow,
   AdminExplorationThemeRow,
   AdminResearchGroupRow,
+  AdminExplorationEventRow,
+  AdminSkillRow,
+  AdminTitleRow,
   UpdateAdminQuestInput,
 } from "@/server/actions/admin";
-import { updateAdminQuest } from "@/server/actions/admin";
+import { updateAdminQuest, createAdminQuest } from "@/server/actions/admin";
 import type { AdminItemRow } from "@/server/actions/admin";
 
 const QUEST_TYPES = [
@@ -22,7 +25,21 @@ const QUEST_TYPES = [
 const ACHIEVEMENT_TYPES = [
   { value: "area_clear", label: "エリア探索" },
   { value: "enemy_defeat", label: "エネミー撃破" },
+  { value: "skill_event_specific", label: "技能イベント（特定・特定ステータス）" },
+  { value: "item_received", label: "特定アイテム受け取り（生産）" },
+  { value: "skill_level", label: "特定スキルを特定レベルに" },
+  { value: "screen_visit", label: "特定画面を開く" },
 ];
+
+const SKILL_STAT_OPTIONS = [
+  { value: "STR", label: "STR" },
+  { value: "INT", label: "INT" },
+  { value: "VIT", label: "VIT" },
+  { value: "WIS", label: "WIS" },
+  { value: "DEX", label: "DEX" },
+  { value: "AGI", label: "AGI" },
+  { value: "LUK", label: "LUK" },
+] as const;
 
 type AreaOption = { id: string; code: string; name: string; themeName: string };
 type EnemyOption = { id: string; code: string; name: string };
@@ -31,25 +48,106 @@ type Props = {
   quest: AdminQuestDetail;
   questList: AdminQuestRow[];
   itemList: AdminItemRow[];
+  skillList: AdminSkillRow[];
+  titleList: AdminTitleRow[];
   areaList: AreaOption[];
   enemyList: EnemyOption[];
+  explorationEventList: AdminExplorationEventRow[];
   themeList: AdminExplorationThemeRow[];
   researchGroupList: AdminResearchGroupRow[];
 };
 
 function parseAchievementParam(param: unknown): {
-  type: "area_clear" | "enemy_defeat";
+  type: "area_clear" | "enemy_defeat" | "skill_event_specific" | "item_received" | "skill_level" | "screen_visit";
   areaId: string;
   enemyId: string;
+  explorationEventId: string;
+  statKey: string;
   count: number;
+  itemId: string;
+  skillId: string;
+  level: number;
+  path: string;
 } {
-  const p = param as { areaId?: string; enemyId?: string; count?: number } | null;
+  const p = param as {
+    areaId?: string;
+    enemyId?: string;
+    explorationEventId?: string;
+    statKey?: string;
+    count?: number;
+    itemId?: string;
+    skillId?: string;
+    level?: number;
+    path?: string;
+  } | null;
+  if (p && typeof p.itemId === "string") {
+    return {
+      type: "item_received",
+      areaId: "",
+      enemyId: "",
+      explorationEventId: "",
+      statKey: "STR",
+      count: typeof p.count === "number" && p.count >= 1 ? p.count : 1,
+      itemId: p.itemId,
+      skillId: "",
+      level: 1,
+      path: "",
+    };
+  }
+  if (p && typeof p.skillId === "string") {
+    return {
+      type: "skill_level",
+      areaId: "",
+      enemyId: "",
+      explorationEventId: "",
+      statKey: "STR",
+      count: 1,
+      itemId: "",
+      skillId: p.skillId,
+      level: typeof p.level === "number" && p.level >= 1 ? p.level : 1,
+      path: "",
+    };
+  }
+  if (p && typeof p.path === "string") {
+    return {
+      type: "screen_visit",
+      areaId: "",
+      enemyId: "",
+      explorationEventId: "",
+      statKey: "STR",
+      count: typeof p.count === "number" && p.count >= 1 ? p.count : 1,
+      itemId: "",
+      skillId: "",
+      level: 1,
+      path: p.path,
+    };
+  }
+  if (p && typeof p.explorationEventId === "string" && typeof p.statKey === "string") {
+    return {
+      type: "skill_event_specific",
+      areaId: "",
+      enemyId: "",
+      explorationEventId: p.explorationEventId,
+      statKey: p.statKey,
+      count: typeof p.count === "number" && p.count >= 1 ? p.count : 1,
+      itemId: "",
+      skillId: "",
+      level: 1,
+      path: "",
+    };
+  }
   if (p && typeof p.areaId === "string") {
     return {
       type: "area_clear",
       areaId: p.areaId,
       enemyId: "",
+      explorationEventId: "",
+      statKey: "STR",
       count: typeof p.count === "number" && p.count >= 0 ? p.count : 1,
+      itemId: "",
+      skillId: "",
+      level: 1,
+      path: "",
     };
   }
   if (p && typeof p.enemyId === "string") {
@@ -57,18 +155,46 @@ function parseAchievementParam(param: unknown): {
       type: "enemy_defeat",
       areaId: "",
       enemyId: p.enemyId,
+      explorationEventId: "",
+      statKey: "STR",
       count: typeof p.count === "number" && p.count >= 0 ? p.count : 1,
+      itemId: "",
+      skillId: "",
+      level: 1,
+      path: "",
     };
   }
-  return { type: "area_clear", areaId: "", enemyId: "", count: 1 };
+  return {
+    type: "area_clear",
+    areaId: "",
+    enemyId: "",
+    explorationEventId: "",
+    statKey: "STR",
+    count: 1,
+    itemId: "",
+    skillId: "",
+    level: 1,
+    path: "",
+  };
 }
+
+type AchievementTypeValue =
+  | "area_clear"
+  | "enemy_defeat"
+  | "skill_event_specific"
+  | "item_received"
+  | "skill_level"
+  | "screen_visit";
 
 export function AdminQuestEditForm({
   quest,
   questList,
   itemList,
+  skillList,
+  titleList,
   areaList,
   enemyList,
+  explorationEventList,
   themeList,
   researchGroupList,
 }: Props) {
@@ -85,17 +211,28 @@ export function AdminQuestEditForm({
   const [clearReportMessage, setClearReportMessage] = useState(
     quest.clearReportMessage ?? ""
   );
+  const [notifyChatOnClear, setNotifyChatOnClear] = useState(
+    quest.notifyChatOnClear ?? false
+  );
   const [prerequisiteQuestIds, setPrerequisiteQuestIds] = useState<string[]>(
     quest.prerequisiteQuestIds ?? []
   );
-  const [achievementType, setAchievementType] = useState<"area_clear" | "enemy_defeat">(
+  const [achievementType, setAchievementType] = useState<AchievementTypeValue>(
     ACHIEVEMENT_TYPES.some((t) => t.value === quest.achievementType)
-      ? (quest.achievementType as "area_clear" | "enemy_defeat")
+      ? (quest.achievementType as AchievementTypeValue)
       : parsed.type
   );
   const [achievementAreaId, setAchievementAreaId] = useState(parsed.areaId);
   const [achievementEnemyId, setAchievementEnemyId] = useState(parsed.enemyId);
+  const [achievementExplorationEventId, setAchievementExplorationEventId] = useState(
+    parsed.explorationEventId
+  );
+  const [achievementStatKey, setAchievementStatKey] = useState(parsed.statKey);
   const [achievementCount, setAchievementCount] = useState(parsed.count);
+  const [achievementItemId, setAchievementItemId] = useState(parsed.itemId);
+  const [achievementSkillId, setAchievementSkillId] = useState(parsed.skillId);
+  const [achievementLevel, setAchievementLevel] = useState(parsed.level);
+  const [achievementPath, setAchievementPath] = useState(parsed.path);
   const [rewardGra, setRewardGra] = useState(String(quest.rewardGra));
   const [rewardResearchPoint, setRewardResearchPoint] = useState(
     String(quest.rewardResearchPoint)
@@ -110,6 +247,7 @@ export function AdminQuestEditForm({
   const [unlockResearchGroupIds, setUnlockResearchGroupIds] = useState<string[]>(
     quest.unlockResearchGroupIds ?? []
   );
+  const [unlocksMarket, setUnlocksMarket] = useState(quest.unlocksMarket ?? false);
 
   const prerequisiteOptions = questList.filter((q) => q.id !== quest.id);
 
@@ -127,10 +265,45 @@ export function AdminQuestEditForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const count = Math.max(0, Number(achievementCount) || 0);
-    const achievementParamJson =
-      achievementType === "area_clear"
-        ? JSON.stringify({ areaId: achievementAreaId || undefined, count: count || 1 })
-        : JSON.stringify({ enemyId: achievementEnemyId || undefined, count });
+    let achievementParamJson: string;
+    if (achievementType === "area_clear") {
+      achievementParamJson = JSON.stringify({
+        areaId: achievementAreaId || undefined,
+        count: count || 1,
+      });
+    } else if (achievementType === "enemy_defeat") {
+      achievementParamJson = JSON.stringify({
+        enemyId: achievementEnemyId || undefined,
+        count,
+      });
+    } else if (achievementType === "skill_event_specific") {
+      achievementParamJson = JSON.stringify({
+        explorationEventId: achievementExplorationEventId || undefined,
+        statKey: achievementStatKey || undefined,
+        count: count >= 1 ? count : 1,
+      });
+    } else if (achievementType === "item_received") {
+      achievementParamJson = JSON.stringify({
+        itemId: achievementItemId || undefined,
+        count: count >= 1 ? count : 1,
+      });
+    } else if (achievementType === "skill_level") {
+      const level = Math.max(1, Number(achievementLevel) || 1);
+      achievementParamJson = JSON.stringify({
+        skillId: achievementSkillId || undefined,
+        level,
+      });
+    } else if (achievementType === "screen_visit") {
+      achievementParamJson = JSON.stringify({
+        path: achievementPath?.trim() || undefined,
+        count: count >= 1 ? count : 1,
+      });
+    } else {
+      achievementParamJson = JSON.stringify({
+        areaId: achievementAreaId || undefined,
+        count: count || 1,
+      });
+    }
 
     const input: UpdateAdminQuestInput = {
       code,
@@ -138,6 +311,8 @@ export function AdminQuestEditForm({
       name,
       description: description.trim() || null,
       clearReportMessage: clearReportMessage.trim() || null,
+      notifyChatOnClear,
+      unlocksMarket,
       prerequisiteQuestIds,
       achievementType,
       achievementParamJson,
@@ -151,13 +326,22 @@ export function AdminQuestEditForm({
       unlockResearchGroupIds,
     };
     startTransition(async () => {
-      const result = await updateAdminQuest(quest.id, input);
+      const isCreate = !quest.id;
+      const result = isCreate
+        ? await createAdminQuest(input)
+        : await updateAdminQuest(quest.id, input);
       setMessage(
         result.success
-          ? { type: "ok", text: "保存しました。" }
-          : { type: "error", text: result.error ?? "保存に失敗しました。" }
+          ? { type: "ok", text: isCreate ? "作成しました。" : "保存しました。" }
+          : { type: "error", text: result.error ?? (isCreate ? "作成に失敗しました。" : "保存に失敗しました。") }
       );
-      if (result.success) router.refresh();
+      if (result.success) {
+        if (isCreate && "questId" in result) {
+          router.push(`/dashboard/admin/quests/${result.questId}`);
+        } else {
+          router.refresh();
+        }
+      }
     });
   };
 
@@ -257,6 +441,18 @@ export function AdminQuestEditForm({
             className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
           />
         </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="notifyChatOnClear"
+            checked={notifyChatOnClear}
+            onChange={(e) => setNotifyChatOnClear(e.target.checked)}
+            className="rounded border-base-border text-brass focus:ring-brass"
+          />
+          <label htmlFor="notifyChatOnClear" className="text-sm text-text-primary">
+            クリア報告時に全体チャットに「〇〇が任務「△△」を達成しました。」を投稿する（spec/094）
+          </label>
+        </div>
         <div>
           <span className="block text-sm font-medium text-text-muted">
             前提開拓任務（複数可・すべて完了で出現）
@@ -301,7 +497,7 @@ export function AdminQuestEditForm({
             id="achievementType"
             value={achievementType}
             onChange={(e) =>
-              setAchievementType(e.target.value as "area_clear" | "enemy_defeat")
+              setAchievementType(e.target.value as AchievementTypeValue)
             }
             className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
           >
@@ -396,15 +592,210 @@ export function AdminQuestEditForm({
             </div>
           </>
         )}
+
+        {achievementType === "skill_event_specific" && (
+          <>
+            <div>
+              <label
+                htmlFor="achievementExplorationEventId"
+                className="block text-sm font-medium text-text-muted"
+              >
+                どの探索イベントか？
+              </label>
+              <select
+                id="achievementExplorationEventId"
+                value={achievementExplorationEventId}
+                onChange={(e) => setAchievementExplorationEventId(e.target.value)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              >
+                <option value="">— 選択 —</option>
+                {explorationEventList.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.name}（{ev.code}）
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="achievementStatKey"
+                className="block text-sm font-medium text-text-muted"
+              >
+                どのステータスで成功か？
+              </label>
+              <select
+                id="achievementStatKey"
+                value={achievementStatKey}
+                onChange={(e) => setAchievementStatKey(e.target.value)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              >
+                {SKILL_STAT_OPTIONS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="achievementCountSkill"
+                className="block text-sm font-medium text-text-muted"
+              >
+                何回成功で達成か？
+              </label>
+              <input
+                id="achievementCountSkill"
+                type="number"
+                min={1}
+                value={achievementCount}
+                onChange={(e) => setAchievementCount(parseInt(e.target.value, 10) || 0)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              />
+            </div>
+          </>
+        )}
+
+        {achievementType === "item_received" && (
+          <>
+            <div>
+              <label
+                htmlFor="achievementItemId"
+                className="block text-sm font-medium text-text-muted"
+              >
+                どのアイテムか？（生産受け取りで加算）
+              </label>
+              <select
+                id="achievementItemId"
+                value={achievementItemId}
+                onChange={(e) => setAchievementItemId(e.target.value)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              >
+                <option value="">— 選択 —</option>
+                {itemList.map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.code} — {it.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="achievementCountItem"
+                className="block text-sm font-medium text-text-muted"
+              >
+                何個受け取りで達成か？
+              </label>
+              <input
+                id="achievementCountItem"
+                type="number"
+                min={1}
+                value={achievementCount}
+                onChange={(e) => setAchievementCount(parseInt(e.target.value, 10) || 0)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              />
+            </div>
+          </>
+        )}
+
+        {achievementType === "skill_level" && (
+          <>
+            <div>
+              <label
+                htmlFor="achievementSkillId"
+                className="block text-sm font-medium text-text-muted"
+              >
+                どのスキルか？（主人公・仲間のいずれかで達成可）
+              </label>
+              <select
+                id="achievementSkillId"
+                value={achievementSkillId}
+                onChange={(e) => setAchievementSkillId(e.target.value)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              >
+                <option value="">— 選択 —</option>
+                {skillList.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}（{s.category}）
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="achievementLevel"
+                className="block text-sm font-medium text-text-muted"
+              >
+                何レベル以上で達成か？
+              </label>
+              <input
+                id="achievementLevel"
+                type="number"
+                min={1}
+                value={achievementLevel}
+                onChange={(e) => setAchievementLevel(parseInt(e.target.value, 10) || 1)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              />
+            </div>
+          </>
+        )}
+
+        {achievementType === "screen_visit" && (
+          <>
+            <div>
+              <label
+                htmlFor="achievementPath"
+                className="block text-sm font-medium text-text-muted"
+              >
+                画面パス（例: /dashboard/tactics）
+              </label>
+              <input
+                id="achievementPath"
+                type="text"
+                value={achievementPath}
+                onChange={(e) => setAchievementPath(e.target.value)}
+                placeholder="/dashboard/tactics"
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="achievementCountScreen"
+                className="block text-sm font-medium text-text-muted"
+              >
+                何回開いたら達成か？（通常は 1）
+              </label>
+              <input
+                id="achievementCountScreen"
+                type="number"
+                min={1}
+                value={achievementCount}
+                onChange={(e) => setAchievementCount(parseInt(e.target.value, 10) || 1)}
+                className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
+              />
+            </div>
+          </>
+        )}
       </section>
 
       <section className="space-y-4 rounded border border-base-border bg-base-elevated p-4">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-          機能解放（spec/068）
+          機能解放（spec/068, 075）
         </h2>
         <p className="text-sm text-text-muted">
-          この任務をクリア報告すると、選択した探索テーマ・研究グループが解放されます。
+          この任務をクリア報告すると、選択した探索テーマ・研究グループが解放されます。市場解放にチェックを入れると、報告時にユーザーの市場利用が可能になります。
         </p>
+        <div className="flex items-center gap-2">
+          <input
+            id="unlocksMarket"
+            type="checkbox"
+            checked={unlocksMarket}
+            onChange={(e) => setUnlocksMarket(e.target.checked)}
+            className="rounded border-base-border text-brass focus:ring-brass"
+          />
+          <label htmlFor="unlocksMarket" className="text-sm font-medium text-text-muted">
+            この任務で市場を解放する
+          </label>
+        </div>
         <div>
           <span className="block text-sm font-medium text-text-muted mb-2">
             解放する探索テーマ（複数可）
@@ -483,16 +874,21 @@ export function AdminQuestEditForm({
         </div>
         <div>
           <label htmlFor="rewardTitleId" className="block text-sm font-medium text-text-muted">
-            rewardTitleId（称号・任意）
+            報酬称号（任意）
           </label>
-          <input
+          <select
             id="rewardTitleId"
-            type="text"
             value={rewardTitleId}
             onChange={(e) => setRewardTitleId(e.target.value)}
-            placeholder="称号のID（未実装時は空で可）"
             className="mt-1 w-full rounded border border-base-border bg-base px-3 py-2 text-text-primary"
-          />
+          >
+            <option value="">— なし —</option>
+            {titleList.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}（{t.code}）
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <div className="flex items-center justify-between">
@@ -552,7 +948,7 @@ export function AdminQuestEditForm({
           disabled={isPending}
           className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
         >
-          {isPending ? "保存中…" : "保存"}
+          {isPending ? (quest.id ? "保存中…" : "作成中…") : (quest.id ? "保存" : "作成")}
         </button>
         <button
           type="button"

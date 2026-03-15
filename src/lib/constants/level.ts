@@ -18,6 +18,14 @@ export const EXP_PER_LEVEL_AT_CAP = 1000;
 
 /**
  * キャップ到達後に「レベル1分の経験値」が貯まったときに付与するアイテムの code（Item.code）。
- * 振り直し用アイテム「再構築アンプルα」。
+ * 振り直し用アイテム「再構築アンプルα」。部分再構築・完全再構築で消費（spec/092）。
  */
 export const LEVEL_CAP_REWARD_ITEM_CODE = "reconstitution_ampoule_alpha";
+
+/**
+ * 完全再構築βで消費するアイテムの code（Item.code）。レベルダウンなしで全ポイント振り戻し（spec/092）。
+ */
+export const RECONSTITUTION_AMPOULE_BETA_ITEM_CODE = "reconstitution_ampoule_beta";
+
+/** 部分再構築で 1 アイテムあたり振り戻せるポイント数（60×0.30。spec/048 §2.6, spec/092） */
+export const POINTS_PER_RECONSTITUTION_ITEM = 18;

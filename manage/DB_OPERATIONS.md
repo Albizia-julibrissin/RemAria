@@ -82,7 +82,7 @@
 **前提**: 環境変数で `SOURCE_DATABASE_URL`（編集済みマスタの DB。未設定時は `DATABASE_URL`）と `TARGET_DATABASE_URL`（本番など反映先）を指定する。ソースとターゲットで同じマイグレーションが適用済みであること。**Cursor に依頼する場合**は、TARGET に **manage/production.env** の `DATABASE_URL` を渡す（[PRODUCTION_RELEASE_GUIDE.md §9](./PRODUCTION_RELEASE_GUIDE.md#9-cursor-に本番リリースの各手順を依頼する標準のやり方)）。
 
 **詳細**は **[PRODUCTION_RELEASE_GUIDE.md §3](./PRODUCTION_RELEASE_GUIDE.md#3-マスタデータの正本と本番への反映)** を参照。  
-**マイグレーションでマスタテーブルを追加・削除したとき**は、`prisma/sync-masters-to-target.ts` の `MASTER_DELEGATES_IN_ORDER` を更新すること。
+**マイグレーションでマスタテーブルを追加・削除したとき**は、**`src/server/lib/sync-masters.ts`** の **MASTER_DELEGATES_IN_ORDER** を更新すること（CLI と管理画面の両方がこれを参照する）。管理画面からもマスタ同期・本番バックアップが可能（`/dashboard/admin/master-production-sync`。本番の接続先は画面で入力する一過性で、どこにも保存されない）。
 
 ---
 

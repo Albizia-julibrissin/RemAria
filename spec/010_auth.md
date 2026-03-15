@@ -51,7 +51,8 @@
   "email": "user@example.com",
   "accountId": "my_id_123",
   "password": "validPassword123",
-  "name": "冒険者"
+  "name": "冒険者",
+  "agreeTerms": "on"
 }
 ```
 
@@ -59,6 +60,7 @@
 - `accountId`：必須。英数字とアンダースコアのみ。既存ユーザーと**重複不可**。3〜24文字（実装で規定）。
 - `password`：必須。8文字以上。MVPでは英数字のみ可（後で拡張）。
 - `name`：必須。表示名。**おおよそ全角 12 文字・半角 24 文字（UTF-8 約 24 バイト）以内**。**重複可**。この値が**主人公の表示名**としても使われる（User にのみ保持、二重管理しない）。
+- `agreeTerms`：必須。利用規約への同意。フォームではチェックボックスで送信し、値が送られていない場合は登録不可（`TERMS_NOT_AGREED`）。同意時は User の `termsAgreedAt` に日時を記録する（docs/090_terms_of_service.md）。
 
 ### 3.2 ログイン
 
@@ -99,7 +101,7 @@
 }
 ```
 
-- `ERROR_CODE` 例：`EMAIL_ALREADY_EXISTS`, `ACCOUNT_ID_ALREADY_EXISTS`, `INVALID_CREDENTIALS`, `VALIDATION_ERROR`
+- `ERROR_CODE` 例：`EMAIL_ALREADY_EXISTS`, `ACCOUNT_ID_ALREADY_EXISTS`, `INVALID_CREDENTIALS`, `VALIDATION_ERROR`, `TERMS_NOT_AGREED`
 
 ### 4.3 ログアウト成功時
 

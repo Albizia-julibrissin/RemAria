@@ -1,7 +1,9 @@
 "use server";
 
 // docs/054 - 研究グループ・アイテム消費で解放
+// spec/089 - 設備コスト拡張・設備設置上限拡張
 
+import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 
@@ -20,6 +22,8 @@ export type ResearchGroupItemSummary = {
   isVariant: boolean;
   isUnlocked: boolean;
   cost: ResearchUnlockCostItem[];
+  /** 解放時に必要な研究記録書の数。0=不要 */
+  requiredResearchPoint: number;
 };
 
 export type ResearchGroupSummary = {
@@ -30,9 +34,84 @@ export type ResearchGroupSummary = {
   items: ResearchGroupItemSummary[];
 };
 
+/** spec/089: グループごとの設備コスト拡張（利用可能なグループのみ） */
+export type FacilityCostExpansionSummary = {
+  researchGroupId: string;
+  researchGroupName: string;
+  limit: number;
+  amount: number;
+  researchPoint: number;
+  currentCount: number;
+  isAvailable: boolean;
+};
+
+/** spec/089: グループごとの設備設置上限拡張（利用可能なグループのみ） */
+export type SlotsExpansionSummary = {
+  researchGroupId: string;
+  researchGroupName: string;
+  limit: number;
+  amount: number;
+  researchPoint: number;
+  currentCount: number;
+  isAvailable: boolean;
+};
+
 export type GetResearchMenuResult =
-  | { success: true; groups: ResearchGroupSummary[] }
+  | {
+      success: true;
+      groups: ResearchGroupSummary[];
+      researchPoint: number;
+      facilityCostExpansions: FacilityCostExpansionSummary[];
+      slotsExpansions: SlotsExpansionSummary[];
+    }
   | { success: false; error: string };
+
+export type ResearchCostStockRow = {
+  itemId: string;
+  itemName: string;
+  amount: number;
+  stock: number;
+  shortfall: number;
+};
+
+/**
+ * 解放コストの各材料について、所持数・不足数を返す。材料モーダル用。
+ */
+export async function getResearchCostWithStock(
+  cost: { itemId: string; amount: number }[]
+): Promise<
+  | { success: false; error: string }
+  | { success: true; rows: ResearchCostStockRow[] }
+> {
+  const session = await getSession();
+  if (!session?.userId) return { success: false, error: "UNAUTHORIZED" };
+  if (cost.length === 0) return { success: true, rows: [] };
+  const itemIds = [...new Set(cost.map((c) => c.itemId))];
+  const [items, inventories] = await Promise.all([
+    prisma.item.findMany({
+      where: { id: { in: itemIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.userInventory.findMany({
+      where: { userId: session.userId, itemId: { in: itemIds } },
+      select: { itemId: true, quantity: true },
+    }),
+  ]);
+  const nameById = new Map(items.map((i) => [i.id, i.name]));
+  const stockById = new Map(inventories.map((i) => [i.itemId, i.quantity]));
+  const rows: ResearchCostStockRow[] = cost.map((c) => {
+    const stock = stockById.get(c.itemId) ?? 0;
+    const shortfall = Math.max(0, c.amount - stock);
+    return {
+      itemId: c.itemId,
+      itemName: nameById.get(c.itemId) ?? "（不明）",
+      amount: c.amount,
+      stock,
+      shortfall,
+    };
+  });
+  return { success: true, rows };
+}
 
 /**
  * 研究グループ一覧と、各グループ内の解放対象・コスト・解放済みを返す。
@@ -43,30 +122,50 @@ export async function getResearchMenu(): Promise<GetResearchMenuResult> {
   if (!session?.userId) return { success: false, error: "UNAUTHORIZED" };
   const userId = session.userId;
 
-  const [groups, facilityUnlocks, recipeUnlocks, userGroupUnlocks, gatedGroupIdsRows] =
-    await Promise.all([
-      prisma.researchGroup.findMany({
-        orderBy: { displayOrder: "asc" },
-        include: {
-          items: { orderBy: { displayOrder: "asc" } },
-        },
-      }),
-      prisma.userFacilityTypeUnlock.findMany({
-        where: { userId },
-        select: { facilityTypeId: true },
-      }),
-      prisma.userCraftRecipeUnlock.findMany({
-        where: { userId },
-        select: { craftRecipeId: true },
-      }),
-      prisma.userResearchGroupUnlock.findMany({
-        where: { userId },
-        select: { researchGroupId: true },
-      }),
-      prisma.questUnlockResearchGroup.findMany({
-        select: { researchGroupId: true },
-      }),
-    ]);
+  const [
+    groups,
+    facilityUnlocks,
+    recipeUnlocks,
+    userGroupUnlocks,
+    gatedGroupIdsRows,
+    user,
+    costExpansionRows,
+    slotsExpansionRows,
+  ] = await Promise.all([
+    prisma.researchGroup.findMany({
+      orderBy: { displayOrder: "asc" },
+      include: {
+        items: { orderBy: { displayOrder: "asc" } },
+      },
+    }),
+    prisma.userFacilityTypeUnlock.findMany({
+      where: { userId },
+      select: { facilityTypeId: true },
+    }),
+    prisma.userCraftRecipeUnlock.findMany({
+      where: { userId },
+      select: { craftRecipeId: true },
+    }),
+    prisma.userResearchGroupUnlock.findMany({
+      where: { userId },
+      select: { researchGroupId: true },
+    }),
+    prisma.questUnlockResearchGroup.findMany({
+      select: { researchGroupId: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { researchPoint: true },
+    }),
+    prisma.userResearchGroupCostExpansion.findMany({
+      where: { userId },
+      select: { researchGroupId: true, count: true },
+    }),
+    prisma.userResearchGroupSlotsExpansion.findMany({
+      where: { userId },
+      select: { researchGroupId: true, count: true },
+    }),
+  ]);
 
   const userUnlockedGroupIds = new Set(userGroupUnlocks.map((u) => u.researchGroupId));
   const gatedGroupIds = new Set(gatedGroupIdsRows.map((r) => r.researchGroupId));
@@ -142,6 +241,7 @@ export async function getResearchMenu(): Promise<GetResearchMenuResult> {
         isVariant: it.isVariant,
         isUnlocked,
         cost,
+        requiredResearchPoint: it.requiredResearchPoint ?? 0,
       };
     });
     return {
@@ -153,7 +253,51 @@ export async function getResearchMenu(): Promise<GetResearchMenuResult> {
     };
   });
 
-  return { success: true, groups: result };
+  const costExpansionByGroup = new Map(
+    (costExpansionRows ?? []).map((r) => [r.researchGroupId, r.count])
+  );
+  const facilityCostExpansions: FacilityCostExpansionSummary[] = groups
+    .filter(
+      (g) =>
+        g.facilityCostExpansionLimit > 0 &&
+        (!gatedGroupIds.has(g.id) || userUnlockedGroupIds.has(g.id))
+    )
+    .map((g) => ({
+      researchGroupId: g.id,
+      researchGroupName: g.name,
+      limit: g.facilityCostExpansionLimit,
+      amount: g.facilityCostExpansionAmount,
+      researchPoint: g.facilityCostExpansionResearchPoint,
+      currentCount: costExpansionByGroup.get(g.id) ?? 0,
+      isAvailable: true,
+    }));
+
+  const slotsExpansionByGroup = new Map(
+    (slotsExpansionRows ?? []).map((r) => [r.researchGroupId, r.count])
+  );
+  const slotsExpansions: SlotsExpansionSummary[] = groups
+    .filter(
+      (g) =>
+        g.facilitySlotsExpansionLimit > 0 &&
+        (!gatedGroupIds.has(g.id) || userUnlockedGroupIds.has(g.id))
+    )
+    .map((g) => ({
+      researchGroupId: g.id,
+      researchGroupName: g.name,
+      limit: g.facilitySlotsExpansionLimit,
+      amount: g.facilitySlotsExpansionAmount,
+      researchPoint: g.facilitySlotsExpansionResearchPoint,
+      currentCount: slotsExpansionByGroup.get(g.id) ?? 0,
+      isAvailable: true,
+    }));
+
+  return {
+    success: true,
+    groups: result,
+    researchPoint: user?.researchPoint ?? 0,
+    facilityCostExpansions,
+    slotsExpansions,
+  };
 }
 
 export type UnlockResearchTargetResult =
@@ -176,12 +320,17 @@ export async function unlockResearchTarget(
 
   const groupItem = await prisma.researchGroupItem.findFirst({
     where: { targetType, targetId },
-    include: { researchGroup: { select: { id: true } } },
+    select: {
+      id: true,
+      requiredResearchPoint: true,
+      researchGroup: { select: { id: true } },
+    },
   });
   if (!groupItem) {
     return { success: false, error: "NOT_FOUND", message: "その解放対象は研究グループに登録されていません。" };
   }
 
+  const requiredResearchPoint = groupItem.requiredResearchPoint ?? 0;
   const researchGroupId = groupItem.researchGroup.id;
 
   const [existingFacility, existingRecipe, isGroupGated, userHasGroupUnlock] =
@@ -220,48 +369,74 @@ export async function unlockResearchTarget(
     where: { targetType, targetId },
     include: { item: true },
   });
-  if (costs.length === 0) {
-    return { success: false, error: "NO_COST", message: "解放コストが設定されていません。" };
+  if (costs.length === 0 || requiredResearchPoint <= 0) {
+    return {
+      success: false,
+      error: "NO_COST",
+      message: "解放にはアイテムと研究記録書の両方の設定が必要です。",
+    };
   }
 
-  const inventories = await prisma.userInventory.findMany({
-    where: {
-      userId,
-      itemId: { in: costs.map((c) => c.itemId) },
-    },
-    select: { itemId: true, quantity: true },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { researchPoint: true },
   });
-  const qtyByItem = new Map(inventories.map((i) => [i.itemId, i.quantity]));
-  for (const c of costs) {
-    const have = qtyByItem.get(c.itemId) ?? 0;
-    if (have < c.amount) {
-      return {
-        success: false,
-        error: "INSUFFICIENT_ITEMS",
-        message: `${c.item.name} が足りません。（必要: ${c.amount}、所持: ${have}）`,
-      };
+  if (requiredResearchPoint > 0 && (user?.researchPoint ?? 0) < requiredResearchPoint) {
+    return {
+      success: false,
+      error: "INSUFFICIENT_RESEARCH_POINT",
+      message: `研究記録書が足りません。（必要: ${requiredResearchPoint}、所持: ${user?.researchPoint ?? 0}）`,
+    };
+  }
+
+  if (costs.length > 0) {
+    const inventories = await prisma.userInventory.findMany({
+      where: {
+        userId,
+        itemId: { in: costs.map((c) => c.itemId) },
+      },
+      select: { itemId: true, quantity: true },
+    });
+    const qtyByItem = new Map(inventories.map((i) => [i.itemId, i.quantity]));
+    for (const c of costs) {
+      const have = qtyByItem.get(c.itemId) ?? 0;
+      if (have < c.amount) {
+        return {
+          success: false,
+          error: "INSUFFICIENT_ITEMS",
+          message: `${c.item.name} が足りません。（必要: ${c.amount}、所持: ${have}）`,
+        };
+      }
     }
   }
 
   const costItemIds = [...new Set(costs.map((c) => c.itemId))];
   await prisma.$transaction(async (tx) => {
-    const invRows = await tx.userInventory.findMany({
-      where: { userId, itemId: { in: costItemIds } },
-      select: { id: true, itemId: true, quantity: true },
-    });
-    const qtyMap = new Map(invRows.map((r) => [r.itemId, r.quantity]));
-    for (const c of costs) {
-      const have = qtyMap.get(c.itemId) ?? 0;
-      if (have < c.amount) {
-        throw new Error("INSUFFICIENT_ITEMS");
-      }
-      const row = invRows.find((r) => r.itemId === c.itemId);
-      if (!row) throw new Error("INSUFFICIENT_ITEMS");
-      await tx.userInventory.update({
-        where: { id: row.id },
-        data: { quantity: { decrement: c.amount } },
+    if (requiredResearchPoint > 0) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { researchPoint: { decrement: requiredResearchPoint } },
       });
-      qtyMap.set(c.itemId, have - c.amount);
+    }
+    if (costItemIds.length > 0) {
+      const invRows = await tx.userInventory.findMany({
+        where: { userId, itemId: { in: costItemIds } },
+        select: { id: true, itemId: true, quantity: true },
+      });
+      const qtyMap = new Map(invRows.map((r) => [r.itemId, r.quantity]));
+      for (const c of costs) {
+        const have = qtyMap.get(c.itemId) ?? 0;
+        if (have < c.amount) {
+          throw new Error("INSUFFICIENT_ITEMS");
+        }
+        const row = invRows.find((r) => r.itemId === c.itemId);
+        if (!row) throw new Error("INSUFFICIENT_ITEMS");
+        await tx.userInventory.update({
+          where: { id: row.id },
+          data: { quantity: { decrement: c.amount } },
+        });
+        qtyMap.set(c.itemId, have - c.amount);
+      }
     }
     if (targetType === "facility_type") {
       await tx.userFacilityTypeUnlock.create({
@@ -274,5 +449,205 @@ export async function unlockResearchTarget(
     }
   });
 
+  return { success: true };
+}
+
+export type ExpandFacilityCostResult =
+  | { success: true }
+  | { success: false; error: string; message: string };
+
+/**
+ * spec/089: 指定研究グループで設備コスト上限を1回拡張する。研究記録書を消費。
+ */
+export async function expandFacilityCost(
+  researchGroupId: string
+): Promise<ExpandFacilityCostResult> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
+  }
+  const userId = session.userId;
+
+  const group = await prisma.researchGroup.findUnique({
+    where: { id: researchGroupId },
+  });
+  if (!group) {
+    return { success: false, error: "NOT_FOUND", message: "研究グループが見つかりません。" };
+  }
+  if (
+    group.facilityCostExpansionLimit <= 0 ||
+    group.facilityCostExpansionAmount <= 0
+  ) {
+    return { success: false, error: "NOT_AVAILABLE", message: "このグループでは設備コスト拡張はできません。" };
+  }
+
+  const [gated, userUnlock, userRow, userResearchPoint] = await Promise.all([
+    prisma.questUnlockResearchGroup.findFirst({
+      where: { researchGroupId },
+      select: { questId: true },
+    }),
+    prisma.userResearchGroupUnlock.findUnique({
+      where: { userId_researchGroupId: { userId, researchGroupId } },
+      select: { researchGroupId: true },
+    }),
+    prisma.userResearchGroupCostExpansion.findUnique({
+      where: { userId_researchGroupId: { userId, researchGroupId } },
+      select: { count: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { researchPoint: true },
+    }),
+  ]);
+  const groupAvailable = !gated || !!userUnlock;
+  if (!groupAvailable) {
+    return {
+      success: false,
+      error: "GROUP_LOCKED",
+      message: "この研究グループは、開拓任務をクリアすると利用可能になります。",
+    };
+  }
+  const currentCount = userRow?.count ?? 0;
+  if (currentCount >= group.facilityCostExpansionLimit) {
+    return {
+      success: false,
+      error: "LIMIT_REACHED",
+      message: "このグループの設備コスト拡張は上限に達しています。",
+    };
+  }
+  const required = group.facilityCostExpansionResearchPoint;
+  const have = userResearchPoint?.researchPoint ?? 0;
+  if (have < required) {
+    return {
+      success: false,
+      error: "INSUFFICIENT_RESEARCH_POINT",
+      message: `研究記録書が足りません。（必要: ${required}、所持: ${have}）`,
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        researchPoint: { decrement: required },
+        industrialMaxCost: { increment: group.facilityCostExpansionAmount },
+      },
+    });
+    await tx.userResearchGroupCostExpansion.upsert({
+      where: {
+        userId_researchGroupId: { userId, researchGroupId },
+      },
+      create: {
+        userId,
+        researchGroupId,
+        count: 1,
+      },
+      update: { count: { increment: 1 } },
+    });
+  });
+
+  revalidatePath("/dashboard/research");
+  return { success: true };
+}
+
+export type ExpandFacilitySlotsResult =
+  | { success: true }
+  | { success: false; error: string; message: string };
+
+/**
+ * spec/089: 指定研究グループで設備設置上限を1回拡張する。研究記録書を消費。
+ */
+export async function expandFacilitySlots(
+  researchGroupId: string
+): Promise<ExpandFacilitySlotsResult> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
+  }
+  const userId = session.userId;
+
+  const group = await prisma.researchGroup.findUnique({
+    where: { id: researchGroupId },
+  });
+  if (!group) {
+    return { success: false, error: "NOT_FOUND", message: "研究グループが見つかりません。" };
+  }
+  if (
+    group.facilitySlotsExpansionLimit <= 0 ||
+    group.facilitySlotsExpansionAmount <= 0
+  ) {
+    return {
+      success: false,
+      error: "NOT_AVAILABLE",
+      message: "このグループでは設備設置上限拡張はできません。",
+    };
+  }
+
+  const [gated, userUnlock, userRow, userResearchPoint] = await Promise.all([
+    prisma.questUnlockResearchGroup.findFirst({
+      where: { researchGroupId },
+      select: { questId: true },
+    }),
+    prisma.userResearchGroupUnlock.findUnique({
+      where: { userId_researchGroupId: { userId, researchGroupId } },
+      select: { researchGroupId: true },
+    }),
+    prisma.userResearchGroupSlotsExpansion.findUnique({
+      where: { userId_researchGroupId: { userId, researchGroupId } },
+      select: { count: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { researchPoint: true },
+    }),
+  ]);
+  const groupAvailable = !gated || !!userUnlock;
+  if (!groupAvailable) {
+    return {
+      success: false,
+      error: "GROUP_LOCKED",
+      message: "この研究グループは、開拓任務をクリアすると利用可能になります。",
+    };
+  }
+  const currentCount = userRow?.count ?? 0;
+  if (currentCount >= group.facilitySlotsExpansionLimit) {
+    return {
+      success: false,
+      error: "LIMIT_REACHED",
+      message: "このグループの設備設置上限拡張は上限に達しています。",
+    };
+  }
+  const required = group.facilitySlotsExpansionResearchPoint;
+  const have = userResearchPoint?.researchPoint ?? 0;
+  if (have < required) {
+    return {
+      success: false,
+      error: "INSUFFICIENT_RESEARCH_POINT",
+      message: `研究記録書が足りません。（必要: ${required}、所持: ${have}）`,
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        researchPoint: { decrement: required },
+        industrialMaxSlots: { increment: group.facilitySlotsExpansionAmount },
+      },
+    });
+    await tx.userResearchGroupSlotsExpansion.upsert({
+      where: {
+        userId_researchGroupId: { userId, researchGroupId },
+      },
+      create: {
+        userId,
+        researchGroupId,
+        count: 1,
+      },
+      update: { count: { increment: 1 } },
+    });
+  });
+
+  revalidatePath("/dashboard/research");
   return { success: true };
 }

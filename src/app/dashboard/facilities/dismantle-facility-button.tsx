@@ -63,7 +63,7 @@ export function DismantleFacilityButton({ facilityInstanceId, facilityName }: Pr
                 onClick={() => setModalOpen(false)}
                 className="rounded border border-base-border bg-base px-3 py-2 text-sm text-text-primary hover:bg-base-elevated focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
               >
-                キャンセル
+                中止
               </button>
               <button
                 type="button"

@@ -1,6 +1,6 @@
 "use server";
 
-// spec/037, docs/022 - 全体チャット
+// spec/037, 094 - 全体チャット・システムメッセージ（任務達成通知等）
 
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -11,10 +11,20 @@ const MAX_LIMIT = 100;
 
 export type ChatMessageItem = {
   id: string;
-  userId: string;
+  userId: string | null;
   senderName: string;
   body: string;
   createdAt: string; // ISO
+  /** spec/094: "user" | "system" */
+  kind: "user" | "system";
+  systemKind: string | null;
+  payload: { userId?: string; questId?: string; questName?: string } | null;
+  /** 表示対象ユーザー（送信者または quest_clear の主体）の主人公アイコン。null は非表示。 */
+  protagonistIconFilename: string | null;
+  /** kind=system のとき、リンク表示用の主体の表示名（例: quest_clear のプレイヤー名）。 */
+  subjectName: string | null;
+  /** 開拓者証リンク用。プロフィールは /dashboard/profile/[accountId] なので、表示対象ユーザーの accountId。 */
+  accountId: string | null;
 };
 
 export type SendChatMessageResult =
@@ -52,11 +62,22 @@ export async function sendChatMessage(formData: FormData): Promise<SendChatMessa
   }
 
   const row = await prisma.chatMessage.create({
-    data: { userId: session.userId, body },
-    include: { user: { select: { name: true } } },
+    data: { userId: session.userId, body, kind: "user" },
+    include: {
+      user: {
+        select: {
+          name: true,
+          accountId: true,
+          protagonistCharacter: { select: { iconFilename: true } },
+        },
+      },
+    },
   });
 
-  const senderName = row.user.name?.trim() || "冒険者";
+  const senderName = row.user?.name?.trim() || "冒険者";
+  const protagonistIconFilename =
+    row.user?.protagonistCharacter?.iconFilename ?? null;
+  const accountId = row.user?.accountId ?? null;
 
   return {
     success: true,
@@ -66,11 +87,17 @@ export async function sendChatMessage(formData: FormData): Promise<SendChatMessa
       senderName,
       body: row.body,
       createdAt: row.createdAt.toISOString(),
+      kind: "user",
+      systemKind: null,
+      payload: null,
+      protagonistIconFilename,
+      subjectName: null,
+      accountId,
     },
   };
 }
 
-/** spec/037: 直近N件のメッセージを取得（createdAt 降順） */
+/** spec/037, 094: 直近N件のメッセージを取得（createdAt 降順）。kind, systemKind, payload, protagonistIconFilename を含む。 */
 export async function getRecentChatMessages(
   limit?: number
 ): Promise<GetRecentChatMessagesResult> {
@@ -79,16 +106,118 @@ export async function getRecentChatMessages(
   const rows = await prisma.chatMessage.findMany({
     orderBy: { createdAt: "desc" },
     take: cap,
-    include: { user: { select: { name: true } } },
+    include: {
+      user: {
+        select: {
+          name: true,
+          accountId: true,
+          protagonistCharacter: { select: { iconFilename: true } },
+        },
+      },
+    },
   });
 
-  const messages: ChatMessageItem[] = rows.map((r) => ({
-    id: r.id,
-    userId: r.userId,
-    senderName: r.user.name?.trim() || "冒険者",
-    body: r.body,
-    createdAt: r.createdAt.toISOString(),
-  }));
+  // spec/094: システムメッセージの payload.userId から主人公アイコン・表示名・accountId を取得
+  const subjectUserIds = new Set<string>();
+  for (const r of rows) {
+    if (r.kind === "system" && r.payload && typeof r.payload === "object" && "userId" in r.payload && typeof (r.payload as { userId?: unknown }).userId === "string") {
+      subjectUserIds.add((r.payload as { userId: string }).userId);
+    }
+  }
+  const subjectIconMap = new Map<string, string | null>();
+  const subjectNameMap = new Map<string, string>();
+  const subjectAccountIdMap = new Map<string, string>();
+  if (subjectUserIds.size > 0) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: [...subjectUserIds] } },
+      select: {
+        id: true,
+        name: true,
+        accountId: true,
+        protagonistCharacter: { select: { iconFilename: true } },
+      },
+    });
+    for (const u of users) {
+      subjectIconMap.set(u.id, u.protagonistCharacter?.iconFilename ?? null);
+      subjectNameMap.set(u.id, u.name?.trim() || "冒険者");
+      subjectAccountIdMap.set(u.id, u.accountId);
+    }
+  }
+
+  const messages: ChatMessageItem[] = rows.map((r) => {
+    const payload =
+      r.payload && typeof r.payload === "object"
+        ? (r.payload as { userId?: string; questId?: string; questName?: string })
+        : null;
+    const protagonistIconFilename =
+      r.kind === "user" && r.user
+        ? r.user.protagonistCharacter?.iconFilename ?? null
+        : r.kind === "system" && payload?.userId
+          ? subjectIconMap.get(payload.userId) ?? null
+          : null;
+
+    const subjectName =
+      r.kind === "system" && payload?.userId
+        ? subjectNameMap.get(payload.userId) ?? null
+        : null;
+
+    const accountId =
+      r.kind === "user" && r.user
+        ? r.user.accountId
+        : r.kind === "system" && payload?.userId
+          ? subjectAccountIdMap.get(payload.userId) ?? null
+          : null;
+
+    return {
+      id: r.id,
+      userId: r.userId,
+      senderName: r.kind === "user" && r.user ? (r.user.name?.trim() || "冒険者") : "",
+      body: r.body,
+      createdAt: r.createdAt.toISOString(),
+      kind: r.kind as "user" | "system",
+      systemKind: r.systemKind,
+      payload,
+      protagonistIconFilename,
+      subjectName,
+      accountId,
+    };
+  });
 
   return { success: true, messages };
+}
+
+/** spec/094: 任務クリア報告時にチャットに quest_clear システムメッセージを 1 件投稿。acknowledgeQuestReport から呼ぶ。任務の notifyChatOnClear が true のときのみ投稿。 */
+export async function createQuestClearChatMessage(
+  userId: string,
+  questId: string
+): Promise<void> {
+  const [user, quest] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    }),
+    prisma.quest.findUnique({
+      where: { id: questId },
+      select: { name: true, notifyChatOnClear: true },
+    }),
+  ]);
+  if (!user || !quest || !quest.notifyChatOnClear) return;
+
+  const senderName = user.name?.trim() || "冒険者";
+  const body = `${senderName}が任務「${quest.name}」を達成しました。`;
+  const payload = {
+    userId,
+    questId,
+    questName: quest.name,
+  };
+
+  await prisma.chatMessage.create({
+    data: {
+      userId: null,
+      kind: "system",
+      systemKind: "quest_clear",
+      body,
+      payload,
+    },
+  });
 }

@@ -30,17 +30,14 @@ export function ResearchUnlockButton({ targetType, targetId, targetName, cost }:
   };
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <span className="text-xs text-text-muted">
-        消費: {cost.map((c) => `${c.itemName} × ${c.amount}`).join("、")}
-      </span>
+    <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={handleUnlock}
         disabled={isPending}
-        className="rounded bg-brass px-3 py-1.5 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
+        className="rounded bg-brass px-3 py-1.5 text-sm font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
       >
-        {isPending ? "解放中…" : "解放する"}
+        {isPending ? "解放中…" : "解放"}
       </button>
       {error && <span className="text-xs text-red-400">{error}</span>}
     </div>

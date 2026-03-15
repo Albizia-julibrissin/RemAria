@@ -3,7 +3,9 @@ import "./globals.css";
 import { getSession } from "@/lib/auth/session";
 import { getActiveUserCountLast5Min, touchUserActivity } from "@/server/lib/active-user";
 import { getUnreadNotificationCount } from "@/server/actions/notification";
+import { getUnreadMailCount } from "@/server/actions/mail";
 import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import { ChatFloating } from "@/components/chat/ChatFloating";
 
 export const metadata: Metadata = {
@@ -22,12 +24,14 @@ export default async function RootLayout({
   if (session.userId) {
     void touchUserActivity(session.userId);
   }
-  const [activeUserCount, unreadNotificationResult] = await Promise.all([
+  const [activeUserCount, unreadNotificationResult, unreadMailResult] = await Promise.all([
     getActiveUserCountLast5Min(),
     isLoggedIn ? getUnreadNotificationCount() : Promise.resolve({ success: true as const, count: 0 }),
+    isLoggedIn ? getUnreadMailCount() : Promise.resolve({ success: true as const, count: 0 }),
   ]);
   const unreadNotificationCount =
     unreadNotificationResult.success === true ? unreadNotificationResult.count : 0;
+  const unreadMailCount = unreadMailResult.success === true ? unreadMailResult.count : 0;
 
   return (
     <html lang="ja">
@@ -36,8 +40,12 @@ export default async function RootLayout({
           isLoggedIn={isLoggedIn}
           activeUserCount={activeUserCount}
           unreadNotificationCount={unreadNotificationCount}
+          unreadMailCount={unreadMailCount}
         />
-        <div className="flex-1">{children}</div>
+        <div className="flex-1 flex flex-col">
+          {children}
+          <Footer />
+        </div>
         <ChatFloating isLoggedIn={isLoggedIn} />
       </body>
     </html>

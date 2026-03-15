@@ -1,15 +1,20 @@
 "use client";
 
-// docs/079 - 闇市・黒市（タブ切り替え・購入）
+// docs/079 - 闇市・黒市（タブ切り替え・購入）+ 通貨発行タブ（課金GRA購入の土台）
 
 import { useState, useTransition } from "react";
 import {
   purchaseFromSystemShop,
   type SystemShopRow,
 } from "@/server/actions/underground-market";
+import { GameIcon } from "@/components/icons/game-icon";
 import { GraDisplay } from "@/components/currency/gra-display";
+import {
+  GRA_PURCHASE_OPTIONS,
+  PREMIUM_CURRENCY_ICON_NAME,
+} from "@/lib/constants/currency";
 
-type Tab = "underground" | "black";
+type Tab = "underground" | "black" | "currency";
 
 type ConfirmTarget = {
   id: string;
@@ -30,6 +35,7 @@ export function UndergroundMarketClient({ underground, black }: Props) {
 
   const data = tab === "underground" ? underground : black;
   const isUnderground = tab === "underground";
+  const isCurrencyTab = tab === "currency";
 
   const doPurchase = (target: ConfirmTarget) => {
     setMessage(null);
@@ -55,7 +61,7 @@ export function UndergroundMarketClient({ underground, black }: Props) {
               ? "bg-brass text-white"
               : "bg-base-elevated text-text-primary hover:bg-base-border/50"
           }`}
-         >
+        >
           闇市
         </button>
         <button
@@ -69,14 +75,25 @@ export function UndergroundMarketClient({ underground, black }: Props) {
         >
           黒市
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("currency")}
+          className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "currency"
+              ? "bg-brass text-white"
+              : "bg-base-elevated text-text-primary hover:bg-base-border/50"
+          }`}
+        >
+          通貨発行
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-sm text-text-muted">
+      <div className="flex flex-wrap items-center gap-4 text-sm">
         <GraDisplay
-          free={data.freeBalance}
-          paid={data.paidBalance}
+          free={isCurrencyTab ? underground.freeBalance : data.freeBalance}
+          paid={isCurrencyTab ? underground.paidBalance : data.paidBalance}
           compact={false}
-          showLabel={true}
+          showLabel={false}
         />
       </div>
 
@@ -86,7 +103,7 @@ export function UndergroundMarketClient({ underground, black }: Props) {
         </p>
       )}
 
-      {confirmTarget && (() => {
+      {!isCurrencyTab && confirmTarget && (() => {
         const price = confirmTarget.priceGRA;
         const fromFree = isUnderground
           ? Math.min(price, data.freeBalance)
@@ -98,8 +115,12 @@ export function UndergroundMarketClient({ underground, black }: Props) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="purchase-confirm-title"
+            onClick={() => setConfirmTarget(null)}
           >
-            <div className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-4 shadow-lg">
+            <div
+              className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-4 shadow-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
               <h2 id="purchase-confirm-title" className="text-lg font-medium text-text-primary">
                 購入の確認
               </h2>
@@ -139,7 +160,7 @@ export function UndergroundMarketClient({ underground, black }: Props) {
                   disabled={isPending}
                   className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50 disabled:opacity-50"
                 >
-                  キャンセル
+                  中止
                 </button>
                 <button
                   type="button"
@@ -155,7 +176,43 @@ export function UndergroundMarketClient({ underground, black }: Props) {
         );
       })()}
 
-      {data.items.length === 0 ? (
+      {isCurrencyTab ? (
+        <div className="space-y-4">
+          <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+            現在、造幣局が災害により機能停止中です。
+          </p>
+          <ul className="space-y-3">
+            {GRA_PURCHASE_OPTIONS.map((opt, i) => (
+              <li
+                key={i}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-base-border bg-base-elevated p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-text-primary">
+                    ¥{opt.priceYen.toLocaleString()}
+                  </span>
+                  <span className="text-text-muted">→</span>
+                  <span className="inline-flex items-center gap-1.5 font-medium tabular-nums text-gra">
+                    <GameIcon
+                      name={PREMIUM_CURRENCY_ICON_NAME}
+                      className="w-5 h-5 text-gra"
+                      ariaHidden={false}
+                    />
+                    {opt.gra.toLocaleString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded bg-base-border px-3 py-1.5 text-sm font-medium text-text-muted opacity-60"
+                >
+                  購入（準備中）
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : data.items.length === 0 ? (
         <p className="text-text-muted">現在、販売中の品目はありません。</p>
       ) : (
         <ul className="space-y-3">

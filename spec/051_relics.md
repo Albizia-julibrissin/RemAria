@@ -19,7 +19,12 @@
 |-----|------|-----------|
 | getRelicInstances | ユーザー所持の遺物個体一覧。バッグ「遺物」タブ・装着画面。 | バッグ・キャラ詳細 |
 | getCharacterRelics | 指定キャラの4枠装着状況（スロット番号・遺物個体）。 | キャラ詳細・戦闘入力組み立て |
-| appraiseRelicToken | 遺物トークン（Item）を1個消費し、遺物個体を1個生成。 | バッグ・鑑定UI |
+| appraiseRelicToken | 遺物トークン（Item）を1個消費し、遺物個体を1個生成。 | 工房・鑑定タブ |
+| decomposeRelic | 未装着の遺物個体を1個消費し、アイテム relic_shard を1個付与。 | 工房・鑑定タブ |
+| getRelicTemperPending | 指定遺物の未確定調律結果（pending）があれば返す。 | 工房・鑑定タブ（調律モーダル） |
+| startRelicTemper | 遺物の欠片77個を消費し、パッシブ以外をリロールして pending に保存。before/after を返す。 | 工房・鑑定タブ |
+| confirmRelicTemper | pending を RelicInstance に反映し pending 削除。 | 工房・鑑定タブ |
+| cancelRelicTemper | 遺物の欠片77個を返却し pending 削除。 | 工房・鑑定タブ |
 | equipRelic | 指定キャラの指定スロットに遺物を装着。 | キャラ詳細 |
 | unequipRelic | 指定キャラの指定スロットから遺物を外す。 | キャラ詳細 |
 
@@ -134,6 +139,23 @@
 - **入力**：characterId, slot（1～4）
 - **処理**：該当 CharacterRelic の relicInstanceId を NULL に更新、または行削除（実装方針による）。
 
+### 5.6 decomposeRelic
+
+- **入力**：relicInstanceId（遺物個体の ID）
+- **前提**：その遺物がセッション userId の所持であり、**未装着**であること。
+- **処理**：RelicInstance を1件削除。Item code が `relic_shard` のアイテムを1個、当該ユーザーの UserInventory に加算（upsert で quantity +1、無ければ create）。
+- **出力**：success、または error（RELIC_NOT_FOUND / EQUIPPED / RELIC_SHARD_ITEM_NOT_FOUND 等）と message。
+- **備考**：`relic_shard` はアイテムマスタに登録が必要。docs/086_craft_relic_appraisal_and_decompose.md 参照。
+
+### 5.7 遺物の調律（docs/087_relic_temper.md）
+
+- **定数**：**RELIC_TEMPER_SHARD_COST** = 77。遺物の欠片の消費数。
+- **RelicTemperPending**：userId + relicInstanceId で一意。newStatBonus1, newStatBonus2, newAttributeResistances を保持。調律実行時に作成、確定または取消で削除。
+- **getRelicTemperPending(relicInstanceId)**：その遺物の pending があれば返す。モーダルで「前回のリロール結果」を表示する用。
+- **startRelicTemper(relicInstanceId)**：未装着・自分の遺物であること。遺物の欠片を 77 個消費。遺物の groupCode に紐づく RelicGroupConfig の範囲で statBonus1/2 と attributeResistances をリロール（パッシブは変更しない）。RelicTemperPending を作成。戻り値は before（現在値）と after（リロール結果）。
+- **confirmRelicTemper(relicInstanceId)**：pending を RelicInstance に反映し、pending 削除。
+- **cancelRelicTemper(relicInstanceId)**：pending を削除するのみ。遺物の欠片は返却しない（調律実行時に消費済み）。
+
 ------------------------------------------------------------------------
 
 ## 6. 戦闘との接続
@@ -156,7 +178,9 @@
 
 ## 8. UI 要件（MVP）
 
-- **バッグ**：種別タブに「遺物」を追加。所持 RelicInstance 一覧。所持トークンがある場合「鑑定」ボタンで appraiseRelicToken を呼ぶ。
+- **工房・鑑定タブ**：所持遺物トークン数と「1個鑑定する」ボタンで appraiseRelicToken を呼ぶ。所持 RelicInstance 一覧を表示し、未装着の遺物には「分解」を表示。
+- **工房・調律タブ**：鑑定タブと同様の所持遺物一覧を表示。未装着の遺物には「調律準備」のみ表示。調律はモーダルでコスト（遺物の欠片77個）・リロール前後・確定/取消を行う（docs/087）。
+- **物資庫（バッグ）**：種別タブに「遺物」を追加。所持 RelicInstance 一覧の確認のみ（鑑定は工房で行う）。
 - **キャラ詳細**：遺物4枠を表示。各スロットに装着中なら遺物名・効果要約を表示。未装着なら「未装着」。装着・解除はドロップダウンまたはクリックで equipRelic / unequipRelic を呼ぶ。
 - **効果表示**：遺物個体の relicType.name、relicPassiveEffect.name / description、statBonus1/2 の要約（例: STR+5%、INT+3%）、attributeResistances の要約（例: 炎耐性+10%）を表示する。
 

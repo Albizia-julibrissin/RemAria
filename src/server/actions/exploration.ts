@@ -14,6 +14,7 @@ import {
 } from "@/server/lib/resolve-exploration-enemies";
 import { computeDerivedStats, type DerivedStats } from "@/lib/battle/derived-stats";
 import { grantStackableItem } from "@/server/lib/inventory";
+import { addQuestProgressSkillEventSuccess } from "@/server/actions/quest";
 
 export type ExplorationAreaSummary = {
   areaId: string;
@@ -909,6 +910,15 @@ export async function resolveExplorationSkillEvent(
     },
   });
 
+  // spec/054 §6 Phase 2: 技能イベントを指定ステータスで成功したとき、開拓任務（skill_event_specific）の進捗を加算
+  if (isSuccess && explorationEventId) {
+    try {
+      await addQuestProgressSkillEventSuccess(session.userId, explorationEventId, statKey);
+    } catch {
+      // 任務進捗失敗は探索の成功を優先（通知は出さない）
+    }
+  }
+
   return { success: true, skillSuccess: isSuccess, logLine };
 }
 
@@ -1741,6 +1751,10 @@ export type FinishExplorationSummary = {
   areaName: string;
   result: "cleared" | "wiped";
   battleWins: number;
+  /** 強敵を倒したか（結果行「強敵勝利」表示用） */
+  strongEnemyWon: boolean;
+  /** 領域主を倒したか（結果行「領域主勝利」表示用） */
+  areaLordWon: boolean;
   skillSuccessCount: number;
   totalExpGained: number;
   dropSlots: FinishExplorationDropSlot[];
@@ -1940,13 +1954,20 @@ export async function finishExploration(): Promise<FinishExplorationResult> {
     expedition.area.id
   );
 
+  const normalBattleWins =
+    expedition.battleWinCount -
+    (expedition.strongEnemyCleared ? 1 : 0) -
+    (expedition.areaLordCleared ? 1 : 0);
+
   return {
     success: true,
     summary: {
       themeName: expedition.area.theme.name,
       areaName: expedition.area.name,
       result: isCleared ? "cleared" : "wiped",
-      battleWins: expedition.battleWinCount,
+      battleWins: normalBattleWins,
+      strongEnemyWon: expedition.strongEnemyCleared,
+      areaLordWon: expedition.areaLordCleared,
       skillSuccessCount: expedition.skillSuccessCount,
       totalExpGained,
       dropSlots,

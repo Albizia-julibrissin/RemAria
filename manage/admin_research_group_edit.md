@@ -20,7 +20,7 @@ docs/054 の研究解放を管理する。ResearchGroup（グループ）・Rese
 |------|------|
 | **一覧 URL** | `/dashboard/admin/research-groups`。全研究グループをテーブル表示。「新規作成」ボタンあり。 |
 | **新規作成 URL** | `/dashboard/admin/research-groups/new`。code / name / 表示順を入力して作成。作成後は編集画面へ遷移。 |
-| **編集 URL** | `/dashboard/admin/research-groups/[id]`。グループ基本項目・解放対象一覧・対象ごとの消費アイテムを編集。 |
+| **編集 URL** | `/dashboard/admin/research-groups/[id]`。グループ基本項目・**設備コスト拡張（spec/089）**・**設備設置上限拡張（spec/089）**・解放対象一覧・対象ごとの消費アイテムを編集。 |
 | **入口** | 実装済み一覧（`/dashboard/admin/content`）の「研究グループ編集」リンク。 |
 
 ---
@@ -31,10 +31,10 @@ docs/054 の研究解放を管理する。ResearchGroup（グループ）・Rese
 
 | 関数名 | 役割 |
 |--------|------|
-| `getAdminResearchGroupList()` | 全 ResearchGroup 一覧（id, code, name, displayOrder, itemCount, prerequisiteGroupCode）。 |
-| `getAdminResearchGroupEditData(groupId)` | 1件取得（グループ＋解放対象＋各対象の消費、および facilityTypes / craftRecipes / items / researchGroups の選択肢）。 |
-| `createAdminResearchGroup(input)` | 新規作成。input: code, name, displayOrder?, prerequisiteGroupId?。成功時は `{ success: true, researchGroupId }`。 |
-| `updateAdminResearchGroup(groupId, input)` | グループ基本項目を更新。input: code, name, displayOrder, prerequisiteGroupId?。 |
+| `getAdminResearchGroupList()` | 全 ResearchGroup 一覧（id, code, name, displayOrder, itemCount）。 |
+| `getAdminResearchGroupEditData(groupId)` | 1件取得（グループ＋解放対象＋各対象の消費、および facilityTypes / craftRecipes / items の選択肢）。 |
+| `createAdminResearchGroup(input)` | 新規作成。input: code, name, displayOrder?。成功時は `{ success: true, researchGroupId }`。 |
+| `updateAdminResearchGroup(groupId, input)` | グループ基本項目を更新。input: code, name, displayOrder。**spec/089**: facilityCostExpansionLimit?, facilityCostExpansionAmount?, facilityCostExpansionResearchPoint?（設備コスト拡張）。facilitySlotsExpansionLimit?, facilitySlotsExpansionAmount?, facilitySlotsExpansionResearchPoint?（設備設置上限拡張）。 |
 | `saveAdminResearchGroupItems(groupId, items)` | 解放対象を置き換え。items: `{ targetType, targetId, isVariant, displayOrder }[]`。同一対象の重複は不可。 |
 | `saveAdminResearchUnlockCosts(targetType, targetId, costs)` | 指定対象の解放時消費を置き換え。costs: `{ itemId, amount }[]`。 |
 
@@ -46,13 +46,13 @@ docs/054 の研究解放を管理する。ResearchGroup（グループ）・Rese
 
 ## 4. データ構造（参照）
 
-- **ResearchGroup**: id, code（ユニーク）, name, displayOrder, prerequisiteGroupId。schema は `prisma/schema.prisma`。
-- **ResearchGroupItem**: researchGroupId, targetType, targetId, isVariant, displayOrder。@@unique([researchGroupId, targetType, targetId])。
+- **ResearchGroup**: id, code（ユニーク）, name, displayOrder。**spec/089**: facilityCostExpansionLimit, facilityCostExpansionAmount, facilityCostExpansionResearchPoint（設備コスト拡張）。facilitySlotsExpansionLimit, facilitySlotsExpansionAmount, facilitySlotsExpansionResearchPoint（設備設置上限拡張）。いずれも 0 で無効。グループの解放は開拓任務（QuestUnlockResearchGroup / UserResearchGroupUnlock）で行う。schema は `prisma/schema.prisma`。
+- **ResearchGroupItem**: researchGroupId, targetType, targetId, isVariant, displayOrder, **requiredResearchPoint**（解放時に必要な研究記録書の数）。※解放は**アイテムコストと研究記録書の両方必須**。0 や未設定だと解放不可。@@unique([researchGroupId, targetType, targetId])。
 - **ResearchUnlockCost**: targetType, targetId, itemId, amount。同一対象に複数アイテム可。@@unique([targetType, targetId, itemId])。
 
 ---
 
 ## 5. 運用メモ
 
-- 前提グループ（prerequisiteGroupId）を設定すると、そのグループの「派生型以外」をすべて解放したユーザーにのみ、このグループが表示・解放可能になる。
+- 研究グループの「利用可能」は開拓任務のクリア報告で決まる（QuestUnlockResearchGroup に紐づく任務を報告すると UserResearchGroupUnlock に追加される）。前提グループ機能は廃止済み。
 - 解放対象を追加したあと、各対象ごとに「消費アイテム」を設定し、「消費を保存」で ResearchUnlockCost を更新する。

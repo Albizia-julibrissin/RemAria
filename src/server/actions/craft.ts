@@ -471,6 +471,251 @@ export async function getTemperableEquipment(): Promise<TemperableEquipmentRow[]
   return result;
 }
 
+// --- spec/093 装備解体 ---
+
+const DISMANTLE_RETURN_DIVISOR = 10;
+
+export type DismantleReturnRow = {
+  itemId: string;
+  itemName: string;
+  amount: number;
+};
+
+export type DismantlableEquipmentRow = {
+  id: string;
+  equipmentTypeName: string;
+  slot: string;
+  stats: Record<string, number>;
+  statCap: number;
+  capCeiling: number;
+  statsSum: number;
+  recipeId: string | null;
+  recipeName: string | null;
+  returnInputs: DismantleReturnRow[];
+};
+
+/**
+ * 解体可能な装備一覧（未装着・当該装備種別を出力とするレシピが存在するもの）。spec/093。
+ */
+export async function getDismantlableEquipment(): Promise<DismantlableEquipmentRow[] | null> {
+  const session = await getSession();
+  if (!session?.userId) return null;
+
+  const [instances, recipesByTypeId] = await Promise.all([
+    prisma.equipmentInstance.findMany({
+      where: { userId: session.userId },
+      include: {
+        equipmentType: { select: { name: true, slot: true } },
+        characterEquipments: { take: 1, select: { id: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.craftRecipe.findMany({
+      where: {
+        outputKind: "equipment",
+        outputEquipmentTypeId: { not: null },
+      },
+      orderBy: { code: "asc" },
+      include: {
+        inputs: { include: { item: { select: { id: true, name: true } } } },
+        outputEquipmentType: { select: { id: true } },
+      },
+    }),
+  ]);
+
+  const recipeByEquipmentTypeId = new Map<string | null, (typeof recipesByTypeId)[0]>();
+  for (const r of recipesByTypeId) {
+    const typeId = r.outputEquipmentTypeId ?? r.outputEquipmentType?.id;
+    if (typeId && !recipeByEquipmentTypeId.has(typeId)) {
+      recipeByEquipmentTypeId.set(typeId, r);
+    }
+  }
+
+  const result: DismantlableEquipmentRow[] = [];
+  for (const inst of instances) {
+    if (inst.characterEquipments.length > 0) continue;
+    const recipe = recipeByEquipmentTypeId.get(inst.equipmentTypeId) ?? null;
+    if (!recipe) continue;
+    const stats =
+      inst.stats && typeof inst.stats === "object" && !Array.isArray(inst.stats)
+        ? (inst.stats as Record<string, number>)
+        : {};
+    const statsSum = Object.values(stats).reduce((s, v) => s + (typeof v === "number" ? v : 0), 0);
+    const returnInputs: DismantleReturnRow[] = recipe.inputs.map((inp) => ({
+      itemId: inp.itemId,
+      itemName: inp.item.name,
+      amount: Math.floor(inp.amount / DISMANTLE_RETURN_DIVISOR),
+    }));
+    result.push({
+      id: inst.id,
+      equipmentTypeName: inst.equipmentType.name,
+      slot: inst.equipmentType.slot,
+      stats,
+      statCap: inst.statCap,
+      capCeiling: inst.capCeiling,
+      statsSum,
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      returnInputs,
+    });
+  }
+  return result;
+}
+
+export type DismantleEquipmentResult =
+  | { success: true; returned: DismantleReturnRow[] }
+  | { success: false; error: string; message: string };
+
+export type DismantleEquipmentBulkResult =
+  | { success: true; dismantledCount: number; returned: { itemId: string; itemName: string; totalAmount: number }[] }
+  | { success: false; error: string; message: string };
+
+/**
+ * 装備 1 件を解体する。未装着・レシピ存在を検証し、返却素材を付与してインスタンス削除。spec/093。
+ */
+export async function dismantleEquipment(equipmentInstanceId: string): Promise<DismantleEquipmentResult> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
+  }
+
+  const equipment = await prisma.equipmentInstance.findFirst({
+    where: { id: equipmentInstanceId, userId: session.userId },
+    include: {
+      equipmentType: { select: { id: true } },
+      characterEquipments: { take: 1, select: { id: true } },
+    },
+  });
+  if (!equipment) {
+    return { success: false, error: "NOT_FOUND", message: "装備が見つかりません。" };
+  }
+  if (equipment.characterEquipments.length > 0) {
+    return { success: false, error: "EQUIPPED", message: "装着中の装備は解体できません。" };
+  }
+
+  const recipe = await prisma.craftRecipe.findFirst({
+    where: { outputEquipmentTypeId: equipment.equipmentTypeId },
+    orderBy: { code: "asc" },
+    include: { inputs: { include: { item: { select: { id: true, name: true } } } } },
+  });
+  if (!recipe) {
+    return { success: false, error: "NO_RECIPE", message: "この装備のレシピが見つかりません。" };
+  }
+
+  const returned: DismantleReturnRow[] = recipe.inputs.map((inp) => ({
+    itemId: inp.itemId,
+    itemName: inp.item.name,
+    amount: Math.floor(inp.amount / DISMANTLE_RETURN_DIVISOR),
+  }));
+
+  await prisma.$transaction(async (tx) => {
+    for (const row of returned) {
+      if (row.amount > 0) {
+        await grantStackableItem(tx, {
+          userId: session.userId!,
+          itemId: row.itemId,
+          delta: row.amount,
+        });
+      }
+    }
+    await tx.equipmentInstance.delete({ where: { id: equipmentInstanceId } });
+  });
+
+  revalidatePath("/dashboard/craft");
+  revalidatePath("/dashboard/bag");
+  return { success: true, returned };
+}
+
+/**
+ * 複数装備を一括解体。1 件でも検証失敗したら全件ロールバック。spec/093。
+ */
+export async function dismantleEquipmentBulk(
+  equipmentInstanceIds: string[]
+): Promise<DismantleEquipmentBulkResult> {
+  const session = await getSession();
+  if (!session?.userId) {
+    return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };
+  }
+  if (equipmentInstanceIds.length === 0) {
+    return { success: false, error: "EMPTY", message: "対象が選択されていません。" };
+  }
+
+  const uniqIds = [...new Set(equipmentInstanceIds)];
+  const instances = await prisma.equipmentInstance.findMany({
+    where: { id: { in: uniqIds }, userId: session.userId },
+    include: {
+      equipmentType: { select: { id: true } },
+      characterEquipments: { take: 1, select: { id: true } },
+    },
+  });
+  if (instances.length !== uniqIds.length) {
+    return { success: false, error: "NOT_FOUND", message: "一部の装備が見つかりません。" };
+  }
+
+  const recipes = await prisma.craftRecipe.findMany({
+    where: {
+      outputKind: "equipment",
+      outputEquipmentTypeId: { in: instances.map((i) => i.equipmentTypeId) },
+    },
+    orderBy: { code: "asc" },
+    include: { inputs: { include: { item: { select: { id: true, name: true } } } } },
+  });
+  const recipeByTypeId = new Map<string, (typeof recipes)[0]>();
+  for (const r of recipes) {
+    const typeId = r.outputEquipmentTypeId;
+    if (typeId && !recipeByTypeId.has(typeId)) recipeByTypeId.set(typeId, r);
+  }
+
+  for (const inst of instances) {
+    if (inst.characterEquipments.length > 0) {
+      return { success: false, error: "EQUIPPED", message: "装着中の装備が含まれています。" };
+    }
+    if (!recipeByTypeId.has(inst.equipmentTypeId)) {
+      return { success: false, error: "NO_RECIPE", message: "レシピが存在しない装備が含まれています。" };
+    }
+  }
+
+  const toReturn = new Map<string, { itemName: string; totalAmount: number }>();
+  for (const inst of instances) {
+    const recipe = recipeByTypeId.get(inst.equipmentTypeId)!;
+    for (const inp of recipe.inputs) {
+      const amount = Math.floor(inp.amount / DISMANTLE_RETURN_DIVISOR);
+      if (amount <= 0) continue;
+      const cur = toReturn.get(inp.itemId);
+      if (cur) {
+        cur.totalAmount += amount;
+      } else {
+        toReturn.set(inp.itemId, { itemName: inp.item.name, totalAmount: amount });
+      }
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const [itemId, { totalAmount }] of toReturn) {
+      await grantStackableItem(tx, {
+        userId: session.userId!,
+        itemId,
+        delta: totalAmount,
+      });
+    }
+    await tx.equipmentInstance.deleteMany({
+      where: { id: { in: uniqIds } },
+    });
+  });
+
+  revalidatePath("/dashboard/craft");
+  revalidatePath("/dashboard/bag");
+  return {
+    success: true,
+    dismantledCount: uniqIds.length,
+    returned: [...toReturn.entries()].map(([itemId, { itemName, totalAmount }]) => ({
+      itemId,
+      itemName,
+      totalAmount,
+    })),
+  };
+}
+
 /**
  * 指定装備の鍛錬に必要な材料の必要数とユーザー在庫を返す。鍛錬準備モーダル用。
  */

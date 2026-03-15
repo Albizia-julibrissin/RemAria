@@ -8,6 +8,7 @@
  * マスタ（タグ・設備・アイテム・スキル・敵・エリア・ドロップなど）はシードでは投入しない。
  * 必要なマスタは「管理画面で編集した DB をバックアップし、復元する」運用とする。
  * 手順: manage/BACKUP_RESTORE.md を参照。
+ * 例外: 称号マスタ（開拓者・管理人）はシードで投入する。管理人アカウントには称号「管理人」を付与し装備する。
  *
  * ユーザー:
  * - 管理人: 環境変数 ADMIN_EMAIL（未設定時は test1@example.com）で作成。
@@ -170,6 +171,28 @@ async function seedAdminCraftMaterials(adminEmail: string): Promise<void> {
   }
 }
 
+/** 管理人に遺物の欠片を3000個付与。docs/086, 087。アイテムが DB に存在すること前提。 */
+async function seedAdminRelicShards(adminEmail: string): Promise<void> {
+  const admin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+  if (!admin) return;
+
+  const item = await prisma.item.findUnique({
+    where: { code: "relic_shard" },
+    select: { id: true },
+  });
+  if (!item) return;
+
+  await prisma.userInventory.upsert({
+    where: { userId_itemId: { userId: admin.id, itemId: item.id } },
+    create: { userId: admin.id, itemId: item.id, quantity: 3000 },
+    update: { quantity: 3000 },
+  });
+  console.log("管理人: 遺物の欠片を3000個所持");
+}
+
 /** docs/079: letter_of_recommendation が存在する場合、闇市で 2000 GRA 販売として登録する。 */
 async function ensureSystemShopLetterOfRecommendation(): Promise<void> {
   const item = await prisma.item.findUnique({
@@ -193,21 +216,49 @@ async function ensureSystemShopLetterOfRecommendation(): Promise<void> {
   console.log("闇市: letter_of_recommendation を 2000 GRA で登録");
 }
 
+/** spec/055: 称号マスタ（開拓者・管理人）をシードで投入。 */
+async function ensureTitleMasters(): Promise<void> {
+  await prisma.title.upsert({
+    where: { code: "kaitakusha" },
+    create: {
+      code: "kaitakusha",
+      name: "開拓者",
+      description: "惑星荒廃を生き延び、この星を再び開拓する者。",
+      displayOrder: 0,
+    },
+    update: {},
+  });
+  await prisma.title.upsert({
+    where: { code: "kanrisha" },
+    create: {
+      code: "kanrisha",
+      name: "管理人",
+      description: "開拓拠点の運営・管理を担う者。",
+      displayOrder: 10,
+    },
+    update: {},
+  });
+  console.log("称号マスタ: 開拓者・管理人を投入");
+}
+
 /** テスト用データのみ投入。マスタは事前に DB に存在すること（バックアップ復元など）。 */
 async function runTest(): Promise<void> {
+  await ensureTitleMasters();
+
   const adminConfig = getAdminSeedConfig();
   const adminPasswordWasRandom = !process.env.ADMIN_PASSWORD;
 
   const adminHash = await bcrypt.hash(adminConfig.password, 10);
+  // 管理人は1件のみ・accountId 固定のため、accountId で upsert（ADMIN_EMAIL 変更時も既存行を更新する）
   const adminUser = await prisma.user.upsert({
-    where: { email: adminConfig.email },
+    where: { accountId: adminConfig.accountId },
     create: {
       email: adminConfig.email,
       accountId: adminConfig.accountId,
       passwordHash: adminHash,
       name: adminConfig.name,
     },
-    update: { accountId: adminConfig.accountId, passwordHash: adminHash, name: adminConfig.name },
+    update: { email: adminConfig.email, passwordHash: adminHash, name: adminConfig.name },
   });
   console.log(`Created/updated: ${adminConfig.email} (${adminConfig.name})`);
 
@@ -270,15 +321,41 @@ async function runTest(): Promise<void> {
     }
     console.log("Created/updated: 管理人の初期仲間");
 
-    await prisma.user.update({
-      where: { id: adminUser.id },
-      data: {
-        premiumCurrencyFreeBalance: 1500,
-        premiumCurrencyPaidBalance: 1500,
-        marketUnlocked: true, // spec/075: 管理人で市場を利用可能に
-      },
+    const titleKanrisha = await prisma.title.findUnique({
+      where: { code: "kanrisha" },
+      select: { id: true },
     });
-    console.log("管理人に GRA 付与・市場アンロック");
+    if (titleKanrisha) {
+      await prisma.userTitleUnlock.upsert({
+        where: {
+          userId_titleId: { userId: adminUser.id, titleId: titleKanrisha.id },
+        },
+        create: { userId: adminUser.id, titleId: titleKanrisha.id },
+        update: {},
+      });
+      await prisma.user.update({
+        where: { id: adminUser.id },
+        data: {
+          premiumCurrencyFreeBalance: 1500,
+          premiumCurrencyPaidBalance: 1500,
+          marketUnlocked: true, // spec/075: 管理人で市場を利用可能に
+          researchPoint: 300, // 研究記録書（研究メニュー用）
+          selectedTitleId: titleKanrisha.id, // spec/055: 称号「管理人」を装備
+        },
+      });
+      console.log("管理人に GRA・研究ポイント300・市場アンロック・称号「管理人」付与");
+    } else {
+      await prisma.user.update({
+        where: { id: adminUser.id },
+        data: {
+          premiumCurrencyFreeBalance: 1500,
+          premiumCurrencyPaidBalance: 1500,
+          marketUnlocked: true,
+          researchPoint: 300,
+        },
+      });
+      console.log("管理人に GRA・研究ポイント300・市場アンロック付与");
+    }
   }
 
   const test2Hash = await bcrypt.hash(TEST_USER_2.password, 10);
@@ -298,6 +375,7 @@ async function runTest(): Promise<void> {
   await seedAdminSkillBooks(adminConfig.email);
   await seedAdminEmergencyProductionOrder(adminConfig.email);
   await seedAdminCraftMaterials(adminConfig.email);
+  await seedAdminRelicShards(adminConfig.email);
 
   const adminForSeed = await prisma.user.findUnique({
     where: { email: adminConfig.email },

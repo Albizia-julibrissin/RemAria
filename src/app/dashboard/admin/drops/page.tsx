@@ -93,6 +93,7 @@ export default async function AdminDropsPage({
           data={data}
           items={items}
           kindLabels={DROP_KIND_LABELS}
+          areas={areas.map((a) => ({ id: a.id, code: a.code, name: a.name }))}
         />
       )}
     </main>

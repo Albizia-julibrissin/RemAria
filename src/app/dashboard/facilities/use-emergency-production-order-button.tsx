@@ -5,7 +5,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEmergencyProductionOrder } from "@/server/actions/emergency-production-order";
+import { executeEmergencyProductionOrder } from "@/server/actions/emergency-production-order";
 
 type Props = {
   emergencyProductionOrderCount: number;
@@ -31,7 +31,7 @@ export function UseEmergencyProductionOrderButton({
     if (!canUse) return;
     setPending(true);
     setResultMessage(null);
-    const result = await useEmergencyProductionOrder();
+    const result = await executeEmergencyProductionOrder();
     setPending(false);
     setResultMessage(result.message);
     if (result.success) {
@@ -67,8 +67,15 @@ export function UseEmergencyProductionOrderButton({
           role="dialog"
           aria-modal="true"
           aria-labelledby="emergency-order-modal-title"
+          onClick={() => {
+            setOpen(false);
+            setResultMessage(null);
+          }}
         >
-          <div className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg">
+          <div
+            className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-1.5">
               <h2 id="emergency-order-modal-title" className="text-lg font-medium text-text-primary">
                 緊急製造指示書
@@ -119,7 +126,7 @@ export function UseEmergencyProductionOrderButton({
                 }}
                 className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border/50"
               >
-                閉じる
+                中止
               </button>
               <button
                 type="button"

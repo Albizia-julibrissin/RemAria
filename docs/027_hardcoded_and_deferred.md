@@ -48,6 +48,7 @@ seed 内のテスト用データ（テストユーザー・初期設備名など
 | 31 | （解消済み） | **通知機能**：066 にて Notification テーブル・未読件数・一覧・既読・作成 API とヘッダー通知ドロップダウンを実装済み。任務受注時の通知追加は別タスク。 | — |
 | 32 | （解消済み） | **探索開始直後の「復帰画面」最終手段案**：059 Phase 4 で advanceExplorationStep を探索開始直後に 1 回だけ呼ぶフローを実装し、「探索開始 → いきなり 1 戦目」を安全に実現済み。 | — |
 | 33 | `src/server/actions/exploration.ts` | **技能イベントの HP/MP 処理**：技能イベントの表示用データ（`getNextExplorationStep` の skill_check 分岐および `getExplorationPendingSkillDisplay` で参照する partyHp / partyMp / partyMaxHp / partyMaxMp）を組み立てる際、最大値に**装備・遺物・メカを含まない** `computeDerivedStats(キャラ基礎のみ)` を使用している。クランプ式は `Math.min(derived.HP, override.hp)` で再開サマリと同じ。 | 戦闘・再開サマリと同様に、装備込みの derived（computeEffectiveBaseStats + 装備合算の derivedBonus）で最大値を算出し、currentHpMp とのクランプを行う。docs/072 §4「再開・表示」の推奨対応に同じ。 |
+| 34 | `src/app/dashboard/underground-market/underground-market-client.tsx` | **通貨発行タブの購入**：課金でGRAを購入するリスト（manage/ECONOMY_DESIGN.md §2 準拠）を表示し、購入ボタンは「準備中」で無効化。決済処理は未実装。 | 決済プロバイダ連携（Order 紐付け・SKU→付与量）を実装し、購入ボタンを有効化する。 |
 
 ---
 

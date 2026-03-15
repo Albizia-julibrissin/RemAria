@@ -245,6 +245,53 @@ export async function saveDropTableEntries(
   return { success: true };
 }
 
+/** コピー用の kind キー（クライアントと一致） */
+const DROP_KIND_KEYS = ["base", "battle", "skill", "strongEnemy", "areaLord"] as const;
+
+/**
+ * 指定エリア・ブロックのドロップエントリをコピー用に取得。テストユーザー1のみ。
+ * 他エリア／他ブロックのドロップをこのブロックにコピーするときに使用する。
+ */
+export async function getDropTableEntriesForCopy(
+  areaId: string,
+  kind: string
+): Promise<SaveDropTableEntryInput[]> {
+  const ok = await isTestUser1();
+  if (!ok) return [];
+  if (!DROP_KIND_KEYS.includes(kind as (typeof DROP_KIND_KEYS)[number])) return [];
+  const area = await prisma.explorationArea.findUnique({
+    where: { id: areaId },
+    select: {
+      baseDropTableId: true,
+      battleDropTableId: true,
+      skillDropTableId: true,
+      strongEnemyDropTableId: true,
+      areaLordDropTableId: true,
+      baseDropTable: { select: { entries: { select: { itemId: true, minQuantity: true, maxQuantity: true, weight: true } } } },
+      battleDropTable: { select: { entries: { select: { itemId: true, minQuantity: true, maxQuantity: true, weight: true } } } },
+      skillDropTable: { select: { entries: { select: { itemId: true, minQuantity: true, maxQuantity: true, weight: true } } } },
+      strongEnemyDropTable: { select: { entries: { select: { itemId: true, minQuantity: true, maxQuantity: true, weight: true } } } },
+      areaLordDropTable: { select: { entries: { select: { itemId: true, minQuantity: true, maxQuantity: true, weight: true } } } },
+    },
+  });
+  if (!area) return [];
+  const tableByKind = {
+    base: area.baseDropTable,
+    battle: area.battleDropTable,
+    skill: area.skillDropTable,
+    strongEnemy: area.strongEnemyDropTable,
+    areaLord: area.areaLordDropTable,
+  } as const;
+  const table = tableByKind[kind as keyof typeof tableByKind];
+  if (!table?.entries) return [];
+  return table.entries.map((e) => ({
+    itemId: e.itemId,
+    minQuantity: e.minQuantity,
+    maxQuantity: e.maxQuantity,
+    weight: e.weight,
+  }));
+}
+
 /**
  * ドロップ編集用のアイテム一覧（セレクト用）。テストユーザー1のみ。
  */
@@ -615,6 +662,22 @@ export async function getAdminSkillList(): Promise<AdminSkillRow[] | null> {
   });
 }
 
+/** spec/055: 称号マスタ一覧（開拓任務の報酬称号選択などで使用） */
+export type AdminTitleRow = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export async function getAdminTitleList(): Promise<AdminTitleRow[] | null> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  return prisma.title.findMany({
+    orderBy: [{ displayOrder: "asc" }, { code: "asc" }],
+    select: { id: true, code: true, name: true },
+  });
+}
+
 /** DB に実際に存在する effectType のみ返す（慎重に扱うため新規は選べない） */
 export async function getExistingSkillEffectTypes(): Promise<
   { effectType: string; label: string; description: string }[] | null
@@ -922,6 +985,82 @@ export async function updateAdminItem(
   return { success: true };
 }
 
+/** 一覧画面で編集可能な項目のみ。一括保存用。 */
+export type AdminItemListUpdateRow = {
+  id: string;
+  name: string;
+  category: string;
+  skillId: string | null;
+  maxCarryPerExpedition: number | null;
+  maxOwnedPerUser: number | null;
+  marketListable: boolean;
+  marketMinPricePerUnit: number | null;
+  marketMinQuantity: number | null;
+};
+
+/**
+ * 一覧画面から一括更新。表示項目のみ更新（code / consumableEffect は触らない）。テストユーザー1のみ。
+ */
+export async function bulkUpdateAdminItems(
+  rows: AdminItemListUpdateRow[]
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const updates: { row: AdminItemListUpdateRow; data: Record<string, unknown> }[] = [];
+  for (const row of rows) {
+    const name = row.name?.trim() ?? "";
+    if (!name) return { success: false, error: `id=${row.id}: name は必須です。` };
+    if (!ITEM_CATEGORIES.includes(row.category as "material" | "consumable" | "blueprint" | "skill_book" | "special")) {
+      return { success: false, error: `id=${row.id}: 不正な category です。` };
+    }
+    if (row.category === "skill_book" && !(row.skillId?.trim())) {
+      return { success: false, error: `id=${row.id}: スキル分析書の場合は skillId を選択してください。` };
+    }
+    const maxCarry =
+      row.maxCarryPerExpedition != null && Number.isInteger(row.maxCarryPerExpedition) && row.maxCarryPerExpedition >= 0
+        ? row.maxCarryPerExpedition
+        : null;
+    const maxOwned =
+      row.maxOwnedPerUser != null && Number.isInteger(row.maxOwnedPerUser) && row.maxOwnedPerUser >= 0
+        ? row.maxOwnedPerUser
+        : null;
+    const marketMinPrice =
+      row.marketMinPricePerUnit != null &&
+      Number.isInteger(row.marketMinPricePerUnit) &&
+      row.marketMinPricePerUnit >= 0
+        ? row.marketMinPricePerUnit
+        : null;
+    const marketMinQty =
+      row.marketMinQuantity != null &&
+      Number.isInteger(row.marketMinQuantity) &&
+      row.marketMinQuantity >= 0
+        ? row.marketMinQuantity
+        : null;
+    const skillId = row.skillId?.trim() || null;
+    updates.push({
+      row,
+      data: {
+        name,
+        category: row.category,
+        skillId,
+        maxCarryPerExpedition: maxCarry,
+        maxOwnedPerUser: maxOwned,
+        marketListable: row.marketListable,
+        marketMinPricePerUnit: marketMinPrice,
+        marketMinQuantity: marketMinQty,
+      },
+    });
+  }
+
+  await prisma.$transaction(
+    updates.map(({ row, data }) =>
+      prisma.item.update({ where: { id: row.id }, data: data as Prisma.ItemUpdateInput })
+    )
+  );
+  return { success: true };
+}
+
 export type CreateAdminItemInput = UpdateAdminItemInput;
 
 /**
@@ -1022,7 +1161,7 @@ export async function deleteAdminItem(
       prisma.craftRecipeInput.count({ where: { itemId } }),
       prisma.dropTableEntry.count({ where: { itemId } }),
       prisma.researchUnlockCost.count({ where: { itemId } }),
-      prisma.facilityConstructionRecipeInput.count({ where: { itemId } }),
+      prisma.facilityTypeConstructionInput.count({ where: { itemId } }),
       prisma.recipe.count({ where: { outputItemId: itemId } }),
       prisma.recipeInput.count({ where: { itemId } }),
     ]);
@@ -1473,6 +1612,34 @@ export async function updateAdminCraftRecipe(
         },
       });
     }
+  });
+  return { success: true };
+}
+
+/**
+ * クラフトレシピを削除する。参照ごと削除する。
+ * - CraftRecipeInput, UserCraftRecipeUnlock は Cascade で削除される。
+ * - ResearchGroupItem, ResearchUnlockCost（targetType=craft_recipe, targetId=id）を明示削除。
+ */
+export async function deleteAdminCraftRecipe(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const recipe = await prisma.craftRecipe.findUnique({
+    where: { id },
+    select: { id: true, code: true, name: true },
+  });
+  if (!recipe) return { success: false, error: "クラフトレシピが見つかりません。" };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.researchGroupItem.deleteMany({
+      where: { targetType: "craft_recipe", targetId: id },
+    });
+    await tx.researchUnlockCost.deleteMany({
+      where: { targetType: "craft_recipe", targetId: id },
+    });
+    await tx.craftRecipe.delete({ where: { id } });
   });
   return { success: true };
 }
@@ -2164,6 +2331,19 @@ export async function getAdminRecipe(recipeId: string): Promise<AdminRecipeDetai
   };
 }
 
+/** 設備種別の建設材料選択用。素材（category=material）のみ。 */
+export async function getAdminMaterialItemsForConstruction(): Promise<
+  { id: string; code: string; name: string }[] | null
+> {
+  const ok = await isTestUser1();
+  if (!ok) return null;
+  return prisma.item.findMany({
+    where: { category: "material" },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, name: true },
+  });
+}
+
 export async function getAdminRecipeOptions(): Promise<AdminRecipeOptions | null> {
   const ok = await isTestUser1();
   if (!ok) return null;
@@ -2490,6 +2670,25 @@ export async function createAdminRelicPassiveEffect(
     select: { id: true },
   });
   return { success: true, relicPassiveEffectId: created.id };
+}
+
+/**
+ * 遺物パッシブ効果を削除する。
+ * 紐づく RelicInstance の relicPassiveEffectId は SetNull で null になる。
+ * RelicGroupPassiveEffect は Cascade で削除される。
+ */
+export async function deleteAdminRelicPassiveEffect(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+  const row = await prisma.relicPassiveEffect.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!row) return { success: false, error: "遺物パッシブ効果が見つかりません。" };
+  await prisma.relicPassiveEffect.delete({ where: { id } });
+  return { success: true };
 }
 
 // --- 遺物グループ設定（RelicGroupConfig）---
@@ -3095,7 +3294,6 @@ export type AdminResearchGroupRow = {
   name: string;
   displayOrder: number;
   itemCount: number;
-  prerequisiteGroupCode: string | null;
 };
 
 export async function getAdminResearchGroupList(): Promise<
@@ -3110,8 +3308,6 @@ export async function getAdminResearchGroupList(): Promise<
       code: true,
       name: true,
       displayOrder: true,
-      prerequisiteGroupId: true,
-      prerequisiteGroup: { select: { code: true } },
       _count: { select: { items: true } },
     },
   });
@@ -3121,7 +3317,6 @@ export async function getAdminResearchGroupList(): Promise<
     name: r.name,
     displayOrder: r.displayOrder,
     itemCount: r._count.items,
-    prerequisiteGroupCode: r.prerequisiteGroup?.code ?? null,
   }));
 }
 
@@ -3132,6 +3327,8 @@ export type AdminResearchGroupItemRow = {
   targetName: string;
   isVariant: boolean;
   displayOrder: number;
+  /** 解放時に必要な研究記録書の数。0=不要 */
+  requiredResearchPoint: number;
   costs: { itemId: string; itemCode: string; itemName: string; amount: number }[];
 };
 
@@ -3141,13 +3338,23 @@ export type AdminResearchGroupEditData = {
     code: string;
     name: string;
     displayOrder: number;
-    prerequisiteGroupId: string | null;
+    /** spec/089: 設備コスト拡張可能回数。0=無効 */
+    facilityCostExpansionLimit: number;
+    /** spec/089: 1回あたりのコスト増分 */
+    facilityCostExpansionAmount: number;
+    /** spec/089: 1回あたり必要研究記録書 */
+    facilityCostExpansionResearchPoint: number;
+    /** spec/089: 設備設置上限拡張可能回数。0=無効 */
+    facilitySlotsExpansionLimit: number;
+    /** spec/089: 1回あたりの枠増分 */
+    facilitySlotsExpansionAmount: number;
+    /** spec/089: 1回あたり必要研究記録書 */
+    facilitySlotsExpansionResearchPoint: number;
   };
   groupItems: AdminResearchGroupItemRow[];
   facilityTypes: { id: string; name: string }[];
   craftRecipes: { id: string; name: string }[];
   items: { id: string; code: string; name: string }[];
-  researchGroups: { id: string; code: string; name: string }[];
 };
 
 export async function getAdminResearchGroupEditData(
@@ -3160,7 +3367,6 @@ export async function getAdminResearchGroupEditData(
     where: { id: groupId },
     include: {
       items: { orderBy: { displayOrder: "asc" } },
-      prerequisiteGroup: { select: { id: true, code: true } },
     },
   });
   if (!group) return null;
@@ -3172,7 +3378,7 @@ export async function getAdminResearchGroupEditData(
     .filter((i) => i.targetType === "craft_recipe")
     .map((i) => i.targetId);
 
-  const [facilityNames, recipeNames, costRows, facilityTypes, craftRecipes, items, researchGroups] =
+  const [facilityNames, recipeNames, costRows, facilityTypes, craftRecipes, items] =
     await Promise.all([
       facilityIds.length
         ? prisma.facilityType.findMany({
@@ -3211,10 +3417,6 @@ export async function getAdminResearchGroupEditData(
         orderBy: [{ category: "asc" }, { code: "asc" }],
         select: { id: true, code: true, name: true },
       }),
-      prisma.researchGroup.findMany({
-        orderBy: { displayOrder: "asc" },
-        select: { id: true, code: true, name: true },
-      }),
     ]);
 
   const facilityNameMap = new Map(facilityNames.map((r) => [r.id, r.name]));
@@ -3247,6 +3449,7 @@ export async function getAdminResearchGroupEditData(
       targetName,
       isVariant: it.isVariant,
       displayOrder: it.displayOrder,
+      requiredResearchPoint: it.requiredResearchPoint ?? 0,
       costs: costByTarget.get(`${it.targetType}:${it.targetId}`) ?? [],
     };
   });
@@ -3257,13 +3460,17 @@ export async function getAdminResearchGroupEditData(
       code: group.code,
       name: group.name,
       displayOrder: group.displayOrder,
-      prerequisiteGroupId: group.prerequisiteGroupId ?? group.prerequisiteGroup?.id ?? null,
+      facilityCostExpansionLimit: group.facilityCostExpansionLimit ?? 0,
+      facilityCostExpansionAmount: group.facilityCostExpansionAmount ?? 0,
+      facilityCostExpansionResearchPoint: group.facilityCostExpansionResearchPoint ?? 0,
+      facilitySlotsExpansionLimit: group.facilitySlotsExpansionLimit ?? 0,
+      facilitySlotsExpansionAmount: group.facilitySlotsExpansionAmount ?? 0,
+      facilitySlotsExpansionResearchPoint: group.facilitySlotsExpansionResearchPoint ?? 0,
     },
     groupItems: itemsWithCosts,
     facilityTypes,
     craftRecipes,
     items,
-    researchGroups,
   };
 }
 
@@ -3271,7 +3478,6 @@ export async function createAdminResearchGroup(input: {
   code: string;
   name: string;
   displayOrder?: number;
-  prerequisiteGroupId?: string | null;
 }): Promise<{ success: boolean; error?: string; researchGroupId?: string }> {
   const ok = await isTestUser1();
   if (!ok) return { success: false, error: "権限がありません。" };
@@ -3293,7 +3499,6 @@ export async function createAdminResearchGroup(input: {
       code,
       name,
       displayOrder,
-      prerequisiteGroupId: input.prerequisiteGroupId?.trim() || null,
     },
     select: { id: true },
   });
@@ -3306,7 +3511,12 @@ export async function updateAdminResearchGroup(
     code: string;
     name: string;
     displayOrder: number;
-    prerequisiteGroupId?: string | null;
+    facilityCostExpansionLimit?: number;
+    facilityCostExpansionAmount?: number;
+    facilityCostExpansionResearchPoint?: number;
+    facilitySlotsExpansionLimit?: number;
+    facilitySlotsExpansionAmount?: number;
+    facilitySlotsExpansionResearchPoint?: number;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const ok = await isTestUser1();
@@ -3329,13 +3539,45 @@ export async function updateAdminResearchGroup(
     typeof input.displayOrder === "number" && Number.isInteger(input.displayOrder)
       ? input.displayOrder
       : 0;
+  const facilityCostExpansionLimit =
+    typeof input.facilityCostExpansionLimit === "number" && input.facilityCostExpansionLimit >= 0
+      ? input.facilityCostExpansionLimit
+      : 0;
+  const facilityCostExpansionAmount =
+    typeof input.facilityCostExpansionAmount === "number" && input.facilityCostExpansionAmount >= 0
+      ? input.facilityCostExpansionAmount
+      : 0;
+  const facilityCostExpansionResearchPoint =
+    typeof input.facilityCostExpansionResearchPoint === "number" &&
+    input.facilityCostExpansionResearchPoint >= 0
+      ? input.facilityCostExpansionResearchPoint
+      : 0;
+  const facilitySlotsExpansionLimit =
+    typeof input.facilitySlotsExpansionLimit === "number" && input.facilitySlotsExpansionLimit >= 0
+      ? input.facilitySlotsExpansionLimit
+      : 0;
+  const facilitySlotsExpansionAmount =
+    typeof input.facilitySlotsExpansionAmount === "number" &&
+    input.facilitySlotsExpansionAmount >= 0
+      ? input.facilitySlotsExpansionAmount
+      : 0;
+  const facilitySlotsExpansionResearchPoint =
+    typeof input.facilitySlotsExpansionResearchPoint === "number" &&
+    input.facilitySlotsExpansionResearchPoint >= 0
+      ? input.facilitySlotsExpansionResearchPoint
+      : 0;
   await prisma.researchGroup.update({
     where: { id: groupId },
     data: {
       code,
       name,
       displayOrder,
-      prerequisiteGroupId: input.prerequisiteGroupId?.trim() || null,
+      facilityCostExpansionLimit,
+      facilityCostExpansionAmount,
+      facilityCostExpansionResearchPoint,
+      facilitySlotsExpansionLimit,
+      facilitySlotsExpansionAmount,
+      facilitySlotsExpansionResearchPoint,
     },
   });
   return { success: true };
@@ -3343,7 +3585,13 @@ export async function updateAdminResearchGroup(
 
 export async function saveAdminResearchGroupItems(
   groupId: string,
-  items: { targetType: "facility_type" | "craft_recipe"; targetId: string; isVariant: boolean; displayOrder: number }[]
+  items: {
+    targetType: "facility_type" | "craft_recipe";
+    targetId: string;
+    isVariant: boolean;
+    displayOrder: number;
+    requiredResearchPoint?: number;
+  }[]
 ): Promise<{ success: boolean; error?: string }> {
   const ok = await isTestUser1();
   if (!ok) return { success: false, error: "権限がありません。" };
@@ -3360,6 +3608,10 @@ export async function saveAdminResearchGroupItems(
       targetId: i.targetId.trim(),
       isVariant: !!i.isVariant,
       displayOrder: Number.isInteger(i.displayOrder) ? i.displayOrder : idx,
+      requiredResearchPoint:
+        typeof i.requiredResearchPoint === "number" && i.requiredResearchPoint >= 0
+          ? i.requiredResearchPoint
+          : 0,
     }));
   const uniqueKeys = new Set(normalized.map((n) => `${n.targetType}:${n.targetId}`));
   if (uniqueKeys.size !== normalized.length) {
@@ -3376,6 +3628,7 @@ export async function saveAdminResearchGroupItems(
           targetId: it.targetId,
           isVariant: it.isVariant,
           displayOrder: it.displayOrder,
+          requiredResearchPoint: it.requiredResearchPoint,
         },
       });
     }
@@ -3452,6 +3705,10 @@ export type AdminQuestDetail = {
   name: string;
   description: string | null;
   clearReportMessage: string | null;
+  /** spec/094: クリア報告時に全体チャットに達成メッセージを投稿するか */
+  notifyChatOnClear: boolean;
+  /** この任務のクリア報告で市場を解放する（spec/075） */
+  unlocksMarket: boolean;
   prerequisiteQuestIds: string[];
   /** spec/068: この任務クリアで解放する探索テーマの ID */
   unlockThemeIds: string[];
@@ -3477,6 +3734,8 @@ export async function getAdminQuest(questId: string): Promise<AdminQuestDetail |
       name: true,
       description: true,
       clearReportMessage: true,
+      notifyChatOnClear: true,
+      unlocksMarket: true,
       prerequisites: { select: { prerequisiteQuestId: true } },
       unlockExplorationThemes: { select: { themeId: true } },
       unlockResearchGroups: { select: { researchGroupId: true } },
@@ -3505,6 +3764,8 @@ export async function getAdminQuest(questId: string): Promise<AdminQuestDetail |
     name: q.name,
     description: q.description,
     clearReportMessage: q.clearReportMessage,
+    notifyChatOnClear: q.notifyChatOnClear,
+    unlocksMarket: q.unlocksMarket,
     prerequisiteQuestIds: q.prerequisites.map((p) => p.prerequisiteQuestId),
     unlockThemeIds: q.unlockExplorationThemes.map((u) => u.themeId),
     unlockResearchGroupIds: q.unlockResearchGroups.map((u) => u.researchGroupId),
@@ -3523,6 +3784,10 @@ export type UpdateAdminQuestInput = {
   name: string;
   description: string | null;
   clearReportMessage: string | null;
+  /** spec/094: クリア報告時に全体チャットに達成メッセージを投稿するか */
+  notifyChatOnClear: boolean;
+  /** この任務のクリア報告で市場を解放する（spec/075） */
+  unlocksMarket: boolean;
   prerequisiteQuestIds: string[];
   /** spec/068: この任務クリアで解放する探索テーマの ID 一覧 */
   unlockThemeIds: string[];
@@ -3593,6 +3858,8 @@ export async function updateAdminQuest(
         name,
         description: input.description?.trim() || null,
         clearReportMessage: input.clearReportMessage?.trim() || null,
+        notifyChatOnClear: input.notifyChatOnClear === true,
+        unlocksMarket: input.unlocksMarket === true,
         achievementType: input.achievementType.trim() || "area_clear",
         achievementParam: achievementParam ?? Prisma.JsonNull,
         rewardGra: Number.isInteger(input.rewardGra) && input.rewardGra >= 0 ? input.rewardGra : 0,
@@ -3624,6 +3891,88 @@ export async function updateAdminQuest(
     }
   });
   return { success: true };
+}
+
+/** 開拓任務を新規作成。入力は UpdateAdminQuestInput と同じ。作成後に編集ページへリダイレクトするために questId を返す。 */
+export async function createAdminQuest(
+  input: UpdateAdminQuestInput
+): Promise<{ success: true; questId: string } | { success: false; error: string }> {
+  const ok = await isTestUser1();
+  if (!ok) return { success: false, error: "権限がありません。" };
+
+  const code = input.code.trim();
+  const name = input.name.trim();
+  const questType = input.questType.trim() || "story";
+  if (!code) return { success: false, error: "code は必須です。" };
+  if (!name) return { success: false, error: "name は必須です。" };
+
+  const existingCode = await prisma.quest.findFirst({
+    where: { code },
+    select: { id: true },
+  });
+  if (existingCode) return { success: false, error: "この code は既に使用されています。" };
+
+  let achievementParam: unknown = null;
+  if (input.achievementParamJson.trim()) {
+    try {
+      achievementParam = JSON.parse(input.achievementParamJson.trim()) as unknown;
+    } catch {
+      return { success: false, error: "achievementParam の JSON が不正です。" };
+    }
+  }
+
+  const rewardItems = input.rewardItems.filter(
+    (r) => r.itemId.trim() && Number.isInteger(r.amount) && r.amount > 0
+  );
+  const rewardItemsJson: { itemId: string; amount: number }[] = rewardItems.map((r) => ({
+    itemId: r.itemId.trim(),
+    amount: Math.max(1, r.amount),
+  }));
+
+  const prereqIds = (input.prerequisiteQuestIds ?? []).map((id) => id.trim()).filter(Boolean);
+  const unlockThemeIds = (input.unlockThemeIds ?? []).filter((id) => id.trim());
+  const unlockResearchGroupIds = (input.unlockResearchGroupIds ?? []).filter((id) => id.trim());
+
+  const quest = await prisma.$transaction(async (tx) => {
+    const created = await tx.quest.create({
+      data: {
+        code,
+        questType,
+        name,
+        description: input.description?.trim() || null,
+        clearReportMessage: input.clearReportMessage?.trim() || null,
+        notifyChatOnClear: input.notifyChatOnClear === true,
+        unlocksMarket: input.unlocksMarket === true,
+        achievementType: input.achievementType.trim() || "area_clear",
+        achievementParam: achievementParam ?? Prisma.JsonNull,
+        rewardGra: Number.isInteger(input.rewardGra) && input.rewardGra >= 0 ? input.rewardGra : 0,
+        rewardResearchPoint:
+          Number.isInteger(input.rewardResearchPoint) && input.rewardResearchPoint >= 0
+            ? input.rewardResearchPoint
+            : 0,
+        rewardTitleId: input.rewardTitleId?.trim() || null,
+        rewardItems: rewardItemsJson.length > 0 ? rewardItemsJson : Prisma.JsonNull,
+      },
+      select: { id: true },
+    });
+    for (const pid of prereqIds) {
+      await tx.questPrerequisite.create({
+        data: { questId: created.id, prerequisiteQuestId: pid },
+      });
+    }
+    for (const themeId of unlockThemeIds) {
+      await tx.questUnlockExplorationTheme.create({
+        data: { questId: created.id, themeId },
+      });
+    }
+    for (const researchGroupId of unlockResearchGroupIds) {
+      await tx.questUnlockResearchGroup.create({
+        data: { questId: created.id, researchGroupId },
+      });
+    }
+    return created;
+  });
+  return { success: true, questId: quest.id };
 }
 
 export type AdminExplorationThemeRow = {
@@ -4395,29 +4744,66 @@ export async function createAdminExplorationArea(
   const r2 = Math.max(0, Math.min(100, Number(input.enemyCount2Rate) || 0));
   const r3 = Math.max(0, Math.min(100, Number(input.enemyCount3Rate) || 0));
 
-  const created = await prisma.explorationArea.create({
-    data: {
-      themeId: input.themeId,
-      code,
-      name,
-      description: input.description?.trim() || null,
-      displayOrder: Number.isInteger(input.displayOrder) ? input.displayOrder : 0,
-      difficultyRank: Math.max(1, Number(input.difficultyRank) || 1),
-      recommendedLevel: Math.max(1, Number(input.recommendedLevel) || 1),
-      baseDropMin: Math.max(0, Number(input.baseDropMin) ?? 3),
-      baseDropMax: Math.max(0, Number(input.baseDropMax) ?? 5),
-      baseSkillEventRate: Math.max(0, Math.min(100, Number(input.baseSkillEventRate) ?? 25)),
-      skillCheckRequiredValue: Math.max(1, Number(input.skillCheckRequiredValue) ?? 80),
-      normalBattleCount: Math.max(1, Number(input.normalBattleCount) ?? 5),
-      normalEnemyGroupCode: input.normalEnemyGroupCode?.trim() || null,
-      enemyCount1Rate: r1,
-      enemyCount2Rate: r2,
-      enemyCount3Rate: r3,
-      strongEnemyEnemyId: input.strongEnemyEnemyId?.trim() || null,
-      areaLordEnemyId: input.areaLordEnemyId?.trim() || null,
-      areaLordAppearanceRate: Math.max(0, Math.min(100, Number(input.areaLordAppearanceRate) ?? 50)),
-    },
-    select: { id: true },
+  const DROP_TABLE_KINDS = [
+    { kind: "base", nameSuffix: "基本ドロップ", codeSuffix: "base" },
+    { kind: "battle_bonus", nameSuffix: "戦闘ボーナス", codeSuffix: "battle" },
+    { kind: "skill", nameSuffix: "技能イベント枠", codeSuffix: "skill" },
+    { kind: "strong_enemy", nameSuffix: "強敵", codeSuffix: "strong_enemy" },
+    { kind: "area_lord_special", nameSuffix: "領域主専用", codeSuffix: "area_lord" },
+  ] as const;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const area = await tx.explorationArea.create({
+      data: {
+        themeId: input.themeId,
+        code,
+        name,
+        description: input.description?.trim() || null,
+        displayOrder: Number.isInteger(input.displayOrder) ? input.displayOrder : 0,
+        difficultyRank: Math.max(1, Number(input.difficultyRank) || 1),
+        recommendedLevel: Math.max(1, Number(input.recommendedLevel) || 1),
+        baseDropMin: Math.max(0, Number(input.baseDropMin) ?? 3),
+        baseDropMax: Math.max(0, Number(input.baseDropMax) ?? 5),
+        baseSkillEventRate: Math.max(0, Math.min(100, Number(input.baseSkillEventRate) ?? 25)),
+        skillCheckRequiredValue: Math.max(1, Number(input.skillCheckRequiredValue) ?? 80),
+        normalBattleCount: Math.max(1, Number(input.normalBattleCount) ?? 5),
+        normalEnemyGroupCode: input.normalEnemyGroupCode?.trim() || null,
+        enemyCount1Rate: r1,
+        enemyCount2Rate: r2,
+        enemyCount3Rate: r3,
+        strongEnemyEnemyId: input.strongEnemyEnemyId?.trim() || null,
+        areaLordEnemyId: input.areaLordEnemyId?.trim() || null,
+        areaLordAppearanceRate: Math.max(0, Math.min(100, Number(input.areaLordAppearanceRate) ?? 50)),
+      },
+      select: { id: true, code: true, name: true },
+    });
+
+    const codePrefix = `drop_${area.code}_`;
+    const tableIds: Record<string, string> = {};
+    for (const k of DROP_TABLE_KINDS) {
+      const dt = await tx.dropTable.create({
+        data: {
+          code: `${codePrefix}${k.codeSuffix}`,
+          name: `${area.name} ${k.nameSuffix}`,
+          kind: k.kind,
+          areaId: area.id,
+        },
+        select: { id: true },
+      });
+      tableIds[k.codeSuffix] = dt.id;
+    }
+
+    await tx.explorationArea.update({
+      where: { id: area.id },
+      data: {
+        baseDropTableId: tableIds.base,
+        battleDropTableId: tableIds.battle,
+        skillDropTableId: tableIds.skill,
+        strongEnemyDropTableId: tableIds.strong_enemy,
+        areaLordDropTableId: tableIds.area_lord,
+      },
+    });
+    return area;
   });
   return { success: true, areaId: created.id };
 }

@@ -131,6 +131,33 @@
 |---------------|----------------|------|
 | **turn_order_in_range** | `{ "turnIndexMin": number, "turnIndexMax": number }`（1 始まり。1～6） | turnIndexInCycle が turnIndexMin 以上かつ turnIndexMax 以下なら true。先手（1～2）なら先手を取れた場合のみ発動に使える。 |
 
+### 4.7 主語の列（前列・中列・後列）
+
+主語で指定した「対象」の**列（col）**を見る。戦闘上の列は 1＝前列・2＝中列・3＝後列（`battle-position.ts` の BattleCol）。  
+**自分・味方のいずれか・相手のいずれか・正面の相手**のいずれを主語にしても、「その対象のうち少なくとも 1 体が指定列にいれば true」とする。
+
+| conditionKind | conditionParam | 意味 |
+|---------------|----------------|------|
+| **subject_in_column** | `{ "column": 1 \| 2 \| 3 }`（1=前列, 2=中列, 3=後列） | 主語で得た対象の**位置**のうち、少なくとも 1 体が指定した列（col）にいれば true。 |
+
+- **主語ごとの解釈**
+  - **self**：行動者本人が指定列にいるとき true。
+  - **any_ally**：生存している味方のうち 1 人でも指定列にいれば true。
+  - **any_enemy**：生存している敵のうち 1 体でも指定列にいれば true。
+  - **front_enemy**：正面の相手（同じ row で col 最小の生存敵）が指定列にいれば true。
+- 位置情報はコンテキストの `partyPositions` / `enemyPositions` から取得する。主語の解決で得た「対象」に対応するインデックスで位置を参照する。
+
+### 4.8 主語の生存数（1体のとき／2体のとき／3体のとき／2体以上）
+
+主語で指定した「対象」の**生存数**を見る。**主語は any_ally または any_enemy のときのみ有効**とする。それ以外の主語（self / front_enemy）のときは条件不成立（false）とする。
+
+| conditionKind | conditionParam | 意味 |
+|---------------|----------------|------|
+| **subject_count_equals** | `{ "count": 1 \| 2 \| 3 }` | 生存数が count 体のとき true（1体のとき／2体のとき／3体のとき）。 |
+| **subject_count_at_least** | `{ "count": 2 }` | 生存数が 2 体以上のとき true。最大 3 体のため「2体以上」のみ（3以上は「3体のとき」と同義）。 |
+
+- 味方パーティは最大 3 人、敵は最大 3 体なので、count は 1～3。0 体のときは別条件で表現する想定。
+
 ------------------------------------------------------------------------
 
 ## 5. 実装時のチェックリスト
@@ -141,6 +168,9 @@
 - [ ] 主語 **cycle** のときはユニットリストを求めず、ctx.cycle に対して cycle_is_even / cycle_is_odd / cycle_is_multiple_of / cycle_at_least / cycle_equals で判定している。
 - [ ] 主語 **turn** のときはユニットリストを求めず、ctx.turnIndexInCycle に対して turn_order_in_range で判定している。
 - [ ] 各 conditionKind について、上記 4 の表どおり conditionParam を読んで true/false を返す関数を用意している。
+- [ ] **subject_in_column** は、主語に対応する位置（partyPositions / enemyPositions）を求め、そのうち 1 体でも col が param.column と一致すれば true としている。
+- [ ] **subject_count_equals** は、主語が any_ally / any_enemy のときだけ生存数を数え、targets.length === param.count なら true。主語が self / front_enemy のときは false。
+- [ ] **subject_count_at_least** は、主語が any_ally / any_enemy のときだけ targets.length >= param.count（count は 2 固定）なら true。
 - [ ] 「対象のうち 1 体でも満たせば true」を、主語で得たリスト（ユニット主語の場合）に対して適用している。
 - [ ] 最初に true になったスロットの actionType + skillId を採用し、それ以降のスロットは見ない。
 - [ ] 採用した行動がスキルの場合、MP 不足なら不発（次スロットへは行かず、そのターンは不発で終了）。

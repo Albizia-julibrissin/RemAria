@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -56,18 +56,10 @@ export function ExplorationStartClient({
     return saved && themes.some((t) => t.themeId === saved) ? saved : themes[0]?.themeId;
   });
 
-  /** 持ち込む消耗品の種類（一種類のみ選択。未選択は ''） */
-  const [selectedConsumableItemId, setSelectedConsumableItemId] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem(STORAGE_KEY_CONSUMABLE_ITEM) ?? "";
-  });
-  /** 選択した種類の持ち込み個数（0 ～ その種類の上限） */
-  const [carryQuantity, setCarryQuantity] = useState<number>(() => {
-    if (typeof window === "undefined") return 0;
-    const q = localStorage.getItem(STORAGE_KEY_CONSUMABLE_QUANTITY);
-    const n = q != null ? parseInt(q, 10) : NaN;
-    return Number.isNaN(n) || n < 0 ? 0 : n;
-  });
+  /** 持ち込む消耗品の種類（一種類のみ選択。未選択は ''）。初期値は SSR と一致させ、マウント後に localStorage から復元する。 */
+  const [selectedConsumableItemId, setSelectedConsumableItemId] = useState<string>("");
+  /** 選択した種類の持ち込み個数（0 ～ その種類の上限）。同上。 */
+  const [carryQuantity, setCarryQuantity] = useState<number>(0);
 
   const areaOptions: (AreaOption & { recommendedLevel: number; description: string | null })[] = useMemo(() => {
     const theme = themes.find((t) => t.themeId === selectedThemeId) ?? themes[0];
@@ -162,6 +154,21 @@ export function ExplorationStartClient({
     () => (selectedConsumableItemId ? consumablesWithLimit.find((s) => s.itemId === selectedConsumableItemId) : null),
     [consumablesWithLimit, selectedConsumableItemId]
   );
+
+  /** マウント後に localStorage から消耗品選択を復元（ハイドレーション不一致を防ぐため初期レンダーでは行わない） */
+  const hasRestoredConsumable = useRef(false);
+  useEffect(() => {
+    if (hasRestoredConsumable.current || consumablesWithLimit.length === 0) return;
+    hasRestoredConsumable.current = true;
+    const savedId = localStorage.getItem(STORAGE_KEY_CONSUMABLE_ITEM) ?? "";
+    if (!savedId || !consumablesWithLimit.some((s) => s.itemId === savedId)) return;
+    const q = localStorage.getItem(STORAGE_KEY_CONSUMABLE_QUANTITY);
+    const n = q != null ? parseInt(q, 10) : NaN;
+    const quantity = Number.isNaN(n) || n < 0 ? 0 : n;
+    const found = consumablesWithLimit.find((s) => s.itemId === savedId);
+    setSelectedConsumableItemId(savedId);
+    setCarryQuantity(found ? Math.min(quantity, found.maxCarry) : 0);
+  }, [consumablesWithLimit]);
 
   useEffect(() => {
     if (selectedConsumableItemId && consumablesWithLimit.length > 0) {
@@ -419,7 +426,7 @@ export function ExplorationStartClient({
             type="button"
             onClick={handleStart}
             disabled={!canStart}
-            className="w-full rounded-md bg-brass px-4 py-2.5 text-sm font-medium text-base shadow-sm disabled:bg-base-border disabled:text-text-muted hover:bg-brass/90"
+            className="w-full rounded-md bg-brass px-4 py-2.5 text-sm font-medium text-white shadow-sm disabled:bg-base-border disabled:text-text-muted hover:bg-brass-hover"
           >
             {isPending ? "探索を開始中..." : "探索を開始"}
           </button>
@@ -427,8 +434,14 @@ export function ExplorationStartClient({
       </div>
 
       {errorModalMessage != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setErrorModalMessage(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-sm font-semibold text-text-primary">探索開始できません</h3>
             <p className="mt-2 text-sm text-text-muted">{errorModalMessage}</p>
             <div className="mt-4 flex justify-end">
@@ -437,7 +450,7 @@ export function ExplorationStartClient({
                 onClick={() => setErrorModalMessage(null)}
                 className="rounded-md bg-brass px-3 py-1.5 text-sm font-medium text-base hover:bg-brass/90"
               >
-                閉じる
+                中止
               </button>
             </div>
           </div>

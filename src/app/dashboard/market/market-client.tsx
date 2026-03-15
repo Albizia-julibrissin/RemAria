@@ -15,10 +15,13 @@ import {
   buyFromMarket,
   listMarketItem,
   cancelMarketListing,
+  getMarketList,
   getMarketPriceHistory,
   getMarketItemListings,
 } from "@/server/actions/market";
 import { GameIcon } from "@/components/icons/game-icon";
+import { GraDisplay } from "@/components/currency/gra-display";
+import { PREMIUM_CURRENCY_ICON_NAME } from "@/lib/constants/currency";
 
 type View = "buy" | "sell" | "listings" | "history";
 
@@ -54,6 +57,7 @@ export function MarketClient({
   const [myListings, setMyListings] = useState(initialMyListings);
   const [historyEntries, setHistoryEntries] = useState(initialHistory);
   const [balance, setBalance] = useState(graBalance);
+  const [isRefreshBuyLoading, setIsRefreshBuyLoading] = useState(false);
 
   const showMessage = (type: "ok" | "error", text: string) => {
     setMessage({ type, text });
@@ -110,6 +114,26 @@ export function MarketClient({
         >
           <GameIcon name="hourglass" className="w-4 h-4" />
           履歴
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (isRefreshBuyLoading) return;
+            setIsRefreshBuyLoading(true);
+            getMarketList()
+              .then((result) => {
+                if (result.success) setEntries(result.entries);
+              })
+              .finally(() => setIsRefreshBuyLoading(false));
+          }}
+          className="inline-flex items-center justify-center rounded-lg border border-base-border bg-base p-2 text-text-primary transition-colors hover:border-brass hover:bg-base-elevated disabled:opacity-50"
+          title="購入一覧を更新"
+          disabled={isRefreshBuyLoading}
+        >
+          <GameIcon
+            name="clockwise-rotation"
+            className={`w-5 h-5 ${isRefreshBuyLoading ? "animate-spin" : ""}`}
+          />
         </button>
       </div>
 
@@ -245,10 +269,10 @@ function BuyView({
   return (
     <section className="rounded-lg border border-base-border bg-base-elevated p-6">
       <h2 className="text-lg font-medium text-text-primary">購入</h2>
-      <p className="mt-1 text-sm text-text-muted">
-        所持 GRA: <span className="font-medium text-text-primary">{balance}</span>
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
+        所持 <GraDisplay free={balance} paid={0} showLabel={false} compact />
         {"　"}アイテムの行をクリックで詳細・購入
-      </p>
+      </div>
 
       {entries.length === 0 ? (
         <p className="mt-4 text-text-muted">現在、出品はありません。</p>
@@ -323,7 +347,6 @@ function BuyDetailModal({
 }) {
   const [listings, setListings] = useState<MarketItemListingsResult | null>(null);
   const [listingsError, setListingsError] = useState<string | null>(null);
-  const [priceHistory, setPriceHistory] = useState<MarketPriceHistory | null | "loading">("loading");
   const [quantity, setQuantity] = useState("");
   const [tierPage, setTierPage] = useState(0);
 
@@ -332,14 +355,14 @@ function BuyDetailModal({
       if (r.success) setListings(r.data);
       else setListingsError(r.error);
     });
-    getMarketPriceHistory(itemId).then((r) => {
-      if (r.success) setPriceHistory(r.data);
-      else setPriceHistory(null);
+    getMarketPriceHistory(itemId).then(() => {
+      // API は呼ぶが表示はしない
     });
   }, [itemId]);
 
   const priceTiers = listings?.priceTiers ?? [];
   const totalAvailable = listings?.totalAvailable ?? 0;
+  const minQuantity = listings?.minQuantity ?? 1;
   const tierPageCount = Math.max(1, Math.ceil(priceTiers.length / TIERS_PER_PAGE));
   const currentTiers = priceTiers.slice(
     tierPage * TIERS_PER_PAGE,
@@ -347,10 +370,13 @@ function BuyDetailModal({
   );
 
   const qtyNum = parseInt(quantity, 10) || 0;
-  const estimatedCost = qtyNum >= 1 && qtyNum <= totalAvailable ? calcEstimatedCost(priceTiers, qtyNum) : 0;
-  const canSubmit =
-    qtyNum >= 1 &&
+  const isQtyValid =
+    qtyNum >= minQuantity &&
     qtyNum <= totalAvailable &&
+    qtyNum % minQuantity === 0;
+  const estimatedCost = isQtyValid ? calcEstimatedCost(priceTiers, qtyNum) : 0;
+  const canSubmit =
+    isQtyValid &&
     estimatedCost <= balance &&
     !isPending;
 
@@ -369,21 +395,15 @@ function BuyDetailModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="buy-modal-title"
+      onClick={onClose}
     >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl">
-        <div className="flex items-start justify-between gap-4">
-          <h3 id="buy-modal-title" className="text-lg font-medium text-text-primary">
-            {displayName} を購入
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-text-muted hover:bg-base-border hover:text-text-primary"
-            aria-label="閉じる"
-          >
-            ×
-          </button>
-        </div>
+      <div
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="buy-modal-title" className="text-lg font-medium text-text-primary">
+          {displayName} を購入
+        </h3>
 
         {listingsError && (
           <p className="mt-2 text-sm text-error">{listingsError}</p>
@@ -391,20 +411,20 @@ function BuyDetailModal({
 
         {listings && (
           <>
-            <p className="mt-1 text-sm text-text-muted">
-              {CATEGORY_LABELS[listings.category] ?? listings.category}　所持 GRA: {balance}
-            </p>
+            <div className="mt-1 flex items-center gap-2 text-sm text-text-muted">
+              所持{" "}
+              <GraDisplay free={balance} paid={0} showLabel={false} compact />
+            </div>
 
-            <h4 className="mt-4 text-sm font-medium text-text-muted">出品単価ごとの在庫（最安順）</h4>
             {priceTiers.length === 0 ? (
-              <p className="mt-1 text-sm text-text-muted">現在このアイテムの出品はありません。</p>
+              <p className="mt-4 text-sm text-text-muted">現在このアイテムの出品はありません。</p>
             ) : (
               <>
-                <table className="mt-2 w-full border-collapse text-sm">
+                <table className="mt-4 w-full border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-base-border text-left text-text-muted">
-                      <th className="py-1.5 pr-3">単価（GRA）</th>
-                      <th className="py-1.5">在庫（個）</th>
+                      <th className="py-1.5 pr-3">単価</th>
+                      <th className="py-1.5">在庫</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -439,41 +459,31 @@ function BuyDetailModal({
                     </button>
                   </div>
                 )}
-              </>
-            )}
-
-            <div className="mt-4 rounded border border-base-border bg-base/50 px-3 py-2 text-sm">
-              <span className="font-medium text-text-muted">価格履歴（直近成約）</span>
-              {priceHistory === "loading" && <p className="mt-0.5 text-text-muted">取得中…</p>}
-              {priceHistory && priceHistory !== "loading" && (
-                <p className="mt-0.5 text-text-primary">
-                  平均 {priceHistory.avg} / 中央値 {priceHistory.median} / 最小 {priceHistory.min} / 最大 {priceHistory.max} GRA（{priceHistory.count}件）
-                </p>
-              )}
-              {priceHistory === null && <p className="mt-0.5 text-text-muted">成約履歴はありません。</p>}
-            </div>
-
-            {priceTiers.length > 0 && (
-              <form onSubmit={handleSubmit} className="mt-4 flex flex-wrap items-end gap-3">
+                <form onSubmit={handleSubmit} className="mt-4 flex flex-wrap items-end gap-3">
                 <div>
                   <label htmlFor="buy-modal-qty" className="block text-sm text-text-muted">
-                    購入数量（最大 {totalAvailable} 個）
+                    購入数量（{minQuantity}単位、最大 {totalAvailable} 個）
                   </label>
                   <input
                     id="buy-modal-qty"
                     type="number"
-                    min={1}
+                    min={minQuantity}
                     max={totalAvailable}
+                    step={minQuantity}
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
                     className="mt-1 w-28 rounded border border-base-border bg-base px-3 py-2 text-text-primary"
                   />
                 </div>
-                {qtyNum >= 1 && qtyNum <= totalAvailable && (
-                  <p className="text-sm text-text-primary">
-                    合計 <strong>{estimatedCost} GRA</strong>
+                {isQtyValid && (
+                  <p className="flex items-center gap-2 text-sm text-text-primary">
+                    合計{" "}
+                    <span className="inline-flex items-center gap-1 font-medium tabular-nums text-gra">
+                      <GameIcon name={PREMIUM_CURRENCY_ICON_NAME} className="w-4 h-4 text-gra" ariaHidden={true} />
+                      {estimatedCost.toLocaleString()}
+                    </span>
                     {estimatedCost > balance && (
-                      <span className="ml-2 text-error">（GRA 不足）</span>
+                      <span className="ml-2 text-error">（不足）</span>
                     )}
                   </p>
                 )}
@@ -484,13 +494,32 @@ function BuyDetailModal({
                 >
                   {isPending ? "処理中…" : "購入する"}
                 </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border"
+                >
+                  中止
+                </button>
               </form>
+              </>
             )}
           </>
         )}
 
         {!listings && !listingsError && (
           <p className="mt-4 text-text-muted">読み込み中…</p>
+        )}
+        {(!listings || priceTiers.length === 0) && (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border"
+            >
+              中止
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -611,9 +640,12 @@ function SellDetailModal({
 
   const qtyNum = parseInt(quantity, 10) || 0;
   const priceNum = parseInt(pricePerUnit, 10) || 0;
-  const canSubmit =
+  const isQtyValid =
     qtyNum >= item.minQuantity &&
     qtyNum <= item.quantity &&
+    qtyNum % item.minQuantity === 0;
+  const canSubmit =
+    isQtyValid &&
     priceNum >= item.minPricePerUnit &&
     !isPending;
 
@@ -631,24 +663,18 @@ function SellDetailModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="sell-modal-title"
+      onClick={onClose}
     >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl">
-        <div className="flex items-start justify-between gap-4">
-          <h3 id="sell-modal-title" className="text-lg font-medium text-text-primary">
-            {item.name} を出品
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-text-muted hover:bg-base-border hover:text-text-primary"
-            aria-label="閉じる"
-          >
-            ×
-          </button>
-        </div>
+      <div
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="sell-modal-title" className="text-lg font-medium text-text-primary">
+          {item.name} を出品
+        </h3>
 
         <p className="mt-1 text-sm text-text-muted">
-          {CATEGORY_LABELS[item.category] ?? item.category}　所持: {item.quantity}個
+          所持: <span className="tabular-nums text-success">{item.quantity}</span>個
         </p>
 
         {listingsError && (
@@ -657,7 +683,7 @@ function SellDetailModal({
 
         {listings && (
           <>
-            <h4 className="mt-4 text-sm font-medium text-text-muted">現在の出品（このアイテム・単価ごと）</h4>
+            <h4 className="mt-4 text-sm font-medium text-text-muted">現在の出品</h4>
             {priceTiers.length === 0 ? (
               <p className="mt-1 text-sm text-text-muted">現在このアイテムの出品はありません。</p>
             ) : (
@@ -665,8 +691,8 @@ function SellDetailModal({
                 <table className="mt-2 w-full border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-base-border text-left text-text-muted">
-                      <th className="py-1.5 pr-3">単価（GRA）</th>
-                      <th className="py-1.5">在庫（個）</th>
+                      <th className="py-1.5 pr-3">単価</th>
+                      <th className="py-1.5">在庫</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -705,13 +731,14 @@ function SellDetailModal({
             <form onSubmit={handleSubmit} className="mt-4 flex flex-wrap items-end gap-3">
               <div>
                 <label htmlFor="sell-modal-qty" className="block text-sm text-text-muted">
-                  数量（最小{item.minQuantity}、最大{item.quantity}）
+                  数量（{item.minQuantity}単位）
                 </label>
                 <input
                   id="sell-modal-qty"
                   type="number"
                   min={item.minQuantity}
                   max={item.quantity}
+                  step={item.minQuantity}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   className="mt-1 w-28 rounded border border-base-border bg-base px-3 py-2 text-text-primary"
@@ -719,7 +746,12 @@ function SellDetailModal({
               </div>
               <div>
                 <label htmlFor="sell-modal-price" className="block text-sm text-text-muted">
-                  単価（最小{item.minPricePerUnit} GRA）
+                  単価（最小{" "}
+                  <span className="inline-flex items-center gap-1 font-medium tabular-nums text-gra">
+                    <GameIcon name={PREMIUM_CURRENCY_ICON_NAME} className="w-4 h-4 text-gra" ariaHidden={true} />
+                    {item.minPricePerUnit.toLocaleString()}
+                  </span>
+                  ）
                 </label>
                 <input
                   id="sell-modal-price"
@@ -730,6 +762,15 @@ function SellDetailModal({
                   className="mt-1 w-28 rounded border border-base-border bg-base px-3 py-2 text-text-primary"
                 />
               </div>
+              {isQtyValid && priceNum >= item.minPricePerUnit && (
+                <p className="flex items-center gap-2 text-sm text-text-primary">
+                  合計{" "}
+                  <span className="inline-flex items-center gap-1 font-medium tabular-nums text-gra">
+                    <GameIcon name={PREMIUM_CURRENCY_ICON_NAME} className="w-4 h-4 text-gra" ariaHidden={true} />
+                    {(qtyNum * priceNum).toLocaleString()}
+                  </span>
+                </p>
+              )}
               <button
                 type="submit"
                 disabled={!canSubmit}
@@ -737,12 +778,30 @@ function SellDetailModal({
               >
                 {isPending ? "出品中…" : "出品する"}
               </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border"
+              >
+                中止
+              </button>
             </form>
           </>
         )}
 
         {!listings && !listingsError && (
           <p className="mt-4 text-text-muted">読み込み中…</p>
+        )}
+        {!listings && (
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border"
+            >
+              中止
+            </button>
+          </div>
         )}
       </div>
     </div>

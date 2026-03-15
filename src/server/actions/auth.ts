@@ -84,6 +84,11 @@ export async function register(formData: FormData): Promise<AuthResult> {
   const nameErr = validateName(nameRaw);
   if (nameErr) return { success: false, error: "VALIDATION_ERROR", message: nameErr };
 
+  const agreeTerms = formData.get("agreeTerms");
+  if (!agreeTerms || String(agreeTerms).toLowerCase() !== "on") {
+    return { success: false, error: "TERMS_NOT_AGREED", message: "利用規約に同意してください" };
+  }
+
   const existingEmail = await userRepository.findByEmail(String(email).trim().toLowerCase());
   if (existingEmail) {
     return { success: false, error: "EMAIL_ALREADY_EXISTS", message: "このメールアドレスは既に登録されています" };
@@ -103,6 +108,7 @@ export async function register(formData: FormData): Promise<AuthResult> {
     accountId,
     passwordHash,
     name,
+    termsAgreedAt: new Date(),
   });
 
   // spec/035: 新規アカウントにも初期エリアの強制配置 5 設備を用意する（冪等）

@@ -12,6 +12,8 @@ import {
   CONDITION_OPTIONS,
   CYCLE_CONDITION_OPTIONS,
   TURN_CONDITION_OPTIONS,
+  COLUMN_CONDITION_OPTIONS,
+  COUNT_CONDITION_OPTIONS,
   ACTION_TYPES,
   CYCLE_N_OPTIONS,
   TURN_INDEX_OPTIONS,
@@ -21,7 +23,8 @@ import {
 
 const CYCLE_CONDITION_VALUES = new Set<string>(CYCLE_CONDITION_OPTIONS.map((o) => o.value));
 
-const BASE_STATS = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK", "CAP"] as const;
+/** 編集可能な基礎ステ（CAP は自動計算のため含めない） */
+const BASE_STATS_EDITABLE = ["STR", "INT", "VIT", "WIS", "DEX", "AGI", "LUK"] as const;
 
 type SkillOption = { id: string; name: string; battleSkillType: string | null };
 
@@ -77,7 +80,6 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
     DEX: enemy.DEX,
     AGI: enemy.AGI,
     LUK: enemy.LUK,
-    CAP: enemy.CAP,
   });
   const [defaultBattleCol, setDefaultBattleCol] = useState(enemy.defaultBattleCol);
   const [slots, setSlots] = useState<SlotState[]>(() => {
@@ -99,6 +101,22 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
   const removeSlot = (i: number) => {
     setSlots((prev) => prev.filter((_, idx) => idx !== i));
   };
+  const moveSlotUp = (i: number) => {
+    if (i <= 0) return;
+    setSlots((prev) => {
+      const next = [...prev];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      return next;
+    });
+  };
+  const moveSlotDown = (i: number) => {
+    if (i >= slots.length - 1) return;
+    setSlots((prev) => {
+      const next = [...prev];
+      [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      return next;
+    });
+  };
   const updateSlot = (i: number, patch: Partial<SlotState>) => {
     setSlots((prev) =>
       prev.map((s, idx) => {
@@ -119,7 +137,15 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
             next.conditionKind = "turn_order_in_range";
             next.conditionParam = { turnIndexMin: 1, turnIndexMax: 2 };
           } else {
-            if (!CONDITION_OPTIONS.some((o) => o.value === next.conditionKind)) {
+            // 生存数条件は any_ally / any_enemy のみ有効。主語を自分/正面の相手にしたら常ににリセット
+            if (
+              (next.conditionKind === "subject_count_equals" ||
+                next.conditionKind === "subject_count_at_least") &&
+              (next.subject === "self" || next.subject === "front_enemy")
+            ) {
+              next.conditionKind = "always";
+              next.conditionParam = null;
+            } else if (!CONDITION_OPTIONS.some((o) => o.value === next.conditionKind)) {
               next.conditionKind = "always";
               next.conditionParam = null;
             }
@@ -129,6 +155,9 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
           const kind = next.conditionKind;
           if (kind === "always") next.conditionParam = null;
           else if (kind === "subject_has_attr_state") next.conditionParam = { attr: "none" };
+          else if (kind === "subject_in_column") next.conditionParam = { column: 1 };
+          else if (kind === "subject_count_equals") next.conditionParam = { count: 1 };
+          else if (kind === "subject_count_at_least") next.conditionParam = { count: 2 };
           else if (kind === "cycle_is_even" || kind === "cycle_is_odd") next.conditionParam = null;
           else if (kind === "cycle_is_multiple_of") next.conditionParam = { n: 2 };
           else if (kind === "cycle_at_least" || kind === "cycle_equals") next.conditionParam = { n: 1 };
@@ -143,19 +172,21 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const str = stats.STR ?? 0, int = stats.INT ?? 0, vit = stats.VIT ?? 0, wis = stats.WIS ?? 0, dex = stats.DEX ?? 0, agi = stats.AGI ?? 0, luk = stats.LUK ?? 0;
+    const cap = str + int + vit + wis + dex + agi + luk;
     const input: UpdateAdminEnemyInput = {
       code: code.trim(),
       name: name.trim(),
       iconFilename: iconFilename.trim() || null,
       description: description.trim() || null,
-      STR: stats.STR ?? 0,
-      INT: stats.INT ?? 0,
-      VIT: stats.VIT ?? 0,
-      WIS: stats.WIS ?? 0,
-      DEX: stats.DEX ?? 0,
-      AGI: stats.AGI ?? 0,
-      LUK: stats.LUK ?? 0,
-      CAP: stats.CAP ?? 0,
+      STR: str,
+      INT: int,
+      VIT: vit,
+      WIS: wis,
+      DEX: dex,
+      AGI: agi,
+      LUK: luk,
+      CAP: cap,
       defaultBattleRow: enemy.defaultBattleRow, // 探索では選出順で上から固定のため画面では編集しない
       defaultBattleCol,
       tacticSlots: slots.map((s, i) => ({
@@ -232,8 +263,9 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
 
       <section className="rounded border border-base-border bg-base-elevated p-4">
         <h2 className="text-lg font-medium text-text-primary">基礎ステ</h2>
+        <p className="mt-1 text-sm text-text-muted">CAP は全ステ合計で自動計算され、保存時に登録されます。</p>
         <div className="mt-3 flex flex-wrap gap-4">
-          {BASE_STATS.map((key) => (
+          {BASE_STATS_EDITABLE.map((key) => (
             <div key={key} className="w-24">
               <label className="block text-xs font-medium text-text-muted">{key}</label>
               <input
@@ -245,6 +277,12 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
               />
             </div>
           ))}
+          <div className="w-24">
+            <label className="block text-xs font-medium text-text-muted">CAP（自動）</label>
+            <div className="mt-1 rounded border border-base-border bg-base-elevated px-2 py-1 text-text-primary">
+              {(stats.STR ?? 0) + (stats.INT ?? 0) + (stats.VIT ?? 0) + (stats.WIS ?? 0) + (stats.DEX ?? 0) + (stats.AGI ?? 0) + (stats.LUK ?? 0)}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -320,7 +358,12 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
                     ))}
                   {slot.subject !== "cycle" &&
                     slot.subject !== "turn" &&
-                    CONDITION_OPTIONS.map((o) => (
+                    CONDITION_OPTIONS.filter(
+                      (o) =>
+                        (o.value !== "subject_count_equals" && o.value !== "subject_count_at_least") ||
+                        slot.subject === "any_ally" ||
+                        slot.subject === "any_enemy"
+                    ).map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                 </select>
@@ -388,6 +431,39 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
                     <span className="text-text-muted text-xs">番目</span>
                   </span>
                 )}
+                {slot.conditionKind === "subject_in_column" && (
+                  <select
+                    value={(slot.conditionParam as { column?: number } | null)?.column ?? 1}
+                    onChange={(e) =>
+                      updateSlot(i, { conditionParam: { column: Number(e.target.value) } })
+                    }
+                    className="min-w-[80px] bg-base border border-base-border rounded px-2 py-1"
+                  >
+                    {COLUMN_CONDITION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {slot.conditionKind === "subject_count_equals" && (
+                  <select
+                    value={(slot.conditionParam as { count?: number } | null)?.count ?? 1}
+                    onChange={(e) =>
+                      updateSlot(i, { conditionParam: { count: Number(e.target.value) } })
+                    }
+                    className="min-w-[90px] bg-base border border-base-border rounded px-2 py-1"
+                  >
+                    {COUNT_CONDITION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {slot.conditionKind === "subject_count_at_least" && (
+                  <span className="text-text-muted text-sm">2体以上</span>
+                )}
                 {slot.conditionKind === "subject_has_attr_state" && (
                   <select
                     value={(slot.conditionParam as { attr?: string } | null)?.attr ?? "none"}
@@ -442,6 +518,26 @@ export function AdminEnemyEditForm({ enemy, skillOptions }: Props) {
                   </select>
                 </div>
               )}
+              <div className="flex items-center gap-1 ml-1">
+                <button
+                  type="button"
+                  onClick={() => moveSlotUp(i)}
+                  disabled={i === 0}
+                  title="上へ"
+                  className="rounded border border-base-border bg-base px-2 py-1 text-sm text-text-muted hover:text-text-primary hover:bg-base-elevated disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveSlotDown(i)}
+                  disabled={i === slots.length - 1}
+                  title="下へ"
+                  className="rounded border border-base-border bg-base px-2 py-1 text-sm text-text-muted hover:text-text-primary hover:bg-base-elevated disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  ↓
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => removeSlot(i)}

@@ -2,17 +2,35 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
 
+export type GrantStackableItemParams = {
+  userId: string;
+  itemId: string;
+  delta: number;
+  /** spec/090: true のとき Item.maxOwnedPerUser を無視して付与（郵便用） */
+  ignoreLimit?: boolean;
+};
+
 /**
  * スタック型アイテムをユーザーに付与する共通ヘルパー。
- * - Item.maxOwnedPerUser（NULLなら上限なし）を考慮して、付与量をクリップする。
+ * - ignoreLimit が false または未指定: Item.maxOwnedPerUser（NULLなら上限なし）を考慮して付与量をクリップする。
+ * - ignoreLimit が true: 上限を無視して delta をそのまま付与（郵便報酬用）。
  * - 実際に付与された個数（0 以上）を返す。
  */
 export async function grantStackableItem(
   tx: TxClient,
-  params: { userId: string; itemId: string; delta: number }
+  params: GrantStackableItemParams
 ): Promise<number> {
-  const { userId, itemId, delta } = params;
+  const { userId, itemId, delta, ignoreLimit } = params;
   if (delta <= 0) return 0;
+
+  if (ignoreLimit) {
+    await tx.userInventory.upsert({
+      where: { userId_itemId: { userId, itemId } },
+      create: { userId, itemId, quantity: delta },
+      update: { quantity: { increment: delta } },
+    });
+    return delta;
+  }
 
   const item = await tx.item.findUnique({
     where: { id: itemId },

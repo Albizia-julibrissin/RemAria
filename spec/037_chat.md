@@ -160,3 +160,4 @@
 - `docs/00_overview.md`：交流（チャット設計方針）
 - `docs/022_chat_ui_design.md`：UI 配置・スタイル・開閉
 - `docs/07_ui_guidelines.md`：カラー・Tailwind クラス
+- **`spec/094_chat_extension.md`**：拡張（システムメッセージ・任務達成通知・チャット表示設定）。037 を拡張する仕様。

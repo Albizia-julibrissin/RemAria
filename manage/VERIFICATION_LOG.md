@@ -31,6 +31,7 @@
 
 - **現在**:
   - 遺物パッシブによるダメージ倍率適用前の値と倍率メモ（`relicDamageBefore`, `relicDamageNote`）。戦闘ログ内に表示。
+  - **スキルレベル補正**（spec/052 §4.3）：味方がスキルを使用したときに、そのスキルのレベルと適用された倍率・消費MP係数（`skillLevel`, `skillLevelNote`）。戦闘ログ内に「検証: スキル LvN 倍率x.xx MPx.xx」のように表示。物理・魔法は倍率とMP、補助はMPのみ。
   - 探索戦闘トップでのパーティ戦闘ステ（装備前・装備後）テーブル。`verificationPartyStats` / `getExplorationPartyStatsVerification` で取得し、`ExplorationVerificationStatsTable` で表示。
 - **今後**: 同様に「検証したい値」は、ログ型にオプション項目を追加するか、別 API で取得し、`SHOW_VERIFICATION_LOG` が true のときだけ表示する。
 

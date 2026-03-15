@@ -110,8 +110,12 @@ export function CraftPrepareModal({ recipe, outputLabel, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="craft-prepare-title"
+      onClick={onClose}
     >
-      <div className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+      <div
+        className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 id="craft-prepare-title" className="text-lg font-medium text-text-primary">
           {outputLabel} を 1 個製造する
         </h2>
@@ -210,13 +214,13 @@ export function CraftPrepareModal({ recipe, outputLabel, onClose }: Props) {
             onClick={onClose}
             className="rounded border border-base-border bg-base px-4 py-2 text-sm font-medium text-text-primary hover:bg-base-border focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
           >
-            戻る
+            中止
           </button>
           <button
             type="button"
             onClick={handleCraft}
             disabled={isCrafting || !canCraft || isOnCooldown}
-            className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+            className="rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
           >
             {isCrafting ? "製造中…" : isOnCooldown ? "クール中…" : "製造"}
           </button>

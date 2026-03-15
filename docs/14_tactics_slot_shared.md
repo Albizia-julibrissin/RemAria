@@ -20,7 +20,8 @@
 
 - **主語・条件・行動の選択肢**  
   `src/app/dashboard/tactics/tactics-constants.ts` の  
-  `SUBJECT_OPTIONS`, `CONDITION_OPTIONS`, `CYCLE_CONDITION_OPTIONS`, `TURN_CONDITION_OPTIONS`, `ACTION_TYPES` を、作戦室と敵マスタ編集の両方で参照している。
+  `SUBJECT_OPTIONS`, `CONDITION_OPTIONS`, `CYCLE_CONDITION_OPTIONS`, `TURN_CONDITION_OPTIONS`, `COLUMN_CONDITION_OPTIONS`, `COUNT_CONDITION_OPTIONS`, `ACTION_TYPES` を、作戦室と敵マスタ編集の両方で参照している。  
+  条件に「指定列にいる」（`subject_in_column`）、「生存数が〇体のとき」（`subject_count_equals`）、「生存数が2体以上のとき」（`subject_count_at_least`。主語は味方のいずれか・相手のいずれかのときのみ有効、spec/040 §4.8）がある。
 - **評価ロジック**  
   戦闘ループ内で味方・敵ともに `tactic-evaluation.ts`（spec/040）に基づき「主語・条件・行動」を評価し、行動を決定する。
 - **データ構造**  
@@ -45,8 +46,9 @@
 
 | ファイル | 内容 |
 |----------|------|
+| **docs/14_tactics_logic_reference.md** | **作戦ロジックのまとめ**。主語・条件一覧と**条件拡張時の編集箇所チェックリスト**。条件を増やすときはここを見て判断する。 |
 | spec/039_battle_tactics_and_editor.md | 作戦室（味方の作戦スロット）の正式仕様 |
-| spec/040_tactic_slot_evaluation.md | 作戦スロットの評価ロジック |
+| spec/040_tactic_slot_evaluation.md | 作戦スロットの評価ロジック（正本） |
 | spec/050_enemy_master.md | 敵マスタ・EnemyTacticSlot |
 | docs/14_battle_attributes_tactics.md | 属性・作戦スロットの設計 |
 | docs/14_battle_tactics_impl_draft.md | 作戦のテーブル・処理のたたき台 |

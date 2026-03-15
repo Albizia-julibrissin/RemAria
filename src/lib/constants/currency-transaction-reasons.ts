@@ -10,6 +10,8 @@ export const CURRENCY_REASON_MARKET_PURCHASE = "market_purchase";
 export const CURRENCY_REASON_MARKET_SALE = "market_sale";
 export const CURRENCY_REASON_UNDERGROUND_MARKET_PURCHASE = "underground_market_purchase";
 export const CURRENCY_REASON_BLACK_MARKET_PURCHASE = "black_market_purchase";
+/** spec/090: 郵便受取で付与した GRA */
+export const CURRENCY_REASON_MAIL_REWARD = "mail_reward";
 
 export const CURRENCY_REASON_LABELS: Record<string, string> = {
   [CURRENCY_REASON_GAME_START]: "ゲーム開始付与",
@@ -19,4 +21,5 @@ export const CURRENCY_REASON_LABELS: Record<string, string> = {
   [CURRENCY_REASON_MARKET_SALE]: "市場成約（売却）",
   [CURRENCY_REASON_UNDERGROUND_MARKET_PURCHASE]: "闇市購入",
   [CURRENCY_REASON_BLACK_MARKET_PURCHASE]: "黒市購入",
+  [CURRENCY_REASON_MAIL_REWARD]: "郵便報酬",
 };

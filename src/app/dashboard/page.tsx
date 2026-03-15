@@ -85,9 +85,11 @@ export default async function DashboardPage() {
     // 開拓任務: spec/054_quests.md
     { href: "/dashboard/quests", label: "開拓任務", sub: "使命・研究・特殊・一般の開拓任務の進捗", icon: "feather" },
     // 闇市: docs/079（GRA で特別アイテム購入）
-    { href: "/dashboard/underground-market", label: "闇市", sub: "GRA で特別アイテムを購入", icon: "wooden-crate" },
+    { href: "/dashboard/underground-market", label: "闇市", sub: "GRA で特別アイテムを購入", icon: "black-bar" },
     // 市場: spec/075_market.md（解放時のみ有効）
-    { href: "/dashboard/market", label: "市場", sub: "出品・購入", icon: "weight-scale" },
+    { href: "/dashboard/market", label: "市場", sub: "出品・購入", icon: "life-in-the-balance" },
+    // 開拓者証（プロフィール）: docs/088_profile_screen_draft.md（表示名・称号など・草案）
+    { href: "/dashboard/profile", label: "開拓者証", sub: "表示名・称号などのアカウント情報", icon: "person" },
   ] as const;
 
   const marketUnlocked = userForDashboard?.marketUnlocked ?? false;

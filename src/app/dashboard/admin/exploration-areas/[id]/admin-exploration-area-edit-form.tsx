@@ -315,7 +315,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
         <h2 className="text-lg font-medium text-text-primary">基本</h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-text-muted">code（ユニーク）</label>
+            <label className="block text-sm font-medium text-text-muted">code（識別コード・ユニーク）</label>
             <input
               type="text"
               value={code}
@@ -325,7 +325,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">name</label>
+            <label className="block text-sm font-medium text-text-muted">name（エリア名）</label>
             <input
               type="text"
               value={name}
@@ -335,7 +335,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-text-muted">description（任意）</label>
+            <label className="block text-sm font-medium text-text-muted">description（説明文・任意）</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -360,7 +360,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">difficultyRank</label>
+            <label className="block text-sm font-medium text-text-muted">difficultyRank（難易度ランク）</label>
             <input
               type="number"
               min={1}
@@ -370,7 +370,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">recommendedLevel</label>
+            <label className="block text-sm font-medium text-text-muted">recommendedLevel（推奨レベル）</label>
             <input
               type="number"
               min={1}
@@ -387,7 +387,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
         <p className="mt-1 text-xs text-text-muted">枠レンジ・技能発生率・必要値・雑魚戦回数</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="block text-sm font-medium text-text-muted">baseDropMin</label>
+            <label className="block text-sm font-medium text-text-muted">baseDropMin（ドロップ枠・最小数）</label>
             <input
               type="number"
               min={0}
@@ -397,7 +397,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">baseDropMax</label>
+            <label className="block text-sm font-medium text-text-muted">baseDropMax（ドロップ枠・最大数）</label>
             <input
               type="number"
               min={0}
@@ -407,7 +407,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">baseSkillEventRate（%）</label>
+            <label className="block text-sm font-medium text-text-muted">baseSkillEventRate（技能イベント発生率・%）</label>
             <input
               type="number"
               min={0}
@@ -418,7 +418,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">skillCheckRequiredValue</label>
+            <label className="block text-sm font-medium text-text-muted">skillCheckRequiredValue（技能判定必要値）</label>
             <input
               type="number"
               min={1}
@@ -428,7 +428,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">normalBattleCount</label>
+            <label className="block text-sm font-medium text-text-muted">normalBattleCount（通常戦闘回数）</label>
             <input
               type="number"
               min={1}
@@ -445,7 +445,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
         <div className="mt-3 space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-muted">
-              通常戦 雑魚グループ（EnemyGroup.code）
+              通常戦 雑魚グループ（normalEnemyGroupCode / EnemyGroup.code）
             </label>
             <select
               value={normalEnemyGroupCode}
@@ -574,7 +574,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
 
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-text-muted">
-              体数 1/2/3 の出現率（合計100）
+              体数 1/2/3 の出現率（enemyCount1Rate / 2Rate / 3Rate・合計100）
             </label>
             <div className="mt-1 flex gap-2">
               <input
@@ -604,7 +604,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">強敵（Enemy 1体）</label>
+            <label className="block text-sm font-medium text-text-muted">強敵（strongEnemyEnemyId / Enemy 1体）</label>
             <select
               value={strongEnemyEnemyId}
               onChange={(e) => setStrongEnemyEnemyId(e.target.value)}
@@ -619,7 +619,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">領域主（Enemy 1体）</label>
+            <label className="block text-sm font-medium text-text-muted">領域主（areaLordEnemyId / Enemy 1体）</label>
             <select
               value={areaLordEnemyId}
               onChange={(e) => setAreaLordEnemyId(e.target.value)}
@@ -634,7 +634,7 @@ export function AdminExplorationAreaEditForm({ data }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-text-muted">領域主出現率（%）</label>
+            <label className="block text-sm font-medium text-text-muted">領域主出現率（areaLordAppearanceRate・%）</label>
             <p className="mt-0.5 text-xs text-text-muted">強敵勝利後に領域主が出現する確率。0～100。</p>
             <input
               type="number"

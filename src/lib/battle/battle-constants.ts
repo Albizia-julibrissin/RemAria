@@ -22,3 +22,15 @@ export const BATTLE_FATAL_MULT = 1.2;
  * 初期値は 1.0。決着速度に応じて微調整する。
  */
 export const BATTLE_MITIGATION_K = 1.0;
+
+/**
+ * spec/052 §4.3: スキルレベル補正（戦闘への反映）
+ * 設計最大レベル。L は 0～この値で cap し、sqrt(L/CAP) で補正を算出。
+ */
+export const SKILL_LEVEL_CAP = 99;
+/** 物理・魔法: L=0→1.00, L=CAP→この倍率。式は 1 + (MULT_AT_CAP - 1) * sqrt(L/CAP)。 */
+export const SKILL_LEVEL_DAMAGE_MULT_AT_CAP = 1.1;
+/** 物理・魔法: L=CAP のときの消費MP倍率（0.9 = 10%軽減）。 */
+export const SKILL_LEVEL_MP_FACTOR_AT_CAP_PHYSICAL_MAGIC = 0.9;
+/** 補助: L=CAP のときの消費MP倍率（0.8 = 20%軽減）。 */
+export const SKILL_LEVEL_MP_FACTOR_AT_CAP_SUPPORT = 0.8;

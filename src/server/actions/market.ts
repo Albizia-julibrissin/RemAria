@@ -385,7 +385,7 @@ export async function buyFromMarket(
   });
 
   if ("error" in result) {
-    return { success: false, error: result.error };
+    return { success: false, error: result.error ?? "購入に失敗しました。" };
   }
   return {
     success: true,
@@ -529,6 +529,8 @@ export type MarketItemListingsResult = {
   category: string;
   priceTiers: MarketItemPriceTier[];
   totalAvailable: number;
+  /** 購入・出品の最低単位（この値ごとに数量を指定） */
+  minQuantity: number;
 };
 
 /**
@@ -552,11 +554,12 @@ export async function getMarketItemListings(itemId: string): Promise<{
 
   const item = await prisma.item.findUnique({
     where: { id: itemId },
-    select: { id: true, code: true, name: true, category: true },
+    select: { id: true, code: true, name: true, category: true, marketMinQuantity: true },
   });
   if (!item) {
     return { success: false, error: "アイテムが見つかりません。" };
   }
+  const minQuantity = item.marketMinQuantity ?? MARKET_MIN_QUANTITY_GLOBAL;
 
   const validWhere = {
     itemId,
@@ -586,6 +589,7 @@ export async function getMarketItemListings(itemId: string): Promise<{
       category: item.category,
       priceTiers,
       totalAvailable,
+      minQuantity,
     },
   };
 }

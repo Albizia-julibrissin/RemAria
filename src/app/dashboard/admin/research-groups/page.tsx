@@ -60,9 +60,6 @@ export default async function AdminResearchGroupsPage() {
               <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium w-20">
                 対象数
               </th>
-              <th className="border border-base-border px-2 py-1.5 text-left text-text-muted font-medium max-w-[120px]">
-                前提グループ
-              </th>
               <th className="border border-base-border px-2 py-1.5 w-16 text-center text-text-muted font-medium">
                 操作
               </th>
@@ -80,9 +77,6 @@ export default async function AdminResearchGroupsPage() {
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-text-muted">
                   {row.itemCount}
-                </td>
-                <td className="border border-base-border px-2 py-1.5 text-text-muted text-xs">
-                  {row.prerequisiteGroupCode ?? "—"}
                 </td>
                 <td className="border border-base-border px-2 py-1.5 text-center">
                   <Link

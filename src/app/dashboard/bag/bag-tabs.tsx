@@ -1,18 +1,18 @@
 "use client";
 
 // spec/045, 051 - 倉庫の種別タブ・遺物
-// spec/052 - スキル分析書の使用・キャラ選択
+// spec/052 - スキル分析書の習得・未習得キャラのみ選択
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type {
   StackableItem,
   EquipmentInstanceSummary,
   MechaPartInstanceSummary,
 } from "@/server/actions/inventory";
-import { consumeSkillBook } from "@/server/actions/inventory";
+import { consumeSkillBook, getCharactersForSkillBook } from "@/server/actions/inventory";
 import type { RelicInstanceSummary } from "@/server/actions/relic";
-import { appraiseRelicToken } from "@/server/actions/relic";
+import { BATTLE_SKILL_TYPE_LABELS } from "@/app/dashboard/tactics/tactics-constants";
 
 type CharacterForSkillBook = { id: string; displayName: string; category: string };
 
@@ -23,9 +23,11 @@ type Props = {
   relicInstances: RelicInstanceSummary[];
   relicTokenQuantity: number;
   allTabIds: string[];
-  charactersForSkillBook: CharacterForSkillBook[];
+  /** URL の ?tab= で指定されたタブ（例: キャラ詳細の習得ボタンから ?tab=skill_book で遷移） */
+  initialTab?: string;
 };
 
+/** 鑑定は工房の鑑定タブで行う。物資庫では所持一覧のみ表示。 */
 const TAB_LABELS: Record<string, string> = {
   material: "資源",
   consumable: "消耗品",
@@ -56,21 +58,49 @@ function formatRelicEffect(r: RelicInstanceSummary): string {
   return parts.join(" / ") || "—";
 }
 
+function skillDisplayTagsToArray(displayTags: unknown): string[] {
+  if (Array.isArray(displayTags)) return displayTags.filter((t): t is string => typeof t === "string");
+  return [];
+}
+
 export function BagTabs({
   stackable,
   equipmentInstances,
   mechaPartInstances,
   relicInstances,
-  relicTokenQuantity,
+  relicTokenQuantity: _relicTokenQuantity,
   allTabIds,
-  charactersForSkillBook,
+  initialTab,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<string>(allTabIds[0] ?? "material");
-  const [appraising, setAppraising] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>(
+    initialTab && allTabIds.includes(initialTab) ? initialTab : allTabIds[0] ?? "material"
+  );
   const [skillBookUseItem, setSkillBookUseItem] = useState<StackableItem | null>(null);
+  const [charactersToSelect, setCharactersToSelect] = useState<CharacterForSkillBook[] | null>(null);
+  const [loadingCharacters, setLoadingCharacters] = useState(false);
   const [consuming, setConsuming] = useState(false);
   const [consumeError, setConsumeError] = useState<string | null>(null);
+  const [expandedSkillBookItemId, setExpandedSkillBookItemId] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (!skillBookUseItem?.skillId) {
+      setCharactersToSelect(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCharacters(true);
+    setCharactersToSelect(null);
+    getCharactersForSkillBook(skillBookUseItem.skillId).then((list) => {
+      if (!cancelled) {
+        setCharactersToSelect(list ?? []);
+        setLoadingCharacters(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [skillBookUseItem?.itemId, skillBookUseItem?.skillId]);
 
   const filteredStackable =
     activeTab === "equipment" || activeTab === "mecha_parts" || activeTab === "relic"
@@ -140,35 +170,12 @@ export function BagTabs({
         )}
 
         {activeTab === "relic" && (
-          <div className="space-y-4">
-            {relicTokenQuantity > 0 && (
-              <div className="flex items-center gap-3 rounded border border-brass/50 bg-brass/10 px-4 py-3">
-                <span className="text-sm text-text-primary">
-                  遺物の原石を {relicTokenQuantity} 個所持しています。
-                </span>
-                <button
-                  type="button"
-                  disabled={appraising}
-                  onClick={async () => {
-                    setAppraising(true);
-                    const result = await appraiseRelicToken("relic_group_a_token");
-                    setAppraising(false);
-                    if (result.success) {
-                      router.refresh();
-                    }
-                  }}
-                  className="rounded bg-brass px-3 py-1.5 text-sm font-medium text-white hover:bg-brass-hover disabled:opacity-50"
-                >
-                  {appraising ? "鑑定中…" : "1個鑑定する"}
-                </button>
-              </div>
-            )}
-            <ul className="space-y-3">
-              {relicInstances.length === 0 ? (
-                <li className="text-sm text-text-muted">
-                  遺物を所持していません。探索で原石を入手し、鑑定してください。
-                </li>
-              ) : (
+          <ul className="space-y-3">
+            {relicInstances.length === 0 ? (
+              <li className="text-sm text-text-muted">
+                遺物を所持していません。探索で原石を入手し、工房で鑑定してください。
+              </li>
+            ) : (
                 relicInstances.map((r) => (
                   <li
                     key={r.id}
@@ -177,13 +184,12 @@ export function BagTabs({
                     <div className="font-medium text-text-primary">{r.relicTypeName}</div>
                     <div className="mt-1 text-sm text-text-muted">{formatRelicEffect(r)}</div>
                     {r.equippedCharacterId && (
-                      <div className="mt-1 text-xs text-text-muted">装着中</div>
+                      <div className="mt-1 text-xs text-cyan-400 dark:text-cyan-300">装着中</div>
                     )}
                   </li>
                 ))
-              )}
-            </ul>
-          </div>
+            )}
+          </ul>
         )}
 
         {activeTab !== "equipment" && activeTab !== "mecha_parts" && activeTab !== "relic" && (
@@ -196,26 +202,79 @@ export function BagTabs({
               filteredStackable.map((row) => (
                 <li
                   key={row.itemId}
-                  className="flex justify-between items-center gap-3 rounded border border-base-border bg-base px-4 py-3"
+                  className="rounded border border-base-border bg-base px-4 py-3"
                 >
-                  <span className="font-medium text-text-primary">{row.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="tabular-nums text-text-primary">
-                      {row.quantity}
-                    </span>
-                    {activeTab === "skill_book" && charactersForSkillBook.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConsumeError(null);
-                          setSkillBookUseItem(row);
-                        }}
-                        className="rounded bg-brass px-2 py-1 text-xs font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass"
-                      >
-                        使う
-                      </button>
-                    )}
+                  <div className="flex justify-between items-center gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium text-text-primary">{row.name}</span>
+                      {activeTab === "skill_book" && row.skillId && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSkillBookItemId((prev) =>
+                              prev === row.itemId ? null : row.itemId
+                            )
+                          }
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-base-border bg-base-elevated text-sm text-text-muted transition-colors hover:border-brass hover:text-brass focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                          aria-label="スキルの説明を表示"
+                          title="説明"
+                        >
+                          !
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="tabular-nums text-text-primary">
+                        {row.quantity}
+                      </span>
+                      {activeTab === "skill_book" && row.skillId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConsumeError(null);
+                            setSkillBookUseItem(row);
+                          }}
+                          className="rounded bg-brass px-2 py-1 text-xs font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass"
+                        >
+                          習得
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {activeTab === "skill_book" &&
+                    expandedSkillBookItemId === row.itemId && (
+                      <div className="mt-2 border-t border-base-border pt-2 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {row.skillBattleSkillType && (
+                            <span className="inline-flex items-center rounded-full border border-base-border bg-base px-2 py-0.5 text-2xs text-text-muted">
+                              {BATTLE_SKILL_TYPE_LABELS[row.skillBattleSkillType] ?? row.skillBattleSkillType}
+                            </span>
+                          )}
+                          {row.skillChargeCycles != null && (
+                            <span className="inline-flex items-center rounded-full border border-base-border/60 bg-base px-2 py-0.5 text-2xs text-text-muted">
+                              CT{row.skillChargeCycles}
+                            </span>
+                          )}
+                          {row.skillCooldownCycles != null && (
+                            <span className="inline-flex items-center rounded-full border border-base-border/60 bg-base px-2 py-0.5 text-2xs text-text-muted">
+                              CD{row.skillCooldownCycles}
+                            </span>
+                          )}
+                        </div>
+                        {skillDisplayTagsToArray(row.skillDisplayTags).length > 0 && (
+                          <p className="break-words text-[11px] text-text-muted">
+                            {skillDisplayTagsToArray(row.skillDisplayTags).join(" ")}
+                          </p>
+                        )}
+                        {row.skillDescription ? (
+                          <p className="break-words text-xs text-text-muted">
+                            {row.skillDescription}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-text-muted">説明はありません。</p>
+                        )}
+                      </div>
+                    )}
                 </li>
               ))
             )}
@@ -228,10 +287,17 @@ export function BagTabs({
             role="dialog"
             aria-modal="true"
             aria-labelledby="skill-book-dialog-title"
+            onClick={() => {
+              setSkillBookUseItem(null);
+              setConsumeError(null);
+            }}
           >
-            <div className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-4 shadow-lg">
+            <div
+              className="w-full max-w-sm rounded-lg border border-base-border bg-base-elevated p-4 shadow-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
               <h2 id="skill-book-dialog-title" className="text-lg font-semibold text-text-primary">
-                誰に使いますか？
+                習得するキャラを選んでください
               </h2>
               <p className="mt-1 text-sm text-text-muted">{skillBookUseItem.name}</p>
               {consumeError && (
@@ -239,38 +305,46 @@ export function BagTabs({
                   {consumeError}
                 </p>
               )}
-              <ul className="mt-4 space-y-2">
-                {charactersForSkillBook.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      disabled={consuming}
-                      onClick={async () => {
-                        if (!skillBookUseItem) return;
-                        setConsuming(true);
-                        setConsumeError(null);
-                        const result = await consumeSkillBook(
-                          skillBookUseItem.itemId,
-                          c.id
-                        );
-                        setConsuming(false);
-                        if (result.success) {
-                          setSkillBookUseItem(null);
-                          router.refresh();
-                        } else {
-                          setConsumeError(result.error);
-                        }
-                      }}
-                      className="w-full rounded border border-base-border bg-base px-4 py-2 text-left text-text-primary hover:bg-base-border disabled:opacity-50"
-                    >
-                      {c.displayName}
-                      {c.category === "protagonist" && (
-                        <span className="ml-2 text-xs text-text-muted">（主人公）</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {loadingCharacters ? (
+                <p className="mt-4 text-sm text-text-muted">読込中…</p>
+              ) : charactersToSelect && charactersToSelect.length === 0 ? (
+                <p className="mt-4 text-sm text-text-muted">
+                  このスキルを習得していないキャラはいません（全員習得済みです）。
+                </p>
+              ) : (
+                <ul className="mt-4 space-y-2">
+                  {(charactersToSelect ?? []).map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        disabled={consuming}
+                        onClick={async () => {
+                          if (!skillBookUseItem) return;
+                          setConsuming(true);
+                          setConsumeError(null);
+                          const result = await consumeSkillBook(
+                            skillBookUseItem.itemId,
+                            c.id
+                          );
+                          setConsuming(false);
+                          if (result.success) {
+                            setSkillBookUseItem(null);
+                            router.refresh();
+                          } else {
+                            setConsumeError(result.error);
+                          }
+                        }}
+                        className="w-full rounded border border-base-border bg-base px-4 py-2 text-left text-text-primary hover:bg-base-border disabled:opacity-50"
+                      >
+                        {c.displayName}
+                        {c.category === "protagonist" && (
+                          <span className="ml-2 text-xs text-text-muted">（主人公）</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -279,7 +353,7 @@ export function BagTabs({
                 }}
                 className="mt-4 w-full rounded border border-base-border bg-base py-2 text-sm text-text-muted hover:bg-base-border"
               >
-                キャンセル
+                中止
               </button>
             </div>
           </div>

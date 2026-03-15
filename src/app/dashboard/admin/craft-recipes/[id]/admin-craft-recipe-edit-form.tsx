@@ -9,7 +9,7 @@ import type {
   AdminMechaPartOutputDetail,
   UpdateAdminCraftRecipeInput,
 } from "@/server/actions/admin";
-import { updateAdminCraftRecipe } from "@/server/actions/admin";
+import { updateAdminCraftRecipe, deleteAdminCraftRecipe } from "@/server/actions/admin";
 import { EQUIPMENT_STAT_KEYS, EQUIPMENT_STAT_LABELS } from "@/lib/craft/equipment-stat-gen";
 import { MECHA_PART_BASE_STAT_KEYS } from "@/lib/craft/mecha-part-stat-gen";
 import { EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS } from "@/lib/constants/equipment-slots";
@@ -112,6 +112,7 @@ function buildMechaPartFormFrom(
 export function AdminCraftRecipeEditForm({ recipe, options }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const [code, setCode] = useState(recipe.code);
@@ -811,13 +812,37 @@ export function AdminCraftRecipeEditForm({ recipe, options }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-4 pt-4">
+      <div className="flex flex-wrap gap-4 pt-4">
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || isDeleting}
           className="rounded bg-brass px-4 py-2 text-base font-medium text-white hover:bg-brass-hover disabled:opacity-50"
         >
           {isPending ? "保存中…" : "保存"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (
+              !confirm(
+                `レシピ「${recipe.code}」（${recipe.name}）を削除しますか？\n\n入力素材・研究解放の紐づけ・ユーザの解放済み状態もすべて削除されます。この操作は取り消せません。`
+              )
+            )
+              return;
+            setIsDeleting(true);
+            deleteAdminCraftRecipe(recipe.id).then((result) => {
+              if (result.success) {
+                router.push("/dashboard/admin/craft-recipes");
+                return;
+              }
+              setMessage({ type: "error", text: result.error ?? "削除に失敗しました。" });
+              setIsDeleting(false);
+            });
+          }}
+          disabled={isPending || isDeleting}
+          className="rounded border border-error bg-transparent px-4 py-2 text-base font-medium text-error hover:bg-error/10 disabled:opacity-50"
+        >
+          {isDeleting ? "削除中…" : "削除"}
         </button>
       </div>
     </form>

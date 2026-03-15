@@ -17,8 +17,9 @@ export type UseEmergencyProductionOrderResult =
 
 /**
  * 緊急製造指示書を1枚消費し、設置済み全設備の lastProducedAt を2時間前に更新。spec/083。
+ * （名前は React Hook と誤認されないよう use で始めない）
  */
-export async function useEmergencyProductionOrder(): Promise<UseEmergencyProductionOrderResult> {
+export async function executeEmergencyProductionOrder(): Promise<UseEmergencyProductionOrderResult> {
   const session = await getSession();
   if (!session?.userId) {
     return { success: false, error: "UNAUTHORIZED", message: "ログインしてください。" };

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminBackButton } from "../admin-back-button";
-import { getAdminItemList } from "@/server/actions/admin";
+import { getAdminItemList, getAdminSkillsForItem } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
 import { AdminItemListClient } from "./admin-item-list-client";
 
@@ -13,10 +13,11 @@ export default async function AdminItemsPage() {
     redirect("/dashboard");
   }
 
-  const items = await getAdminItemList();
+  const [items, skills] = await Promise.all([getAdminItemList(), getAdminSkillsForItem()]);
   if (!items) {
     redirect("/dashboard");
   }
+  const skillOptions = skills ?? [];
 
   return (
     <main className="min-h-screen bg-base p-8">
@@ -51,7 +52,7 @@ export default async function AdminItemsPage() {
         </Link>
       </div>
 
-      <AdminItemListClient items={items} />
+      <AdminItemListClient items={items} skillOptions={skillOptions} />
 
       <p className="mt-6 text-sm text-text-muted">
         <Link href="/dashboard/admin/equipment-types" className="text-brass hover:text-brass-hover">

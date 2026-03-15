@@ -95,6 +95,7 @@
 - **開拓任務編集**で、当該任務に「解放する探索テーマ」「解放する研究グループ」を複数指定できるようにする。
   - 例: チェックボックスまたは複数選択で、テーマ一覧・研究グループ一覧から選択。
 - 保存時に **QuestUnlockExplorationTheme** / **QuestUnlockResearchGroup** を、当該任務について削除してから、選択分を再挿入する形でよい。
+- **達成条件**の種類（area_clear / enemy_defeat / skill_event_specific）とパラメータ編集は **spec/054_quests.md §7** および **manage/admin_quest_edit.md** を参照。
 
 ---
 

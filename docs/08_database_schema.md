@@ -226,17 +226,32 @@
 
 **リレーション**: User N対1
 
-### 1.10 ChatMessage（全体チャット・spec/037）
+### 1.10 ChatMessage（全体チャット・spec/037, 094 拡張）
 
 | カラム | 型 | 制約 | 説明 |
 |--------|-----|------|------|
 | id | String (cuid) | PK | 主キー |
-| userId | String | NOT NULL, FK→User.id | 送信者 |
+| userId | String | NULL可, FK→User.id | 送信者。kind=system のときは null。 |
 | body | String | NOT NULL | 本文（spec で最大 500 文字） |
+| kind | String | NOT NULL, default "user" | "user" \| "system" |
+| systemKind | String | NULL可 | kind=system のときのみ。例: quest_clear。 |
+| payload | Json | NULL可 | リンク用。例: { userId, questId, questName }。 |
 | createdAt | DateTime | NOT NULL, default now() | 送信日時 |
 
-- **リレーション**: User N対1（User.chatMessages）。
-- **用途**: docs/00・022 の全体チャット。直近ログのみ保持（永続は最小限）。インデックス: createdAt 降順取得用。
+- **リレーション**: User N対1（User.chatMessages）。userId が null の行は user に紐づかない。
+- **用途**: docs/00・022 の全体チャット。094 でシステムメッセージ（任務達成通知等）を追加。直近ログのみ保持。インデックス: createdAt 降順取得用。
+
+### 1.10a Mail / UserMail（spec/090・運営郵便）
+
+運営からプレイヤーへお知らせと付与物を届ける郵便。**正は schema.prisma**。
+
+| モデル | 説明 | 主なカラム・制約 |
+|--------|------|-------------------|
+| **Mail** | 1通の定義（タイトル・本文・付与内容・有効期限） | title, body, rewardGraFree, rewardGraPaid, rewardResearchPoint, rewardItems(Json), rewardTitleIds(Json), expiresAt, createdAt。送信時に UserMail が作成される。 |
+| **UserMail** | ユーザーごとの受信レコード | userId, mailId, readAt, receivedAt, createdAt。@@unique([userId, mailId])。有効期限切れは一覧で非表示。 |
+
+- **User** に `userMails` リレーション。受取時に GRA・研究記録書・アイテム（上限超え可）・称号を付与。通貨は CurrencyTransaction（reason: mail_reward）。
+- 送信時に各ユーザーへ Notification（type: mail_arrived, title: 「郵便が届きました。」, linkUrl: /dashboard/mail）を作成。
 
 ### 1.11 リレーション（現状）
 
@@ -257,9 +272,9 @@ FacilityType (N) ----< FacilityTypeTag >---- (N) Tag
 - **ChatMessage**：全体チャット（spec/037, docs/022）。直近ログのみ保持。
 - **Tag・FacilityType・FacilityTypeTag**：設備タグと工業スキル効果の対象。docs/15。設備の型（基本型／派生型）は docs/017。初期データは seed で投入。
 
-### 1.12 spec/068: 任務による機能解放（探索テーマ・研究グループ）
+### 1.12 spec/068: 任務による機能解放（探索テーマ・研究グループ・市場）
 
-開拓任務のクリア報告時に、紐づく探索テーマ・研究グループをユーザに「解放済み」として記録する（フラグ方式）。**正は schema.prisma**。
+開拓任務のクリア報告時に、紐づく探索テーマ・研究グループをユーザに「解放済み」として記録する（フラグ方式）。**Quest.unlocksMarket** が true の任務を報告したユーザーは **User.marketUnlocked** が true になる（spec/075）。**正は schema.prisma**。
 
 | モデル | 説明 | 主なカラム・制約 |
 |--------|------|-------------------|
@@ -269,7 +284,7 @@ FacilityType (N) ----< FacilityTypeTag >---- (N) Tag
 | **UserResearchGroupUnlock** | ユーザが解禁済みの研究グループ | userId, researchGroupId。@@id([userId, researchGroupId])。@@index([userId])。 |
 
 - **User** に `explorationThemeUnlocks`, `researchGroupUnlocks` のリレーション追加。
-- **Quest** に `unlockExplorationThemes`, `unlockResearchGroups` のリレーション追加。
+- **Quest** に `unlockExplorationThemes`, `unlockResearchGroups` のリレーションと **unlocksMarket**（Boolean、この任務で市場解放）追加。
 - **ExplorationTheme** に `questUnlocks`, `userUnlocks` 追加。**ResearchGroup** に `questUnlocks`, `userUnlocks` 追加。
 - 詳細は **docs/068_quest_unlock_themes_and_research.md** と **spec/068_quest_unlock_themes_and_research.md**。
 

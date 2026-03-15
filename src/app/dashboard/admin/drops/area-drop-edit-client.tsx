@@ -7,7 +7,7 @@ import type {
   AreaDropTableInfo,
   SaveDropTableEntryInput,
 } from "@/server/actions/admin";
-import { saveDropTableEntries } from "@/server/actions/admin";
+import { saveDropTableEntries, getDropTableEntriesForCopy } from "@/server/actions/admin";
 
 type ItemOption = { id: string; code: string; name: string; category: string };
 
@@ -19,10 +19,16 @@ const CATEGORY_LABELS: Record<string, string> = {
   special: "特別",
 };
 
+/** ブロック種別の key（TableEditor の kindKey と一致） */
+const DROP_KIND_KEYS = ["base", "battle", "skill", "strongEnemy", "areaLord"] as const;
+
+type AreaOption = { id: string; code: string; name: string };
+
 type Props = {
   data: AreaDropEditData;
   items: ItemOption[];
   kindLabels: Record<string, string>;
+  areas: AreaOption[];
 };
 
 type LocalRow = SaveDropTableEntryInput & { tempId?: string };
@@ -32,12 +38,18 @@ function TableEditor({
   kindKey,
   kindLabel,
   items,
+  areas,
+  currentAreaId,
+  kindLabels,
   onSaved,
 }: {
   table: AreaDropTableInfo;
   kindKey: string;
   kindLabel: string;
   items: ItemOption[];
+  areas: AreaOption[];
+  currentAreaId: string;
+  kindLabels: Record<string, string>;
   onSaved: () => void;
 }) {
   const [rows, setRows] = useState<LocalRow[]>(() =>
@@ -49,8 +61,22 @@ function TableEditor({
     })) ?? []
   );
   const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [copySourceAreaId, setCopySourceAreaId] = useState<string>(currentAreaId);
+  const [copySourceKind, setCopySourceKind] = useState<string>("base");
+  const [isCopying, startCopyTransition] = useTransition();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  const blockKindToLabel: Record<string, string> = useMemo(
+    () => ({
+      base: kindLabels.base ?? "基本ドロップ",
+      battle: kindLabels.battle_bonus ?? "戦闘ボーナス",
+      skill: kindLabels.skill ?? "技能イベント枠",
+      strongEnemy: kindLabels.strong_enemy ?? "強敵",
+      areaLord: kindLabels.area_lord_special ?? "領域主専用",
+    }),
+    [kindLabels]
+  );
 
   // カテゴリで絞り込み。選択中アイテムはフィルタに含まれていなくても候補に残す
   const itemOptions = useMemo(() => {
@@ -99,6 +125,21 @@ function TableEditor({
     (sum, r) => sum + (typeof r.weight === "number" && r.weight >= 0 ? r.weight : Number(r.weight) || 0),
     0
   );
+
+  const handleCopyFrom = () => {
+    startCopyTransition(async () => {
+      const entries = await getDropTableEntriesForCopy(copySourceAreaId, copySourceKind);
+      setRows(
+        entries.map((e, i) => ({
+          ...e,
+          tempId: `t-${Date.now()}-${i}`,
+        }))
+      );
+      const areaName = areas.find((a) => a.id === copySourceAreaId)?.name ?? copySourceAreaId;
+      const blockName = blockKindToLabel[copySourceKind] ?? copySourceKind;
+      setMessage({ type: "ok", text: `${areaName}の${blockName}をコピーしました。保存ボタンで反映してください。` });
+    });
+  };
 
   const handleSave = () => {
     const valid = rows.filter(
@@ -165,6 +206,39 @@ function TableEditor({
             {isPending ? "保存中…" : "保存"}
           </button>
         </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-base-border bg-base p-3">
+        <span className="text-sm text-text-muted">コピー元:</span>
+        <select
+          value={copySourceAreaId}
+          onChange={(e) => setCopySourceAreaId(e.target.value)}
+          className="rounded border border-base-border bg-base-elevated px-2 py-1 text-sm text-text-primary min-w-[160px]"
+        >
+          {areas.map((a) => (
+            <option key={a.id} value={a.id}>
+              [{a.code}] {a.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={copySourceKind}
+          onChange={(e) => setCopySourceKind(e.target.value)}
+          className="rounded border border-base-border bg-base-elevated px-2 py-1 text-sm text-text-primary min-w-[140px]"
+        >
+          {DROP_KIND_KEYS.map((k) => (
+            <option key={k} value={k}>
+              {blockKindToLabel[k] ?? k}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleCopyFrom}
+          disabled={isCopying}
+          className="rounded bg-base border border-base-border px-3 py-1 text-sm text-text-primary hover:bg-base-elevated disabled:opacity-50"
+        >
+          {isCopying ? "取得中…" : "このブロックにコピー"}
+        </button>
       </div>
       {message && (
         <p
@@ -277,9 +351,10 @@ function TableEditor({
   );
 }
 
-export function AreaDropEditClient({ data, items, kindLabels }: Props) {
+export function AreaDropEditClient({ data, items, kindLabels, areas }: Props) {
   const router = useRouter();
   const refresh = () => router.refresh();
+  const currentAreaId = data.area.id;
 
   return (
     <section className="mt-8">
@@ -293,6 +368,9 @@ export function AreaDropEditClient({ data, items, kindLabels }: Props) {
           kindKey="base"
           kindLabel={kindLabels.base ?? "基本"}
           items={items}
+          areas={areas}
+          currentAreaId={currentAreaId}
+          kindLabels={kindLabels}
           onSaved={refresh}
         />
         <TableEditor
@@ -301,6 +379,9 @@ export function AreaDropEditClient({ data, items, kindLabels }: Props) {
           kindKey="battle"
           kindLabel={kindLabels.battle_bonus ?? "戦闘ボーナス"}
           items={items}
+          areas={areas}
+          currentAreaId={currentAreaId}
+          kindLabels={kindLabels}
           onSaved={refresh}
         />
         <TableEditor
@@ -309,6 +390,9 @@ export function AreaDropEditClient({ data, items, kindLabels }: Props) {
           kindKey="skill"
           kindLabel={kindLabels.skill ?? "技能イベント枠"}
           items={items}
+          areas={areas}
+          currentAreaId={currentAreaId}
+          kindLabels={kindLabels}
           onSaved={refresh}
         />
         <TableEditor
@@ -317,6 +401,9 @@ export function AreaDropEditClient({ data, items, kindLabels }: Props) {
           kindKey="strongEnemy"
           kindLabel={kindLabels.strong_enemy ?? "強敵"}
           items={items}
+          areas={areas}
+          currentAreaId={currentAreaId}
+          kindLabels={kindLabels}
           onSaved={refresh}
         />
         <TableEditor
@@ -325,6 +412,9 @@ export function AreaDropEditClient({ data, items, kindLabels }: Props) {
           kindKey="areaLord"
           kindLabel={kindLabels.area_lord_special ?? "領域主専用"}
           items={items}
+          areas={areas}
+          currentAreaId={currentAreaId}
+          kindLabels={kindLabels}
           onSaved={refresh}
         />
       </div>

@@ -10,6 +10,9 @@ import {
   getAdminEnemyList,
   getAdminExplorationThemeList,
   getAdminResearchGroupList,
+  getAdminExplorationEventList,
+  getAdminSkillList,
+  getAdminTitleList,
 } from "@/server/actions/admin";
 import { isTestUser1 } from "@/server/lib/admin";
 import { AdminQuestEditForm } from "./admin-quest-edit-form";
@@ -25,21 +28,44 @@ export default async function AdminQuestEditPage({
   }
 
   const { id } = await params;
-  const [quest, questList, itemList, areaList, enemyList, themeList, researchGroupList] =
-    await Promise.all([
-      getAdminQuest(id),
-      getAdminQuestList(),
-      getAdminItemList(),
-      getAdminAreaList(),
-      getAdminEnemyList(),
-      getAdminExplorationThemeList(),
-      getAdminResearchGroupList(),
-    ]);
+  const [
+    quest,
+    questList,
+    itemList,
+    areaList,
+    enemyList,
+    themeList,
+    researchGroupList,
+    explorationEventList,
+    skillList,
+    titleList,
+  ] = await Promise.all([
+    getAdminQuest(id),
+    getAdminQuestList(),
+    getAdminItemList(),
+    getAdminAreaList(),
+    getAdminEnemyList(),
+    getAdminExplorationThemeList(),
+    getAdminResearchGroupList(),
+    getAdminExplorationEventList(),
+    getAdminSkillList(),
+    getAdminTitleList(),
+  ]);
 
   if (!quest) {
     notFound();
   }
-  if (!questList || !itemList || !areaList || !enemyList || !themeList || !researchGroupList) {
+  if (
+    !questList ||
+    !itemList ||
+    !areaList ||
+    !enemyList ||
+    !themeList ||
+    !researchGroupList ||
+    !explorationEventList ||
+    !skillList ||
+    !titleList
+  ) {
     redirect("/dashboard");
   }
 
@@ -69,8 +95,11 @@ export default async function AdminQuestEditPage({
         quest={quest}
         questList={questList}
         itemList={itemList}
+        skillList={skillList}
+        titleList={titleList}
         areaList={areaList}
         enemyList={enemyList}
+        explorationEventList={explorationEventList}
         themeList={themeList}
         researchGroupList={researchGroupList}
       />

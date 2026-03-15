@@ -13,9 +13,11 @@ const MENU_LINKS = [
   { href: "/dashboard/craft", label: "工房" },
   { href: "/dashboard/bag", label: "物資庫" },
   { href: "/dashboard/quests", label: "開拓任務" },
+  { href: "/dashboard/mail", label: "郵便" },
   { href: "/dashboard/underground-market", label: "闇市" },
   { href: "/dashboard/market", label: "市場" },
   { href: "/dashboard/tactics", label: "作戦室" },
+  { href: "/dashboard/profile", label: "開拓者証" },
 ] as const;
 
 const buttonBase =

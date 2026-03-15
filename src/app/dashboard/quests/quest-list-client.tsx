@@ -28,6 +28,8 @@ export function QuestListClient({ quests }: Props) {
   const [isPending, startTransition] = useTransition();
   const [reportModal, setReportModal] = useState<ReportModalState | null>(null);
 
+  const isSpecial = (q: QuestListItem) => q.questType === "special";
+
   const canReport = (q: QuestListItem) =>
     !q.reportAcknowledgedAt && q.targetCount > 0 && q.progress >= q.targetCount;
 
@@ -49,7 +51,8 @@ export function QuestListClient({ quests }: Props) {
         const hasAny =
           res.rewards.gra > 0 ||
           res.rewards.researchPoint > 0 ||
-          res.rewards.items.length > 0;
+          res.rewards.items.length > 0 ||
+          res.rewards.title != null;
         if (hasAny) {
           setReportModal({
             ...reportModal,
@@ -125,22 +128,26 @@ export function QuestListClient({ quests }: Props) {
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="h-2 rounded-full bg-base-border overflow-hidden">
-                      <div
-                        className="h-full bg-brass transition-all"
-                        style={{
-                          width: `${q.targetCount > 0 ? Math.min(100, (q.progress / q.targetCount) * 100) : 0}%`,
-                        }}
-                      />
+                      {isSpecial(q) ? (
+                        <div className="h-full w-full bg-error" aria-hidden />
+                      ) : (
+                        <div
+                          className="h-full bg-brass transition-all"
+                          style={{
+                            width: `${q.targetCount > 0 ? Math.min(100, (q.progress / q.targetCount) * 100) : 0}%`,
+                          }}
+                        />
+                      )}
                     </div>
-                    <p className="mt-1 text-xs text-text-muted">
-                      {q.progress} / {q.targetCount}
+                    <p className="mt-1 text-xs text-text-muted tabular-nums">
+                      {isSpecial(q) ? "— / —" : `${q.progress} / ${q.targetCount}`}
                     </p>
                   </div>
                   {canReport(q) && (
                     <button
                       type="button"
                       onClick={() => handleReportClick(q)}
-                      className="shrink-0 rounded bg-brass px-3 py-1.5 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
+                      className="shrink-0 rounded bg-brass px-3 py-1.5 text-sm font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
                     >
                       クリア報告
                     </button>
@@ -159,8 +166,12 @@ export function QuestListClient({ quests }: Props) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="report-modal-title"
+          onClick={handleCloseReportModal}
         >
-          <div className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl">
+          <div
+            className="w-full max-w-md rounded-lg border border-base-border bg-base-elevated p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 id="report-modal-title" className="text-lg font-semibold text-text-primary">
               {reportModal.phase === "reward"
                 ? "報酬を受け取った"
@@ -183,7 +194,7 @@ export function QuestListClient({ quests }: Props) {
                     type="button"
                     onClick={handleConfirmReport}
                     disabled={isPending}
-                    className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
+                    className="rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base disabled:opacity-50"
                   >
                     {isPending ? "反映中…" : "確認"}
                   </button>
@@ -217,6 +228,14 @@ export function QuestListClient({ quests }: Props) {
                       枚
                     </li>
                   )}
+                  {reportModal.rewards.title != null && (
+                    <li>
+                      称号{" "}
+                      <span className="font-bold text-gra">
+                        {reportModal.rewards.title.name}
+                      </span>
+                    </li>
+                  )}
                   {reportModal.rewards.items.map((it) => (
                     <li key={it.itemId}>
                       {it.name}{" "}
@@ -231,7 +250,7 @@ export function QuestListClient({ quests }: Props) {
                   <button
                     type="button"
                     onClick={handleCloseReportModal}
-                    className="rounded bg-brass px-4 py-2 text-sm font-medium text-base hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
+                    className="rounded bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-hover focus:outline-none focus:ring-2 focus:ring-brass focus:ring-offset-2 focus:ring-offset-base"
                   >
                     閉じる
                   </button>
